@@ -1,3 +1,9 @@
+# Alias definitions.
+# See /usr/share/doc/bash-doc/examples in the bash-doc package.
+if [ -f ~/.aliases ]; then
+    . ~/.aliases
+fi
+
 #  settings {{{
 HISTCONTROL=ignoreboth # no duplicates or lines starting with space in history
 HISTSIZE=1000
@@ -20,7 +26,7 @@ shopt -s direxpand
 
 if [[ -x "$(command -v nvim)" ]]; then
   export EDITOR=nvim
-  alias vim=nvim
+  # alias vim=nvim
 else
   export EDITOR=vim
 fi
@@ -57,40 +63,19 @@ export LESS_TERMCAP_ue=$'\E[0m'
 export LESS_TERMCAP_us=$'\E[04;38;5;111m'
 # }}}
 
-#  alias {{{
 
-# safer defaults for cp, mv and rm
-# verbose output and ask for confirmation if existing file is affected
-alias cp='cp -v'
-alias mv='mv -v'
-alias rm='rm -v'
-alias ln='ln -v'
-alias mkdir='mkdir -p'
+# # path {{{
+# # append to path
+# paths=("$HOME/dotfiles/bin")
+# paths+=("$HOME/.cargo/bin")
 
-# F: append '/' after directory and '*' after executables
-# A: do not list '.' and '..'
-# h: with `l`, use unit siffixes for file size
-# T: with `l`, display complete time info
-# l: list format
-alias ls='ls -FA --color'
-alias ll='ls -FAlh --color'
-if [[ "$TERM" =~ 'kitty' ]]; then
-  alias ssh='kitty +kitten ssh'
-fi
-# }}}
+# for p in "${paths[@]}"; do
+#   [[ -d "$p" ]] && PATH+=":$p"
+# done
 
-# path {{{
-# append to path
-paths=("$HOME/dotfiles/bin")
-paths+=("$HOME/.cargo/bin")
-
-for p in "${paths[@]}"; do
-  [[ -d "$p" ]] && PATH+=":$p"
-done
-
-## prepend to path
-PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH"
-# }}}
+# ## prepend to path
+# PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH"
+# # }}}
 
 if [[ "$TERM" =~ 'dumb' ]]; then
     source "$HOME/.bashrc.dumb"

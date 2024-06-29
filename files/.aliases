@@ -1,0 +1,166 @@
+# {{{ alias
+alias cp='cp -v'
+alias mv='mv -v'
+alias rm='rm -v'
+alias ls="ls -FA --color"
+alias ll="ls -FAlh --color"
+alias ln="ln -v"
+alias mkdir="mkdir -p"
+if (( $+commands[emacs] )); then
+  alias e="emacsclient -nw --alternate-editor '' --quiet"
+  alias E="emacsclient --alternate-editor ''  --no-wait --quiet --create-frame"
+fi
+alias grep='grep --ignore-case --line-number --extended-regexp --color'
+alias rgrep='grep --ignore-case --line-number --extended-regexp --color --exclude-dir ".git" --recursive'
+alias rsync='rsync -azvhP'
+
+alias -s pdf='open -a "PDF Expert.app"'
+alias -s html='open -a "Firefox.app"'
+alias -s md='glow --pager --width 70'
+
+if [[ "$TERM" =~ 'kitty' ]]; then
+  alias ssh='kitty +kitten ssh'
+fi
+# End alias }}}
+
+# # kitty stuff, probably should not override ssh 
+alias ssh='ssh -R 50000:${KITTY_LISTEN_ON#*:}'
+
+# Application shorthands
+export vs="Visual Studio Code"
+export ij="IntelliJ IDEA"
+
+# Path shorthands
+export aise='/Users/Aral/Aral/Delft/YEAR 4'
+export research='/Users/Aral/Aral/Delft/YEAR 4'
+export rp="/Users/Aral/Aral/Delft/YEAR 3/0 RESEARCH PROJECT/LLM4CodeCompression"
+
+export ml="/Users/Aral/Desktop/Music Library"
+export brain="/Users/Aral/Library/Mobile Documents/iCloud~md~obsidian/Documents/Brain 2.0"
+export dev='/Users/Aral/Aral/Dev'
+
+if [ -x /usr/bin/dircolors ]; then
+    test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
+    alias ls='ls --color=auto'
+    #alias dir='dir --color=auto'
+    #alias vdir='vdir --color=auto'
+
+    alias grep='grep --color=auto'
+    alias fgrep='fgrep --color=auto'
+    alias egrep='egrep --color=auto'
+fi
+
+# some more ls aliases
+alias ll='ls -alFh'
+alias la='ls -A'
+alias l='ls -CF'
+
+# Command Shorthands
+function mkd() {
+  mkdir $1
+  cd $1
+}
+
+function cl() {
+  cd $1
+  ls 
+}
+
+function killge() {
+
+  if [ "$#" -lt 1 ]; then
+    echo 'Usage: killge <higher_than_pid>'
+    return
+  fi
+
+  # prompt the user first
+  to_kill=$(ps aux | awk -v treshold=$1 '$2 >= treshold')
+  echo "$to_kill"
+  echo '> Kill the above processes? (y/n)'
+  read -r answer
+
+  if [[ "$answer" == "y" ]]; then
+    echo "Confirmed. Proceeding..."
+
+    pids_to_kill=$(echo "$to_kill" | awk '{print $2}' | tail -n +2)
+    kill $pids_to_kill
+
+  elif [[ "$answer" == "n" ]]; then
+    echo "Aborted."
+  else
+    echo "Invalid input. Aborted."
+  fi
+}
+
+
+function setup_daic() {
+	# installing user-locally from source because this daic server hates its users
+	# Creates ~/local, and ~/local/bin to store the binaries (linked to PATH)
+	# guide; https://github.com/tmux/tmux/wiki/Installing
+
+	echo 'updating PATH'
+	echo 'export PATH=$HOME/local/bin:$PATH' >> $HOME/.bashrc
+	mkdir ~/local
+	cd ~/local
+	mkdir bin
+
+
+	## download and install libevent (for user)
+	echo 'installing libevent (tmux dependency)...'
+	wget https://github.com/libevent/libevent/releases/download/release-2.1.12-stable/libevent-2.1.12-stable.tar.gz
+	tar xf libevent-2.1.12-stable.tar.gz  > /dev/null
+	cd libevent-2.1.12-stable
+
+	./configure --prefix=$HOME/local --enable-shared
+	make && make install
+
+	# remove installation files
+	cd ..
+	rm -rf libevent-2.1.12-stable
+	rm -rf libevent-2.1.12-stable.tar.gz
+
+
+	## download and install tmux
+	echo 'installing tmux...'
+	wget https://github.com/tmux/tmux/releases/download/3.4/tmux-3.4.tar.gz
+	tar xf tmux-3.4.tar.gz > /dev/null
+	cd tmux-3.4
+	PKG_CONFIG_PATH=$HOME/local/lib/pkgconfig ./configure --prefix=$HOME/local
+	make && make install
+
+	# remaining setup
+	# LD_LIBRARY_PATH=$HOME/local/lib $HOME/local/bin/tmux -V
+	# MANPATH=$HOME/local/share/man man tmux
+	echo 'export PATH=$HOME/local/bin:$PATH' >> .bash_profile
+	echo 'export LD_LIBRARY_PATH=$HOME/local/lib:$LD_LIBRARY_PATH' >> .bash_profile
+	echo 'export MANPATH=$HOME/local/share/man:$MANPATH' >> bash_profile
+	export PATH=$HOME/local/bin:$PATH
+	export LD_LIBRARY_PATH=$HOME/local/lib:$LD_LIBRARY_PATH
+	export MANPATH=$HOME/local/share/man:$MANPATH
+
+	# remove installation files
+	cd ..
+	rm -rf tmux-3.4
+	rm -rf tmux-3.4.tar.gz
+
+	## download and install latest vim
+	echo 'installing vim...'
+	git clone https://github.com/vim/vim.git
+	cd vim/src
+
+	./configure --prefix=$HOME/local
+	make -s > /dev/null
+	make install -s > /dev/null
+
+	# remove installation files
+	cd ../..
+	rm -rf vim
+
+	cd $HOME
+}
+
+# shouldn't run this too often because it lags the GPU 
+alias nv='watch -d -n "10" nvidia-smi'
+
+alias gis='git status'
+alias giff='git diff'

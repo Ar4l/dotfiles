@@ -1,3 +1,8 @@
+# Alias definitions.
+# See /usr/share/doc/bash-doc/examples in the bash-doc package.
+if [ -f ~/.aliases ]; then
+    . ~/.aliases
+fi
 
 # Create a hash table for globally stashing variables without polluting main
 # scope with a bunch of identifiers.
@@ -110,34 +115,9 @@ export LESS_TERMCAP_se=$'\E[0m'
 export LESS_TERMCAP_ue=$'\E[0m'
 export LESS_TERMCAP_us=$'\E[04;38;5;111m'
 # End exports }}}
-# {{{ alias
-alias cp='cp -v'
-alias mv='mv -v'
-alias rm='rm -v'
-alias ls="ls -FA --color"
-alias ll="ls -FAlh --color"
-alias ln="ln -v"
-alias mkdir="mkdir -p"
-if (( $+commands[emacs] )); then
-  alias e="emacsclient -nw --alternate-editor '' --quiet"
-  alias E="emacsclient --alternate-editor ''  --no-wait --quiet --create-frame"
-fi
-alias grep='grep --ignore-case --line-number --extended-regexp --color'
-alias rgrep='grep --ignore-case --line-number --extended-regexp --color --exclude-dir ".git" --recursive'
-alias rsync='rsync -azvhP'
-
-alias -s pdf='open -a "PDF Expert.app"'
-alias -s html='open -a "Firefox.app"'
-alias -s md='glow --pager --width 70'
-
-if [[ "$TERM" =~ 'kitty' ]]; then
-  alias ssh='kitty +kitten ssh'
-fi
-# End alias }}}
 # {{{ path
 paths=(
-  "$HOME/.emacs.d/bin"
-  "/usr/local/opt/coreutils/libexec/gnubin"
+  # "/usr/local/opt/coreutils/libexec/gnubin"
   "$HOME/dotfiles/bin"
 )
 

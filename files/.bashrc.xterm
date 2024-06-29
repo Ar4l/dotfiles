@@ -44,10 +44,11 @@ if [[ -x "$(command -v fzf)" ]]; then
 fi
 
 # functions
-
-function notes() {
-  local NOTESDIR="$HOME/code/www-arumoy/blogs"
-  local FILE=$(fd . "$NOTESDIR" --extension=qmd --extension=md |fzf)
-
-  [[ -n "$FILE" ]] && glow "$FILE"
-}
+# 
+# function notes() {
+#   local NOTESDIR="$HOME/code/www-arumoy/blogs"
+#   local FILE=$(fd . "$NOTESDIR" --extension=qmd --extension=md |fzf)
+# 
+#   [[ -n "$FILE" ]] && glow "$FILE"
+# }
+# 
