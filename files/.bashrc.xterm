@@ -1,8 +1,9 @@
 # vim: filetype=sh
 
-# prompt
-[[ -e "$(brew --prefix starship)" ]] &&
-    eval "$(starship init bash)"
+# # prompt
+# let's not depend on some package just to show the prompt :)
+# [[ -e "$(brew --prefix starship)" ]] &&
+#     eval "$(starship init bash)"
 
 # set tab/window title to current directory
 function set_win_title(){

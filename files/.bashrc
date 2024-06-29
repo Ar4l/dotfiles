@@ -80,6 +80,7 @@ export LESS_TERMCAP_us=$'\E[04;38;5;111m'
 if [[ "$TERM" =~ 'dumb' ]]; then
     source "$HOME/.bashrc.dumb"
 else
+    source "$HOME/.bashrc.dumb"
     source "$HOME/.bashrc.xterm"
 fi
 

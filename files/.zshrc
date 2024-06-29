@@ -26,10 +26,12 @@ setopt autocd
 unsetopt beep
 
 cdpath=($HOME)
-[[ -d "$HOME/code" ]] && cdpath+=("$HOME/code")
-[[ -d "$HOME/phd" ]] && cdpath+=("$HOME/phd")
-[[ -d "$HOME/Documents/phd" ]] && cdpath+=("$HOME/Documents/phd")
+# [[ -d "$HOME/code" ]] && cdpath+=("$HOME/code")
+# [[ -d "$HOME/phd" ]] && cdpath+=("$HOME/phd")
+# [[ -d "$HOME/Documents/phd" ]] && cdpath+=("$HOME/Documents/phd")
+
 # End options}}}
+
 # {{{ keybindings
 bindkey -e
 # End keybindings }}}
@@ -67,6 +69,8 @@ zstyle ':completion:*:descriptions' format %F{default}%B%{$__WINCENT[ITALIC_ON]%
 zstyle ':completion:*' menu select
 # End completion }}}
 # {{{ prompt
+
+fpath+=("$(brew --prefix)/share/zsh/site-functions")
 autoload -Uz promptinit
 promptinit
 # autoload -U colors
@@ -79,13 +83,6 @@ prompt pure
 # {{{ exports
 export PAGER=less
 export MANPAGER=$PAGER
-
-if (( $+commands[nvim] )); then
-  export EDITOR=nvim
-  alias vim=nvim
-else
-  export EDITOR=vim
-fi
 
 # filename (if known), line number if known, falling back to percent if known,
 # falling back to byte offset, falling back to dash
@@ -116,9 +113,11 @@ export LESS_TERMCAP_ue=$'\E[0m'
 export LESS_TERMCAP_us=$'\E[04;38;5;111m'
 # End exports }}}
 # {{{ path
+
 paths=(
   # "/usr/local/opt/coreutils/libexec/gnubin"
   "$HOME/dotfiles/bin"
+  "$HOME/anaconda3/bin"
 )
 
 for p in $paths; do

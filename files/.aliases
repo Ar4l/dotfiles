@@ -6,17 +6,19 @@ alias ls="ls -FA --color"
 alias ll="ls -FAlh --color"
 alias ln="ln -v"
 alias mkdir="mkdir -p"
-if (( $+commands[emacs] )); then
-  alias e="emacsclient -nw --alternate-editor '' --quiet"
-  alias E="emacsclient --alternate-editor ''  --no-wait --quiet --create-frame"
-fi
+# if (( $+commands[emacs] )); then
+#   alias e="emacsclient -nw --alternate-editor '' --quiet"
+#   alias E="emacsclient --alternate-editor ''  --no-wait --quiet --create-frame"
+# fi
+
 alias grep='grep --ignore-case --line-number --extended-regexp --color'
 alias rgrep='grep --ignore-case --line-number --extended-regexp --color --exclude-dir ".git" --recursive'
 alias rsync='rsync -azvhP'
+alias diff='diff --color=auto --side-by-side'
 
-alias -s pdf='open -a "PDF Expert.app"'
-alias -s html='open -a "Firefox.app"'
-alias -s md='glow --pager --width 70'
+# alias -s pdf='open -a "PDF Expert.app"'
+# alias -s html='open -a "Firefox.app"'
+# alias -s md='glow --pager --width 70'
 
 if [[ "$TERM" =~ 'kitty' ]]; then
   alias ssh='kitty +kitten ssh'

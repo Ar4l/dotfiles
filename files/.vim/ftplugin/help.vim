@@ -1,1 +1,1 @@
-nmap <buffer> q :close<CR>
+map <buffer> q :close<CR>

@@ -1,0 +1,6 @@
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+solver: libmamba
+changeps1: false

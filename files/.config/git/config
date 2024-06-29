@@ -1,53 +1,53 @@
 [user]
-  name = Arumoy Shome
-  email = contact@arumoy.me
+	name = Aral
+	email = me@aral.cc
+
 [github]
-  user = arumoy-shome
+  user = Ar4l
+
 [init]
-  templatedir = ~/.config/git/template
-  defaultBranch = master
+	defaultBranch = main
+
 [push]
   default = upstream
+
 [color]
   ui = true
   status = true
+
 [alias]
   s = status
   b = branch
-  l = log --oneline --graph
-  bd = branch -d
-  co = checkout
-  cof = checkout --
-  cob = checkout -b
+	ac = commit -am
+	l = log --graph --oneline --decorate
+	aa = commit --all --amend
+  ad = !sh -c 'cd -- ${GIT_PREFIX:-.} && git add -- "$@" && git status' --
   branches = for-each-ref --sort=-committerdate --format=\"%(color:blue)%(authordate:relative)\t%(color:red)%(authorname)\t%(color:white)%(color:bold)%(refname:short)\" refs/remotes
   sla = log --color --graph --pretty=format:'%Cred%h%Creset %C(yellow)%d%Creset %s %Cgreen%cD %C(bold blue)%an%Creset'
   uncommit = reset --soft "HEAD^"
-  glog = log -E -i --grep
-  car = commit --amend --no-edit
-  unstage = reset
-  squash = rebase -i
   ctags = !.git/hooks/ctags
   sidediff = difftool --no-symlinks --dir-diff
+  glog = log -E -i --grep
+
 [core]
   excludesfile = ~/.config/git/ignore
   autocrlf = input
-[merge]
-  ff = only
-[mergetool]
-  prompt = true
-[commit]
-  template = ~/.config/git/message
-[fetch]
-  prune = true
-[rebase]
-  autosquash = true
-[log]
-  abbrevCommit = true
-  decorate = true
-[format]
-  pretty = '%Cred%h%Creset %C(yellow)%d%Creset %s %Cgreen%cr %C(bold blue)%an%Creset'
-[merge]
-  conflictstyle = diff3
+
+[maintenance]
+	repo = /Users/Aral/Aral/Delft/YEAR 4/2 AI Assistant Usability/data analysis/code4me-analysis
+
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+
+[safe]
+	directory = /home/jovyan
+
+[color]
+	ui = true
+
 [diff]
   colorMoved = default
   tool = kitty
@@ -59,11 +59,27 @@
   cmd = kitten diff $LOCAL $REMOTE
 [difftool "kitty.gui"]
   cmd = kitten diff $LOCAL $REMOTE
+
 [rerere]
   enabled = true
 [column]
   ui = auto
 [branch]
   sort = -committerdate
+[fetch]
+  prune = true
+[rebase]
+  autosquash = true
+[log]
+  abbrevCommit = true
+  decorate = true
+[format]
+  pretty = '%Cred%h%Creset %C(yellow)%d%Creset %s %Cgreen%cr %C(bold blue)%an%Creset'
+
+[merge]
+  ff = only
+[mergetool]
+  prompt = true
+
 [help]
   autocorrect = 10 ; auto-correct command after 1 second
