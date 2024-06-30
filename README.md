@@ -16,14 +16,37 @@ A set of files that begin with a dot and are updated quite frequently.
   should work irrespective of the shell (posix compliant; bash or
   zsh), terminal emulator (iTerm2, kitty, alacritty or wezterm) and
   operating system (unix like).
-+ Keep high churn configurations in separate, untracked files. I keep
-  the colorscheme & font configuration in separate files since
-  I change them often.
-+ Stick as close to "bare metal" as possible. This means avoid
-  additional plugins and external dependencies as much as
-  possible. Instead opt to implement the feature/functionality
-  yourself. The idea is to thoroughly vet plugins and dependencies
-  before adding them but be smart about it.
+
+# Install
+Install deps *and* symlink dotfiles with:
+
+```bash
+$ make all
+```
+
+Reload with 
+
+```bash 
+$ make restow
+```
+
+I use [stow] to symlink the configuration files in their respective
+locations. The directory structure of this repo mimics that of $HOME
+such that files & folder in this repo will be mapped 1:1 under $HOME
+for instance:
+
+    .
+    ├── .config	     ~> $HOME/.config
+    ├── .git
+    ├── .hammerspoon ~> $HOME/.hammerspoon
+    ├── .local	     ~> $HOME/.local
+    ├── .vim	     ~> $HOME/.vim
+    └── bin
+
+    6 directories
+
+[stow]: https://www.gnu.org/software/stow/
+
 
 # Dependencies
 
@@ -62,6 +85,7 @@ system. I do this manually using Homebrew.
   + marksman (markdown)
   + texlab (latex)
 
+<!--
 Following are the GUI applications I use. I install them manually
 using Homebrew Cask.
 
@@ -88,23 +112,4 @@ using Homebrew Cask.
   development environments (optional)
 + font-ibm-plex-serif: non-proportional font of choice (optional)
 + font-source-code-pro: ex proportional font of choice (optional)
-
-# Installation
-
-I use [stow] to symlink the configuration files in their respective
-locations. The directory structure of this repo mimics that of $HOME
-such that files & folder in this repo will be mapped 1:1 under $HOME
-for instance:
-
-    .
-    ├── .config	     ~> $HOME/.config
-    ├── .git
-    ├── .hammerspoon ~> $HOME/.hammerspoon
-    ├── .local	     ~> $HOME/.local
-    ├── .vim	     ~> $HOME/.vim
-    └── bin
-
-    6 directories
-
-[stow]: https://www.gnu.org/software/stow/
-
+-->

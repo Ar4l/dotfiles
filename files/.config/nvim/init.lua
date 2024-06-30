@@ -35,12 +35,12 @@ vim.opt.switchbuf = "usetab"
 vim.opt.wildmenu = true
 vim.opt.wildoptions = "pum"
 vim.opt.wildmode = "longest:full,full"
-vim.opt.fillchars = {
-  diff = "∙", -- BULLET OPERATOR (U+2219, UTF-8: E2 88 99)
-  eob = " ", -- NO-BREAK SPACE (U+00A0, UTF-8: C2 A0) to suppress ~ at EndOfBuffer
-  fold = "·", -- MIDDLE DOT (U+00B7, UTF-8: C2 B7)
-  vert = "┃", -- BOX DRAWINGS HEAVY VERTICAL (U+2503, UTF-8: E2 94 83)
-}
+-- vim.opt.fillchars = {
+--   diff = "∙", -- BULLET OPERATOR (U+2219, UTF-8: E2 88 99)
+--   eob = " ", -- NO-BREAK SPACE (U+00A0, UTF-8: C2 A0) to suppress ~ at EndOfBuffer
+--   fold = "·", -- MIDDLE DOT (U+00B7, UTF-8: C2 B7)
+--   vert = "┃", -- BOX DRAWINGS HEAVY VERTICAL (U+2503, UTF-8: E2 94 83)
+-- }
 vim.opt.foldlevelstart = 99
 vim.opt.linebreak = true
 vim.opt.breakindent = false
@@ -63,21 +63,21 @@ vim.opt.infercase = true
 -- vim.opt.tabstop = 2      -- width of a tab
 -- vim.opt.shiftwidth = 2   -- width when shifting text
 vim.opt.termguicolors = true
-vim.opt.spellfile = "~/.vim/spell/en.utf-8.add"
-vim.opt.spelllang = "en"
+-- vim.opt.spellfile = "~/.vim/spell/en.utf-8.add"
+-- vim.opt.spelllang = "en"
 vim.opt.mouse = "a"
 vim.opt.completeopt = vim.opt.completeopt + "menu"
 vim.opt.completeopt = vim.opt.completeopt + "menuone"
 vim.opt.completeopt = vim.opt.completeopt + "noselect"
 vim.opt.list = false
-vim.opt.listchars = {
-  nbsp = "⦸",
-  extends = "»",
-  precedes = "«",
-  tab = "▷⋯",
-  trail = "•",
-  space = "·",
-}
+-- vim.opt.listchars = {
+--   nbsp = "⦸",
+--   extends = "»",
+--   precedes = "«",
+--   tab = "▷⋯",
+--   trail = "•",
+--   space = "·",
+-- }
 vim.wo.signcolumn = "yes"
 vim.opt.number = true
 vim.opt.relativenumber = true
@@ -141,6 +141,12 @@ require("lazy").setup({
   -- gitsigns {{{2
   { "lewis6991/gitsigns.nvim", opts = {} },
   -- end gitsigns 2}}}
+
+  -- gruvbox {{{2
+  { "ellisonleao/gruvbox.nvim", priority = 1000 , config = true, opts = ...},
+  { "sainnhe/gruvbox-material", priority = 1000},
+  -- end gruvbox }}}
+
   -- lualine {{{2
   {
     "nvim-lualine/lualine.nvim",
@@ -736,3 +742,12 @@ vim.api.nvim_create_autocmd("TextYankPost", {
   pattern = "*",
 })
 -- end highlights }}}
+
+vim.o.background = "dark" -- or "light" for light mode
+-- let g:gruvbox_material_background = 'soft' but in lua 
+-- vim.g.gruvbox_material_background = "normal" -- default
+vim.g.gruvbox_material_foreground = "soft" -- default
+
+-- Let's put a soft visual indicator that we're in nvim and not vim
+-- i.e. gruvbox-material instead of gruvbox
+vim.cmd([[colorscheme gruvbox-material]])
