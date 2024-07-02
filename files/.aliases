@@ -10,6 +10,7 @@ alias mkdir="mkdir -p"
 #   alias e="emacsclient -nw --alternate-editor '' --quiet"
 #   alias E="emacsclient --alternate-editor ''  --no-wait --quiet --create-frame"
 # fi
+alias path="echo $PATH | sed 's/:/\n/g'" 
 
 alias grep='grep --ignore-case --line-number --extended-regexp --color'
 alias rgrep='grep --ignore-case --line-number --extended-regexp --color --exclude-dir ".git" --recursive'

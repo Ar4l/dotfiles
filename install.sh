@@ -1,20 +1,37 @@
 # Install all dependencies
 
 # Dependencies to be installed
-deps='git zsh zsh-syntax-highlighting zsh-autosuggestions zsh-history-substring-search bash stow make fd fzf node pandoc glow pure starship tldr tmux tree coreutils'
+deps='git zsh zsh-syntax-highlighting zsh-autosuggestions zsh-history-substring-search bash stow make fd fzf node pandoc glow pure starship tldr tmux tree coreutils btop'
 
 # Determine OS
 case $OSTYPE in 
 
   "linux-gnu"*) 
-    # if we have conda, let's just install everything through there, because it's not device-specific
-    if which conda > /dev/null; then
+    # I'm making the assumption that I do not have sudo 
+    # on any Linux machine, as this is typically a remote.
+
+    if which conda > /dev/null; then # conda is not os/device-specific :)
+
       printf "Installing dependencies with conda: \033[90m$deps\033[0m"
       conda install -n base $deps
 
-    else 
-      echo 'Conda not available!!!'
-      exit 1
+    elif which apt-get > /dev/null; then # Install to user (~/.local) with apt-get
+
+      printf "Downloading dependencies with apt-get, installing with dpkg: \033[90m$deps\033[0m"
+
+      apt-get download $deps
+      # TODO; doesn't install all packages
+      # E: Unable to locate package zsh-history-substring-search
+      # E: Unable to locate package fd
+      # E: Unable to locate package node <- DEFINITELY NOT NECESSARY
+      # E: Unable to locate package glow
+      # E: Unable to locate package pure
+      # E: Unable to locate package starship
+      # E: Unable to locate package btop
+
+      # TODO: dpkg -x package.deb ~/.local for each downloaded package
+
+      echo "export PATH=~/.local/bin:$PATH" >> $(find . -name .bashrc)
     fi
     ;;
 
