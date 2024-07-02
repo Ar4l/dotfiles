@@ -1,5 +1,5 @@
 install:
-	brew install git zsh zsh-syntax-highlighting zsh-autosuggestions zsh-history-substring-search bash stow make fd fzf node pandoc glow pure starship tldr tmux tree coreutils
+	./install.sh
 
 # install-cask:
 # 	brew instal --cask 1password karabiner-elements alfred logitech-camera-settings logitech-options firefox nordvpn pdf-expert font-source-code-pro spotify transmission hammerspoon iterm2-beta vlc
@@ -16,9 +16,12 @@ delete:
 simulate:
 	stow --no -v --dir=files --target=${HOME} -S .
 
+setup:
+	./setup.sh
 all:
-	stow
 	install
+	stow
+	setup
 
 ctags:
 	find . -type f -not -path '*git*' | ctags --tag-relative=yes -L -
