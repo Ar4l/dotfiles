@@ -33,7 +33,7 @@ fi
 
 export PAGER=less
 export MANPAGER=$PAGER
-export LC_ALL=en_GB.UTF-8
+# export LC_ALL=en_GB.UTF-8 # causes warnings on every server I connect to as they don't have the GB language pack
 export XDG_CONFIG_HOME="$HOME/.config"
 export XDG_DATA_HOME="$HOME/.local/share"
 export XDG_DATA_BIN="$HOME/.local/bin"

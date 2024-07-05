@@ -97,7 +97,7 @@ export LESS=iFMRX
 
 # color in ls output without -G, works across shells
 export CLICOLOR=true
-export LC_ALL=en_GB.UTF-8
+# export LC_ALL=en_GB.UTF-8 # causes warnings on remote servers as no one uses GB in bash
 export XDG_CONFIG_HOME="$HOME/.config"
 export XDG_DATA_HOME="$HOME/.local/share"
 export XDG_DATA_BIN="$HOME/.local/bin"
