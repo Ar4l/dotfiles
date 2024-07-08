@@ -2,7 +2,28 @@
 # Install all dependencies
 
 # Dependencies to be installed
-deps='git zsh zsh-syntax-highlighting zsh-autosuggestions zsh-history-substring-search bash stow make fd fzf node pandoc glow pure starship tldr tmux tree coreutils btop'
+programs='
+  git 
+  zsh 
+  zsh-syntax-highlighting 
+  zsh-autosuggestions 
+  zsh-history-substring-search 
+  bash 
+  stow 
+  make 
+  fd 
+  fzf 
+  node 
+  pandoc 
+  glow 
+  pure 
+  starship 
+  tldr 
+  tmux 
+  tree 
+  coreutils 
+  btop
+'
 
 # Determine OS
 case $OSTYPE in
@@ -11,25 +32,45 @@ case $OSTYPE in
     # I'm making the assumption that I do not have sudo
     # on any Linux machine, as this is typically a remote.
 
-    if which conda > /dev/null; then # conda is not os/device-specific :)
+    if command -v conda > /dev/null; then # conda is not os/device-specific :)
 
-      printf "Installing dependencies with conda: \033[90m$deps\033[0m\n"
-      conda install -n base $deps
+      printf "Installing dependencies with conda: \033[90m$programs\033[0m\n"
+      conda install -n base $programs
 
-    elif which apt-get > /dev/null; then # Install to user (~/.local) with apt-get
+    elif command -v apt-get > /dev/null; then # Install to user (~/.local) with apt-get
 
-      printf "Downloading dependencies with apt-get, installing with dpkg: \033[90m$deps\033[0m\n"
+      apt-get update # update package index
+      printf "Downloading dependencies with apt-get into $(pwd)/programs, installing with dpkg: \033[90m$programs\033[0m\n"
 
-	 for dependency in $deps; do
-	   if apt-get download -q $dependency; then # quietly download
-		 deb_file=$(ls ${dependency}*.deb)
-		 echo $deb_file
-		 dpkg -x $deb_file ~/.local
-		 rm $deb_file
-	   else
-		 printf "\033[1mapt-get could not find $dependency\033[0m\n"
-		fi
-	 done
+      mkdir -p programs
+      cd programs
+
+      for program in $programs; do
+ 
+        # fetch recursive dependencies
+        dependencies=$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances $program | grep "^\w" | sort -u)
+
+        for dependency in $dependencies; do 
+
+          # do not install existing programs
+          if command -v $dependency > /dev/null; then 
+            echo "$dependency already installed"
+            continue
+          fi 
+
+          if apt-get download -qqq $dependency; then # quietly download
+
+            deb_file=$(ls ${dependency}*.deb)
+
+            echo "installing $deb_file to ~/.local"
+            dpkg -x $deb_file ~/.local
+            rm $deb_file
+
+          else
+            printf "\033[1mapt-get could not find $dependency\033[0m\n"
+          fi
+        done 
+      done
 
       echo "export PATH=~/.local/usr/bin:~/.local/bin:$PATH" >> $(find . -name .bashrc)
 	 export PATH=~/.local/usr/bin:~/.local/bin:$PATH
