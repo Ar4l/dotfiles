@@ -21,13 +21,10 @@ alias diff='diff --color=auto --side-by-side'
 # alias -s html='open -a "Firefox.app"'
 # alias -s md='glow --pager --width 70'
 
-if [[ "$TERM" =~ 'kitty' ]]; then
-  alias ssh='kitty +kitten ssh'
-fi
-# End alias }}}
-
 # # kitty stuff, probably should not override ssh 
-alias ssh='ssh -R 50000:${KITTY_LISTEN_ON#*:}'
+if [[ "$TERM" =~ 'kitty' ]]; then
+  alias ssh='kitty +kitten ssh -R 50000:${KITTY_LISTEN_ON#*:}'
+fi
 
 # Application shorthands
 export vs="Visual Studio Code"

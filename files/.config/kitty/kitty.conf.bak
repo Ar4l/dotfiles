@@ -746,7 +746,6 @@ single_window_padding_width 11
 #: only at the bottom and right edges.
 # active_border_color #00ff00
 
-
 # active_border_color #2e3b3b
 active_border_color #282828
 #00ff00
@@ -996,11 +995,12 @@ tab_activity_symbol 🤙
 
 #: Template to use for active tabs. If not specified falls back to
 #: tab_title_template.
-# active_tab_foreground   #d8a657
-# active_tab_background   #504945
+
+active_tab_foreground   #d8a657
+active_tab_background   #504945
 active_tab_font_style   bold-italic
-# inactive_tab_foreground #d4be98
-# inactive_tab_background #32302f
+inactive_tab_foreground #d4be98
+inactive_tab_background #32302f
 inactive_tab_font_style bold
 
 #: Tab bar colors and styles.
@@ -1090,7 +1090,7 @@ inactive_tab_font_style bold
 #: means no dimming and zero means fully dimmed (i.e. invisible).
 
 # selection_foreground #000000
-# selection_background #d8a657
+selection_background #d8a657
 # fffacd
 
 #: The foreground and background colors for text selected with the
@@ -2372,5 +2372,5 @@ map cmd+m toggle_layout stack
 
 # BEGIN_KITTY_THEME
 # Gruvbox Material Dark Hard
-include current-theme.conf
+# include current-theme.conf
 # END_KITTY_THEME
