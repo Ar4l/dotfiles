@@ -1,12 +1,12 @@
 [user]
-	name = Aral
-	email = me@aral.cc
+  name = Aral
+  email = me@aral.cc
 
 [github]
   user = Ar4l
 
 [init]
-	defaultBranch = main
+  defaultBranch = main
 
 [push]
   default = upstream
