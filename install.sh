@@ -3,36 +3,43 @@
 
 # Dependencies to be installed
 programs='
-  git 
+  tmux 		# shell server to persist sessions
+  coreutils 	# basic text utilities 'expected to exist on every OS' https://www.gnu.org/software/coreutils/
+  git 		# cmon who is running machines w/o git 
+  bash 		# bash???
+  starship 	# extensive cross-shell prompt https://starship.rs/
+
+  stow 
+  make 
+  tree 
+  btop
+  
   zsh 
+  pure 		# minimal zsh prompt https://github.com/sindresorhus/pure
   zsh-syntax-highlighting 
   zsh-autosuggestions 
   zsh-history-substring-search 
-  bash 
-  stow 
-  make 
-  fd 
-  fzf 
-  node 
-  pandoc 
-  glow 
-  pure 
-  starship 
-  tldr 
-  tmux 
-  tree 
-  coreutils 
-  btop
+  
+  fd 		# friendly find
+  fzf		# fuzzy find 
+  glow		# CLI markdown renderer https://github.com/charmbracelet/glow
+  tldr 		# shorter manpages
 '
 
 # Determine OS
 case $OSTYPE in
 
   "linux-gnu"*)
-    # I'm making the assumption that I do not have sudo
-    # on any Linux machine, as this is typically a remote.
 
-    if command -v conda > /dev/null; then # conda is not os/device-specific :)
+    # try installin brew if it does not yet exist; 
+    if ! command -v brew > /dev/null; then
+      NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" 
+
+    if command -v brew > /dev/null; 
+      printf "Installing dependencies with homebrew: \033[90m$deps\033[0m" &&
+      brew install $deps
+
+    elif command -v conda > /dev/null; then # conda is not os/device-specific :)
 
       printf "Installing dependencies with conda: \033[90m$programs\033[0m\n"
       conda install -n base $programs
