@@ -1,6 +1,9 @@
 # install-cask:
 # 	brew instal --cask 1password karabiner-elements alfred logitech-camera-settings logitech-options firefox nordvpn pdf-expert font-source-code-pro spotify transmission hammerspoon iterm2-beta vlc
 
+install:
+	./install.sh
+
 stow:
 	stow -v --dir=files --target=${HOME} -S .
 
@@ -13,11 +16,9 @@ delete:
 simulate:
 	stow --no -v --dir=files --target=${HOME} -S .
 
-setup:
-	./setup.sh
-all:
-	./install.sh
+all: 
 	stow
+	install 
 
 ctags:
 	find . -type f -not -path '*git*' | ctags --tag-relative=yes -L -

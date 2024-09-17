@@ -10,6 +10,8 @@
 #
 #  stow 
 #  make 
+#  vim      # the only editor you need
+#  neovim   # a second editor if you must
 #  tree 
 #  btop
 #  
@@ -26,24 +28,26 @@
 
 
 programs='
-  tmux 		
-  coreutils 	
-  git 		
-  bash 		
-  starship 	
+  tmux 
+  coreutils 
+  git 
+  bash 
+  starship 
   stow 
   make 
+  vim 
+	neovim 
   tree 
-  btop
+  btop 
   zsh 
-  pure 		
+  pure 
   zsh-syntax-highlighting 
   zsh-autosuggestions 
   zsh-history-substring-search 
-  fd 	
-  fzf	
-  glow	
-  tldr 	
+  fd 
+  fzf 
+  glow 
+  tldr 
 '
 
 # Determine OS
@@ -59,8 +63,20 @@ case $OSTYPE in
     fi
 
     if command -v brew > /dev/null; then
-      printf "Installing dependencies with homebrew: \033[90m$programs\033[0m" &&
-      brew install $programs
+      printf "Installing dependencies with homebrew: \033[90m$programs\033[0m" 
+      brew install $programs 
+      # source /home/linuxbrew/.linuxbrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh &&
+      # source /home/linuxbrew/.linuxbrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh &&
+      # source /home/linuxbrew/.linuxbrew/share/zsh-history-substring-search/zsh-history-substring-search.zsh &&
+      # eval "$(starship init bash)" &&
+      # echo 'autoload -U promptinit; promptinit; prompt pure' >> ~/.zshrc &&
+      # eval "$(fzf --bash)" &&
+      # source <(fzf --zsh) 
+			# vim plugins
+			curl -fLo ~/.vim/autoload/plug.vim --create-dirs \
+  		  https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+			vim +'PlugInstall --sync' +qall
+      ln -s /home/linuxbrew/.linuxbrew/bin/zsh /bin/zsh
 
     elif command -v conda > /dev/null; then # conda is not os/device-specific :)
 
@@ -76,7 +92,7 @@ case $OSTYPE in
       cd programs
 
       for program in $programs; do
- 
+
         # fetch recursive dependencies
         dependencies=$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances $program | grep "^\w" | sort -u)
 

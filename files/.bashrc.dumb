@@ -1,15 +1,15 @@
 # -*- mode:sh -*-
 
-# MACOS-SPECIFIC: fix git prompt 
-# https://stackoverflow.com/questions/12870928/mac-bash-git-ps1-command-not-found
-if [ -f /Applications/Xcode.app/Contents/Developer/usr/share/git-core/git-completion.bash ]; then
-    . /Applications/Xcode.app/Contents/Developer/usr/share/git-core/git-completion.bash
-fi
-if [ -f /Applications/Xcode.app/Contents/Developer/usr/share/git-core/git-prompt.sh ]; then 
-	source /Applications/Xcode.app/Contents/Developer/usr/share/git-core/git-prompt.sh
-else 
-	source ~/.bash_git
-fi 
+# # MACOS-SPECIFIC: fix git prompt 
+# # https://stackoverflow.com/questions/12870928/mac-bash-git-ps1-command-not-found
+# if [ -f /Applications/Xcode.app/Contents/Developer/usr/share/git-core/git-completion.bash ]; then
+#     . /Applications/Xcode.app/Contents/Developer/usr/share/git-core/git-completion.bash
+# fi
+# if [ -f /Applications/Xcode.app/Contents/Developer/usr/share/git-core/git-prompt.sh ]; then 
+# 	source /Applications/Xcode.app/Contents/Developer/usr/share/git-core/git-prompt.sh
+# else 
+# 	source ~/.bash_git
+# fi 
 
 # PROMPT
 function cur_git_branch() {
