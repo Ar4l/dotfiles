@@ -2,28 +2,48 @@
 # Install all dependencies
 
 # Dependencies to be installed
-programs='
-  tmux 		# shell server to persist sessions
-  coreutils 	# basic text utilities 'expected to exist on every OS' https://www.gnu.org/software/coreutils/
-  git 		# cmon who is running machines w/o git 
-  bash 		# bash???
-  starship 	# extensive cross-shell prompt https://starship.rs/
+#  tmux 		# shell server to persist sessions
+#  coreutils 	# basic text utilities 'expected to exist on every OS' https://www.gnu.org/software/coreutils/
+#  git 		# cmon who is running machines w/o git 
+#  bash 		# bash???
+#  starship 	# extensive cross-shell prompt https://starship.rs/
+#
+#  stow 
+#  make 
+#  tree 
+#  btop
+#  
+#  zsh 
+#  pure 		# minimal zsh prompt https://github.com/sindresorhus/pure
+#  zsh-syntax-highlighting 
+#  zsh-autosuggestions 
+#  zsh-history-substring-search 
+#  
+#  fd 		# friendly find
+#  fzf		# fuzzy find 
+#  glow		# CLI markdown renderer https://github.com/charmbracelet/glow
+#  tldr 		# shorter manpages
 
+
+programs='
+  tmux 		
+  coreutils 	
+  git 		
+  bash 		
+  starship 	
   stow 
   make 
   tree 
   btop
-  
   zsh 
-  pure 		# minimal zsh prompt https://github.com/sindresorhus/pure
+  pure 		
   zsh-syntax-highlighting 
   zsh-autosuggestions 
   zsh-history-substring-search 
-  
-  fd 		# friendly find
-  fzf		# fuzzy find 
-  glow		# CLI markdown renderer https://github.com/charmbracelet/glow
-  tldr 		# shorter manpages
+  fd 	
+  fzf	
+  glow	
+  tldr 	
 '
 
 # Determine OS
@@ -34,10 +54,13 @@ case $OSTYPE in
     # try installin brew if it does not yet exist; 
     if ! command -v brew > /dev/null; then
       NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" 
+      (echo; echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"') >> ~/.bashrc
+      eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+    fi
 
-    if command -v brew > /dev/null; 
-      printf "Installing dependencies with homebrew: \033[90m$deps\033[0m" &&
-      brew install $deps
+    if command -v brew > /dev/null; then
+      printf "Installing dependencies with homebrew: \033[90m$programs\033[0m" &&
+      brew install $programs
 
     elif command -v conda > /dev/null; then # conda is not os/device-specific :)
 
@@ -88,8 +111,8 @@ case $OSTYPE in
     # Installation assuming homebrew is installed
     # Homebrew requires sudo once to be installed. See
     # https://docs.brew.sh/Homebrew-on-Linux
-    printf "Installing dependencies with homebrew: \033[90m$deps\033[0m"
-    brew install $deps
+    printf "Installing dependencies with homebrew: \033[90m$programs\033[0m"
+    brew install $programs
     ;;
 
 #   "freebsd"*)
