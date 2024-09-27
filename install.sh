@@ -1,20 +1,25 @@
 #!/bin/bash
 # Install all dependencies
 
-# Dependencies to be installed
+## BASICS
 #  tmux 		# shell server to persist sessions
 #  coreutils 	# basic text utilities 'expected to exist on every OS' https://www.gnu.org/software/coreutils/
 #  git 		# cmon who is running machines w/o git 
 #  bash 		# bash???
 #  starship 	# extensive cross-shell prompt https://starship.rs/
-#
 #  stow 
 #  make 
+
+## SHELL TOOLING
+#  walk     # file browser
+#  tree     # basic file tree 
+#  btop     # monitor procs 
+#  pixi     # conda 2024 version
+#  uv       # pip 2024 version
+
 #  vim      # the only editor you need
 #  neovim   # a second editor if you must
-#  tree 
-#  btop
-#  
+
 #  zsh 
 #  pure 		# minimal zsh prompt https://github.com/sindresorhus/pure
 #  zsh-syntax-highlighting 
@@ -28,13 +33,16 @@
 
 
 programs='
+  stow 
+  make 
   tmux 
   coreutils 
   git 
   bash 
+  walk
+  pixi 
+  uv
   starship 
-  stow 
-  make 
   vim 
 	neovim 
   tree 

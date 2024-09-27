@@ -6,6 +6,9 @@ alias ls="ls -FA --color"
 alias ll="ls -FAlh --color"
 alias ln="ln -v"
 alias mkdir="mkdir -p"
+alias g='cd "$(walk --icons --preview)"'
+
+
 # if (( $+commands[emacs] )); then
 #   alias e="emacsclient -nw --alternate-editor '' --quiet"
 #   alias E="emacsclient --alternate-editor ''  --no-wait --quiet --create-frame"
