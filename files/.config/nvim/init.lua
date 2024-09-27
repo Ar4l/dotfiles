@@ -41,6 +41,7 @@ vim.opt.wildmode = "longest:full,full"
 --   fold = "·", -- MIDDLE DOT (U+00B7, UTF-8: C2 B7)
 --   vert = "┃", -- BOX DRAWINGS HEAVY VERTICAL (U+2503, UTF-8: E2 94 83)
 -- }
+vim.opt.foldmethod = 'indent'
 vim.opt.foldlevelstart = 99
 vim.opt.linebreak = true
 vim.opt.breakindent = false
@@ -60,8 +61,8 @@ vim.opt.smartcase = true
 vim.opt.infercase = true
 -- vim.opt.textwidth = 70   -- hardwrap sentences at given length
 -- vim.opt.expandtab = true -- use spaces to indent (not tabs)
--- vim.opt.tabstop = 2      -- width of a tab
--- vim.opt.shiftwidth = 2   -- width when shifting text
+vim.opt.tabstop = 4      -- width of a tab
+vim.opt.shiftwidth = 4   -- width when shifting text
 vim.opt.termguicolors = true
 -- vim.opt.spellfile = "~/.vim/spell/en.utf-8.add"
 -- vim.opt.spelllang = "en"
@@ -747,6 +748,13 @@ vim.o.background = "dark" -- or "light" for light mode
 -- let g:gruvbox_material_background = 'soft' but in lua 
 -- vim.g.gruvbox_material_background = "normal" -- default
 vim.g.gruvbox_material_foreground = "soft" -- default
+vim.g.gruvbox_underline = '0'
+vim.g.gruvbox_contrast_light = 'medium'
+vim.g.gruvbox_italicize_strings = '0'
+vim.g.gruvbox_improved_strings = '1'
+vim.g.gruvbox_improved_warnings = '1'
+vim.g.gruvbox_transparent_bg = '1'
+vim.cmd([[set wrap!]])
 
 -- Let's put a soft visual indicator that we're in nvim and not vim
 -- i.e. gruvbox-material instead of gruvbox
