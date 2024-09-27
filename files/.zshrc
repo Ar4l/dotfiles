@@ -241,6 +241,11 @@ bindkey "^[[1;5D" backward-word # For Arch.
 # NOTE make sure to install using brew prior to sourcing
 # eval "$(starship init zsh)"
 
+# Edit the current command line in $EDITOR
+autoload -U edit-command-line
+zle -N edit-command-line
+bindkey '\C-x\C-e' edit-command-line
+
 # end plugins }}}
 # hooks {{{
 autoload -U add-zsh-hook
