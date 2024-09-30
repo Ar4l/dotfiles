@@ -39,12 +39,13 @@ programs='
   coreutils 
   git 
   bash 
+  rust
   walk
   pixi 
   uv
   starship 
   vim 
-	neovim 
+  neovim 
   tree 
   btop 
   zsh 
@@ -67,6 +68,7 @@ case $OSTYPE in
     if ! command -v brew > /dev/null; then
       NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" 
       (echo; echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"') >> ~/.bashrc
+      (echo; echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"') >> ~/.zshrc
       eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
     fi
 
