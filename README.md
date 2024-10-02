@@ -17,6 +17,12 @@ A set of files that begin with a dot and are updated quite frequently.
   zsh), terminal emulator (iTerm2, kitty, alacritty or wezterm) and
   operating system (unix like).
 
+#### TODO 
+- `nvim`: scroll by 1 line, instead of 2. 
+- `nvim`/`sniprun`: allow python snippets to run in markdown.
+- `zsh`: export `TERM=xterm-256color` does not work on `ace`.
+
+
 # Install
 Install deps *and* symlink dotfiles with:
 
