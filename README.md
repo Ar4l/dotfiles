@@ -21,7 +21,8 @@ A set of files that begin with a dot and are updated quite frequently.
 - `nvim`: scroll by 1 line, instead of 2. 
 - `nvim`/`sniprun`: allow python snippets to run in markdown.
 - `zsh`: export `TERM=xterm-256color` does not work on `ace`.
-
+- `tmux`: swap v/h layout of pane with preceding pane: [SO](https://stackoverflow.com/questions/15439294/tmux-switch-the-split-style-of-two-adjacent-panes). Do not use the `-n` bindings to be able to use the same functionality in vim.
+  - Or generalised for any direction: This [SO post](https://stackoverflow.com/a/70024796/340947)
 
 # Install
 Install deps *and* symlink dotfiles with:
