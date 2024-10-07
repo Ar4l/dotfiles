@@ -1,59 +1,76 @@
-# Dotfiles
+## Dotfiles
 
-A set of files that begin with a dot and are updated quite frequently.
+Set of configuration files, frequently used over ssh connections. Mainly
+touches: 
 
-# Principles
+- `kitty`: Terminal configuration (theme, font, keybinds)
+- `tmux`: Terminal session management (`C-b`)
 
-+ Must be fast. All tools & their corresponding configurations must be
-  fast.
-+ Balance between functionality & customisability. I choose the
-  minimum subset of tools that gets the job done. For instance,
-  instead of relying on several plugins which may or may not be
-  available to me on all systems, I choose to develop a deeper
-  understanding of the shell (used to be zsh for a long time, its been
-  bash for a while now) itself.
-+ Tools & configuration must be cross-{shell,terminal,platform}. They
-  should work irrespective of the shell (posix compliant; bash or
-  zsh), terminal emulator (iTerm2, kitty, alacritty or wezterm) and
-  operating system (unix like).
+- `zsh`: Main terminal shell 
+- `bash`: Fall-back terminal shell
 
-#### TODO 
+- `nvim`: Main text editor (`C-w` &rarr; `Space`)
+- `vim`: Fall-back text-editor
+
+#### Install
+These dotfiles assume you use [`kitty`](https://sw.kovidgoyal.net/kitty/binary/#binary-install). 
+Configuration files are symlinked to their respective locations under
+`$HOME`, using [stow](https://www.gnu.org/software/stow). 
+
+```bash
+$ git clone https://github.com/Ar4l/dotfiles
+# Install dependencies & symlink to $HOME
+$ make all
+```
+
+```bash 
+# Reload
+$ make restow
+```
+
+## SSH Features 
+Servers often have different OS, packages, and tooling available. These dotfiles try to make use of existing ones, and download additional packages when needed. 
+
+By default, try installing `zsh` on the server for use as the login shell. Stored under `$HOME/bin/zsh` by default. 
+
+If docker is available on the server, assume that the server owners want me to work in a container. In this case, spin up a container and mount `$HOME` directory in the container. 
+
+So if im typing now will it still wrap the line after it surpasses
+a certain number of characters, yes; seemingly so. 
+
+## Roadmap 
+Useful features I would like to have one day. 
+
+- **Sync config over ssh** via `kitty`'s `ssh.conf`. 
+  - [ ] This is a bit tricky as we don't know what applications are
+    available on the host, and we may not have the required permissions
+    to install them in a convenient manner. 
+
+- **Mosh**: Roaming and reduced latency (perspectively speaking) 
+  - [ ] [ProxyJump support](https://arc.net/l/quote/zayyucfl) 
+  - [ ] [Integrate with kitty](https://github.com/kovidgoyal/kitty/discussions/6529): `mosh kitten run-shell`
+
+## TODO 
 - `nvim`: scroll by 1 line, instead of 2. 
 - `nvim`/`sniprun`: allow python snippets to run in markdown.
 - `zsh`: export `TERM=xterm-256color` does not work on `ace`.
 - `tmux`: swap v/h layout of pane with preceding pane: [SO](https://stackoverflow.com/questions/15439294/tmux-switch-the-split-style-of-two-adjacent-panes). Do not use the `-n` bindings to be able to use the same functionality in vim.
   - Or generalised for any direction: This [SO post](https://stackoverflow.com/a/70024796/340947)
 
-# Install
-Install deps *and* symlink dotfiles with:
 
-```bash
-$ make all
-```
+- `vim`
+  - [ ] double check that we didn't lose any plugin confs
+  - [ ] show slider bar
+  - [ ] terminal colours
+  - [ ] alt-delete to delete a word
+  - [ ] remove cursor blinking (may be kitty)
+  - [ ] Highlight copied selection akin to nvim
+  - [ ] single line mouse scrolling. This is possible but not like the way I want.
 
-Reload with 
 
-```bash 
-$ make restow
-```
+## Notes
 
-I use [stow] to symlink the configuration files in their respective
-locations. The directory structure of this repo mimics that of $HOME
-such that files & folder in this repo will be mapped 1:1 under $HOME
-for instance:
-
-    .
-    ├── .config	     ~> $HOME/.config
-    ├── .git
-    ├── .hammerspoon ~> $HOME/.hammerspoon
-    ├── .local	     ~> $HOME/.local
-    ├── .vim	     ~> $HOME/.vim
-    └── bin
-
-    6 directories
-
-[stow]: https://www.gnu.org/software/stow/
-
+- `editorconfig` for sharing tab-style configurations across editors. Comes bundled with `nvim >= 0.9`, `vim >= 9.0.1799`.
 
 # Dependencies
 
@@ -61,7 +78,6 @@ Following are the packages & software that must be installed on the
 system. I do this manually using Homebrew.
 
 + git: my preferred vcs
-+ emacs: preferred editor of choice
 + vim: on days I relapse, I use vim for a while...
 + zsh: preferred shell of choice
 + bash: backup shell; I keep the config around for remote servers
