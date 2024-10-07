@@ -2,9 +2,9 @@
 # Install all dependencies
 
 ## BASICS
-#  tmux 		# shell server to persist sessions
-#  coreutils 	# basic text utilities 'expected to exist on every OS' https://www.gnu.org/software/coreutils/
-#  git 		# cmon who is running machines w/o git 
+#  tmux         # shell server to persist sessions
+#  coreutils    # basic text utilities 'expected to exist on every OS' https://www.gnu.org/software/coreutils/
+#  git          # cmon who is running machines w/o git 
 #  bash 		# bash???
 #  starship 	# extensive cross-shell prompt https://starship.rs/
 #  stow 

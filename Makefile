@@ -1,6 +1,3 @@
-# install-cask:
-# 	brew instal --cask 1password karabiner-elements alfred logitech-camera-settings logitech-options firefox nordvpn pdf-expert font-source-code-pro spotify transmission hammerspoon iterm2-beta vlc
-
 install:
 	./install.sh
 
