@@ -35,9 +35,6 @@ By default, try installing `zsh` on the server for use as the login shell. Store
 
 If docker is available on the server, assume that the server owners want me to work in a container. In this case, spin up a container and mount `$HOME` directory in the container. 
 
-So if im typing now will it still wrap the line after it surpasses
-a certain number of characters, yes; seemingly so. 
-
 ## Roadmap 
 Useful features I would like to have one day. 
 
