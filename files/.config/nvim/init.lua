@@ -1,3 +1,10 @@
+-- use settings defined in vimrc as a base
+vim.cmd([[
+set runtimepath^=~/.vim runtimepath+=~/.vim/after
+let &packpath = &runtimepath
+source ~/.vim/common.vim
+]])
+
 -- vim: foldmethod=marker
 
 -- settings {{{
@@ -282,6 +289,9 @@ require("lazy").setup({
       vim.api.nvim_set_keymap('v', '<leader>r', '<Plug>SnipRun', {silent = true})
       vim.api.nvim_set_keymap('n', '<leader>r', '<Plug>SnipRun', {silent = true})
       vim.api.nvim_set_keymap('n', '<leader>f', '<Plug>SnipRunOperator', {silent = true})
+
+      -- enable running the following languages in markdown
+      vim.g.markdown_fenced_languages = { 'python', 'bash', 'rust', "javascript", "typescript", "lua" }
 
     end,
   },
