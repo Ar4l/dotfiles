@@ -1,6 +1,7 @@
 " colours
 set background=dark
-colorscheme retrobox " when gruvbox unavailable
+silent! colorscheme slate     " when retrobox unavailable
+silent! colorscheme retrobox  " when gruvbox unavailable
 silent! colorscheme gruvbox 
 
 syntax on                   " Turn on syntax highlighting.
@@ -95,7 +96,7 @@ nmap Q <Nop> " 'Q' in normal mode enters Ex mode. You almost never want this.
 set formatoptions=r     " insert comment leader after enter
 " Disabled this so we can control whether to continue the comment explicitly
 set formatoptions-=o	" do not continue comment when using o/O
-set formatoptions+=/    " do not insert comment leader after a // inline comment
+silent! set formatoptions+=/    " do not insert comment leader after a // inline comment
 set formatoptions+=q    " allow formatting with `gq`
 set formatoptions+=n    " add numbers in numbered lists
 set formatoptions+=l    " do not wrap a pre-existing long line on insert
@@ -120,7 +121,7 @@ set shortmess+=I  " Disable the default Vim startup message.
 
 " auto expand command menus
 set wildmenu
-set wildoptions=pum
+silent! set wildoptions=pum
 set wildmode=longest:full
 set wildmode+=full
 
@@ -148,7 +149,7 @@ set shiftwidth=2
 set noexpandtab
 set smarttab
 if !has('nvim')
-  packadd editorconfig
+  silent! packadd editorconfig
 endif
 
 " AUTOCOMMANDS

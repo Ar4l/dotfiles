@@ -18,6 +18,7 @@ Plug 'morhetz/gruvbox'	  " Proper groovy
 Plug 'tpope/vim-sensible' " Better defaults
 Plug 'preservim/nerdtree' " Actual file browser
 Plug 'vim-airline/vim-airline' " actual status bar 
+Plug 'romainl/vim-cool'   " stop highlighting after search
 
 " " Autocompletion
 " Plug 'prabirshrestha/asyncomplete.vim' 			" auto completions please
@@ -109,6 +110,10 @@ let g:airline_section_z = ''
 " currently it's bugging out for me
 let g:airline_section_error = ''
 let g:airline_section_warning = ''
+
+" vim-cool 
+" requires we set the following
+set hlsearch
 
 
 " NERDTree (I prefer its layout over netrw)

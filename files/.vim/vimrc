@@ -7,13 +7,12 @@ source ~/.vim/plugins.vim
 
 " disable highlights on esc
 " consider using romainl/vim-cool to solve this issue
-map <ESC> :noh<cr>
-" map <leader>n :noh<cr>
+" resorted to vim-cool, because esc fucks with ssh
+" map <ESC> :noh<cr>
 
 " Escape in terminal actually escapes the terminal
 tnoremap <Esc> <C-\><C-n>
 
-" when done go back to including aru's autocmsds
 " " SETTINGS
 " Fix the cursor to not blink 
 let &t_SI = "\e[5 q"
