@@ -2,16 +2,16 @@ install:
 	./install.sh
 
 stow:
-	stow -v --dir=files --target=${HOME} -S .
+	stow -v --no-folding --dir=files --target=${HOME} -S .
 
 restow:
-	stow -v --dir=files --target=${HOME} -R .
+	stow -v --no-folding --dir=files --target=${HOME} -R .
 
 delete:
 	stow -v --dir=files --target=${HOME} -D .
 
 simulate:
-	stow --no -v --dir=files --target=${HOME} -S .
+	stow -v --no-folding --dir=files --target=${HOME} -S .
 
 all: 
 	stow

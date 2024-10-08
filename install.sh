@@ -59,6 +59,10 @@ programs='
   tldr 
 '
 
+casks='
+  rectangle
+'
+
 # Determine OS
 case $OSTYPE in
 

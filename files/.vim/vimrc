@@ -1,13 +1,13 @@
-" see :h defaults.vim for more details
-unlet! skip_default_vim
-source $VIMRUNTIME/defaults.vim
 
-" Vim sources the two below via the ~/.vim/plugin directory
-" (on Unix and MacOS) 
+" see :h defaults.vim for more details
+if !has('nvim')
+  unlet! skip_default_vim
+  source $VIMRUNTIME/defaults.vim
+endif
 
 " PLUGINS
-" source ~/.vim/plugins.vim
+source ~/.vim/plugins.vim
 
-" COMMON (between vim and nvim)
-" source ~/.vim/common.vim
+" SHARED across vim and nvim
+source ~/.vim/common.vim
 
