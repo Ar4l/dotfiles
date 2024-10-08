@@ -127,7 +127,9 @@ echo "installing all: ${programs[*]}"
 brew install ${programs[*]}
 
 # 2.3 Also set up said programs 
-vim +'PlugInstall --sync' +qall
+
+# no longer necessary, this happens on vim startup 
+# vim +'PlugInstall --sync' +qall
 
 
 # 3. And, if we're on mac, install the casks
