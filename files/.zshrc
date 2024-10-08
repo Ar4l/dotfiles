@@ -13,8 +13,8 @@ __WINCENT[ITALIC_OFF]=$'\e[23m'
 
 # {{{ history
 HISTFILE=~/.histfile
-HISTSIZE=1000
-SAVEHIST=1000
+HISTSIZE=50000
+SAVEHIST=50000
 setopt SHARE_HISTORY
 setopt HIST_VERIFY
 setopt HIST_IGNORE_DUPS
@@ -143,7 +143,6 @@ plugins=(
   "$(brew --prefix)/share/zsh-history-substring-search/zsh-history-substring-search.zsh"
 )
 
-
 for plugin in $plugins; do
   [[ -e $plugin ]] && source $plugin
 done
@@ -204,7 +203,6 @@ bindkey "^[[1;3C" forward-word # For macOS.
 bindkey "^[[1;3D" backward-word # For macOS.
 bindkey "^[[1;5C" forward-word # For Arch.
 bindkey "^[[1;5D" backward-word # For Arch.
-
 
 # if [[ -x "$(command -v fzf)" ]]; then
 
@@ -352,32 +350,5 @@ zstyle ':completion:*:*:cdr:*:*' menu selection
 # fall through to cd if cdr is passed a non-recent dir as an argument
 zstyle ':chpwd:*' recent-dirs-default true
 
-# Local and host-specific overrides.
-
-LOCAL_RC=$HOME/.zshrc.local
-test -f $LOCAL_RC && source $LOCAL_RC
-
-# }}}
-
-# vim: foldmethod=marker ts=2 sw=2 et
-
-test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
 
 
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/Users/Aral/anaconda3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "/Users/Aral/anaconda3/etc/profile.d/conda.sh" ]; then
-        . "/Users/Aral/anaconda3/etc/profile.d/conda.sh"
-    else
-        export PATH="/Users/Aral/anaconda3/bin:$PATH"
-    fi
-fi
-unset __conda_setup
-# <<< conda initialize <<<
-
-
-eval "$(/opt/homebrew/bin/brew shellenv)"

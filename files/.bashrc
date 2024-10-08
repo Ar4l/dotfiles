@@ -75,10 +75,3 @@ paths=("$HOME/dotfiles/bin")
 source "$HOME/.bashrc.dumb"
 source "$HOME/.bashrc.xterm"
 
-# fi
-
-
-eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-. "$HOME/.cargo/env"
-
-eval "$(/opt/homebrew/bin/brew shellenv)"
