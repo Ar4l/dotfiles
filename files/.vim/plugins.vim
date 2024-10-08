@@ -17,6 +17,7 @@ call plug#begin()
 Plug 'morhetz/gruvbox'	  " Proper groovy 
 Plug 'tpope/vim-sensible' " Better defaults
 Plug 'preservim/nerdtree' " Actual file browser
+Plug 'vim-airline/vim-airline' " actual status bar 
 
 " " Autocompletion
 " Plug 'prabirshrestha/asyncomplete.vim' 			" auto completions please
@@ -79,8 +80,40 @@ call plug#end()
 silent! colorscheme gruvbox 
 " silent because it may not be installed yet
 
+" airline (status bar)
+" this should display all buffers in the tabline, but it doesn't work.
+" let g:airline#extensions#tabline#enabled = 1
+
+let g:airline#extensions#tabline#formatter = 'unique_tail_improved'
+
+" use blocks instead of the stupid powerline
+let g:airline#extensions#tabline#left_sep = ' '
+let g:airline#extensions#tabline#left_alt_sep = '|'
+
+" remove the totally unnecessary sections
+" | A | B |          C               X | Y | Z |  [...] |
+" A: mode 
+" B: branch 
+" C: filename
+" gutter: csv?? this is way too specific 
+" X: filetype, venv
+" Y: encoding, format
+" Z: percentage, lineno, colno
+
+"let g:airline_section_x+='%n'
+let g:airline_section_b = ''
+let g:airline_section_y = ''
+let g:airline_section_z = ''
+
+" these may be nice to show actual errors, but 
+" currently it's bugging out for me
+let g:airline_section_error = ''
+let g:airline_section_warning = ''
+
+
 " NERDTree (I prefer its layout over netrw)
 nnoremap <leader>b :NERDTreeToggle<CR>
+let NERDTreeShowHidden=1
 
 "" OLD (FROM ARU)
 " vimtex

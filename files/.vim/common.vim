@@ -77,7 +77,7 @@ set linebreak         " break at word boundaries
 set nojoinspaces      " when joining two lines, do not insert two spaces between
 set autoindent        " copy indent from current line on newline
 
-set number            " Show line numbers.
+set nonumber            " Show line numbers.
 set norelativenumber  " Don't do relative numbering, I can count (roughly)
 
 set splitright        " open new v-splits on the right
