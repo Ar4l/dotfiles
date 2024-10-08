@@ -1,8 +1,5 @@
-" see :h defaults.vim for more details
-if !has('nvim')
-  unlet! skip_default_vim
-  source $VIMRUNTIME/defaults.vim
-endif
+" PLUGINS
+source ~/.vim/plugins.vim
 
 " SETTINGS
 syntax on                   " Turn on syntax highlighting.
@@ -176,7 +173,4 @@ nnoremap <leader>wqa :wqa<cr>
 
 " Escape in terminal actually escapes the terminal
 tnoremap <Esc> <C-\><C-n>
-
-" " PLUGINS
-" source ~/.vim/plugins.vim
 

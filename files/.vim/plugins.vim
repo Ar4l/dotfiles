@@ -1,3 +1,8 @@
+let data_dir = has('nvim') ? stdpath('data') . '/site' : '~/.vim'
+if empty(glob(data_dir . '/autoload/plug.vim'))
+  silent execute '!curl -fLo '.data_dir.'/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
+  autocmd VimEnter * PlugInstall --sync | source $MYVIMRC
+endif
 
 call plug#begin()
 " The default plugin directory will be as follows:
@@ -71,7 +76,8 @@ endif
 call plug#end()
 
 " colorscheme
-colorscheme gruvbox
+silent! colorscheme gruvbox 
+" silent because it may not be installed yet
 
 " NERDTree (I prefer its layout over netrw)
 nnoremap <leader>b :NERDTreeToggle<CR>

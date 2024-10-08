@@ -1,9 +1,9 @@
 -- use settings defined in vimrc as a base
-vim.cmd([[
-set runtimepath^=~/.vim runtimepath+=~/.vim/after
-let &packpath = &runtimepath
-source ~/.vim/common.vim
-]])
+-- vim.cmd([[
+-- set runtimepath^=~/.vim runtimepath+=~/.vim/after
+-- let &packpath = &runtimepath
+-- source ~/.vim/common.vim
+-- ]])
 
 -- vim: foldmethod=marker
 

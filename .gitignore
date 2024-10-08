@@ -1,0 +1,5 @@
+
+# vim plugins (plug.vim is installed on first startup)
+plug.vim
+plugged/
+
