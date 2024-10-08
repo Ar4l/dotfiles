@@ -1,0 +1,40 @@
+# global
+.DS_Store
+*.DS_Store
+
+# safe to assume we should never commit these
+.env
+*.zip
+
+# vim
+*.sw[nop]
+.netrwhist
+
+# vscode
+.vscode/
+*.code-workspace
+.history/
+.devcontainer/
+
+# python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+
+# javascript
+node_modules/
+
+# latex
+*.bcf
+*.blg
+*.bbl
+*.nav
+*.xml
+*.snm
+*.toc
+*.xdv
+*.aux
+*.out
+*.fls
+*.fdb_latexmk
