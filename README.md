@@ -9,7 +9,7 @@ touches:
 - `zsh`: Main terminal shell 
 - `bash`: Fall-back terminal shell
 
-- `nvim`: Main text editor (`C-w` &rarr; `Space`)
+- `nvim`: Main text editor (`\` &rarr; `Space`)
 - `vim`: Fall-back text-editor
 
 #### Install
@@ -51,7 +51,7 @@ Useful features I would like to have one day.
   - [ ] [Integrate with kitty](https://github.com/kovidgoyal/kitty/discussions/6529): `mosh kitten run-shell`
 
 ## TODO 
-- `nvim`: scroll by 1 line, instead of 2. 
+
 - `nvim`/`sniprun`: allow python snippets to run in markdown.
 - `zsh`: export `TERM=xterm-256color` does not work on `ace`.
 - `tmux`: swap v/h layout of pane with preceding pane: [SO](https://stackoverflow.com/questions/15439294/tmux-switch-the-split-style-of-two-adjacent-panes). Do not use the `-n` bindings to be able to use the same functionality in vim.
@@ -63,7 +63,6 @@ Useful features I would like to have one day.
   - [ ] show slider bar
   - [ ] terminal colours
   - [ ] alt-delete to delete a word
-  - [ ] remove cursor blinking (may be kitty)
   - [ ] Highlight copied selection akin to nvim
   - [ ] single line mouse scrolling. This is possible but not like the way I want.
 
@@ -72,6 +71,7 @@ Useful features I would like to have one day.
 
 - `editorconfig` for sharing tab-style configurations across editors. Comes bundled with `nvim >= 0.9`, `vim >= 9.0.1799`.
 
+<!--
 # Dependencies
 
 Following are the packages & software that must be installed on the
@@ -108,7 +108,6 @@ system. I do this manually using Homebrew.
   + marksman (markdown)
   + texlab (latex)
 
-<!--
 Following are the GUI applications I use. I install them manually
 using Homebrew Cask.
 

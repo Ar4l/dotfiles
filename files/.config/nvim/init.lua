@@ -74,6 +74,7 @@ vim.opt.termguicolors = true
 -- vim.opt.spellfile = "~/.vim/spell/en.utf-8.add"
 -- vim.opt.spelllang = "en"
 vim.opt.mouse = "a"
+vim.opt.mousescroll = 'ver:1,hor:1'
 vim.opt.completeopt = vim.opt.completeopt + "menu"
 vim.opt.completeopt = vim.opt.completeopt + "menuone"
 vim.opt.completeopt = vim.opt.completeopt + "noselect"
