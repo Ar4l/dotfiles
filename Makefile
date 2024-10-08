@@ -14,8 +14,8 @@ simulate:
 	stow -v --no-folding --dir=files --target=${HOME} -S .
 
 all: 
-	stow
 	install 
+	stow
 
 ctags:
 	find . -type f -not -path '*git*' | ctags --tag-relative=yes -L -

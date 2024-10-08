@@ -1,169 +1,137 @@
 #!/bin/bash
 # Install all dependencies
 
-## BASICS
-#  tmux         # shell server to persist sessions
-#  coreutils    # basic text utilities 'expected to exist on every OS' https://www.gnu.org/software/coreutils/
-#  git          # cmon who is running machines w/o git 
-#  bash 		# bash???
-#  starship 	# extensive cross-shell prompt https://starship.rs/
-#  stow 
-#  make 
-
-## SHELL TOOLING
-#  walk     # file browser
-#  tree     # basic file tree 
-#  btop     # monitor procs 
-#  pixi     # conda 2024 version
-#  uv       # pip 2024 version
-
-#  vim      # the only editor you need
-#  neovim   # a second editor if you must
-
-#  zsh 
-#  pure 		# minimal zsh prompt https://github.com/sindresorhus/pure
-#  zsh-syntax-highlighting 
-#  zsh-autosuggestions 
-#  zsh-history-substring-search 
-#  
-#  fd 		# friendly find
-#  fzf		# fuzzy find 
-#  glow		# CLI markdown renderer https://github.com/charmbracelet/glow
-#  tldr 		# shorter manpages
+# SUMMARY 
+#
+# 1. Install Kitty terminal emulator, it has decent graphics support.
+#    I need its kittens, regardless of client/host.
+#
+# 2.2   Install programs for the terminal, using brew
+#       By keeping my configuration to a minimum, I do not worry about duplicates.
+#       This avoids the pain of outdated software I'm not allowed to update.
+#
+# 2.1   If brew is not available, install the bare minimum from source.
+#       i.e. bash, tmux, git, stow
+#
+# 2.3   Potential commands to set up those programs (e.g. vim's plugins)
+#
+# 3. If not on a server: install applications (casks) for the OS 
 
 
-programs='
-  stow 
-  make 
-  tmux 
-  coreutils 
-  git 
-  bash 
-  rust
-  walk
-  pixi 
-  uv
-  starship 
-  vim 
-  neovim 
-  tree 
-  btop 
-  zsh 
-  pure 
+# 1. Install Kitty 
+
+[ ! -e "/Applications/kitty.app" ]  &&    # MacOS
+[ ! -e "$HOME/.local/kitty.app" ]   &&    # Linux
+curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
+
+
+# 2. Install programs 
+
+basics=(        # BASICS
+  tmux          # shell server to persist sessions
+  coreutils     # basic text utilities 'expected to exist on every OS' https://www.gnu.org/software/coreutils/
+  git           # cmon who is running machines w/o git 
+  bash          # you'd be surprised who hasn't updated their bash since 1990
+
+                # DOTFILES
+  stow          # stashes my dotfiles
+  make          # provides shorter commands for stashing
+)
+
+programs=(
+                # SHELL TOOLING
+  starship      # extensive cross-shell prompt https://starship.rs/
+  walk          # file browser
+  tree          # basic file tree 
+  btop          # monitor procs 
+
+                # PACKAGE MANAGERS
+  # conda       # TODO: may be worth adding seeing I saw some outrageous 2003 version
+  pixi          # conda 2024 version
+  uv            # pip 2024 version
+
+                # EDITORS
+  vim           # the only editor you need
+  neovim        # a second editor if you must
+
+                # ZSH 
+  zsh           # better bash
+  pure          # minimal zsh prompt https://github.com/sindresorhus/pure
   zsh-syntax-highlighting 
   zsh-autosuggestions 
   zsh-history-substring-search 
-  fd 
-  fzf 
-  glow 
-  tldr 
-'
 
-casks='
-  rectangle
-'
+                # MISC
+  # fd          # friendly find
+  # fzf         # fuzzy find 
+  # glow        # CLI markdown renderer https://github.com/charmbracelet/glow
+  # tldr        # shorter manpages
+)
 
-# Determine OS
-case $OSTYPE in
+casks=(
+  rectangle     # window management TODO: add keybindings
+)
 
-  "linux-gnu"*)
+## Onto the installation 
+os_independent_homebrew_install() {
 
-    # try installin brew if it does not yet exist; 
-    if ! command -v brew > /dev/null; then
-      NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" 
-      (echo; echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"') >> ~/.bashrc
-      (echo; echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"') >> ~/.zshrc
-      eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-    fi
+  echo "Installing Homebrew..."
 
-    if command -v brew > /dev/null; then
-      printf "Installing dependencies with homebrew: \033[90m$programs\033[0m" 
-      brew install $programs 
-      # source /home/linuxbrew/.linuxbrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh &&
-      # source /home/linuxbrew/.linuxbrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh &&
-      # source /home/linuxbrew/.linuxbrew/share/zsh-history-substring-search/zsh-history-substring-search.zsh &&
-      # eval "$(starship init bash)" &&
-      # echo 'autoload -U promptinit; promptinit; prompt pure' >> ~/.zshrc &&
-      # eval "$(fzf --bash)" &&
-      # source <(fzf --zsh) 
-			# vim plugins
-			curl -fLo ~/.vim/autoload/plug.vim --create-dirs \
-  		  https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
-			vim +'PlugInstall --sync' +qall
-      ln -s /home/linuxbrew/.linuxbrew/bin/zsh /bin/zsh
+  # Check if it's macOS or Linux, and install Homebrew accordingly
+  case $OSTYPE in
 
-    elif command -v conda > /dev/null; then # conda is not os/device-specific :)
+    "linux-gnu"*)
 
-      printf "Installing dependencies with conda: \033[90m$programs\033[0m\n"
-      conda install -n base $programs
+      echo 'installing homebrew for linux'
+      NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"  &&
 
-    elif command -v apt-get > /dev/null; then # Install to user (~/.local) with apt-get
-
-      apt-get update # update package index
-      printf "Downloading dependencies with apt-get into $(pwd)/programs, installing with dpkg: \033[90m$programs\033[0m\n"
-
-      mkdir -p programs
-      cd programs
-
-      for program in $programs; do
-
-        # fetch recursive dependencies
-        dependencies=$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances $program | grep "^\w" | sort -u)
-
-        for dependency in $dependencies; do 
-
-          # do not install existing programs
-          if command -v $dependency > /dev/null; then 
-            echo "$dependency already installed"
-            continue
-          fi 
-
-          if apt-get download -qqq $dependency; then # quietly download
-
-            deb_file=$(ls ${dependency}*.deb)
-
-            echo "installing $deb_file to ~/.local"
-            dpkg -x $deb_file ~/.local
-            rm $deb_file
-
-          else
-            printf "\033[1mapt-get could not find $dependency\033[0m\n"
-          fi
-        done 
-      done
-
-      echo "export PATH=~/.local/usr/bin:~/.local/bin:$PATH" >> $(find . -name .bashrc)
-	 export PATH=~/.local/usr/bin:~/.local/bin:$PATH
-    fi
+      (echo; echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"') >> ~/.bashrc  &&
+      (echo; echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"') >> ~/.zshrc   &&
+      eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" 
     ;;
 
-  "darwin"*) # Mac OSX
-    # Installation assuming homebrew is installed
-    # Homebrew requires sudo once to be installed. See
-    # https://docs.brew.sh/Homebrew-on-Linux
-    printf "Installing dependencies with homebrew: \033[90m$programs\033[0m"
-    brew install $programs
+    "darwin"*) 
+      printf 'You need to install homebrew on macos manually! run:\n\n'
+      echo 'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+      exit 
+
+      # (echo; echo 'eval "$(/opt/homebrew/bin/brew shellenv)"') >> ~/.bashrc &&
+      # (echo; echo 'eval "$(/opt/homebrew/bin/brew shellenv)"') >> ~/.zshrc  &&
+      # eval "$(/opt/homebrew/bin/brew shellenv)"
     ;;
+    *)
+      echo 'OS NOT SUPPORTED'
+    ;;
+  esac
+}
 
-#   "freebsd"*)
-#     # the ultimate OS
-#     ;;
-#
-#   "cygwin")
-#     # POSIX compatibility layer and Linux environment emulation for Windows
-#     ;;
-#
-#   "msys")
-#     # Lightweight shell and GNU utilities compiled for Windows (part of MinGW and Git Bash)
-#     ;;
-#
-#   "win32")
-#     # not even gonna consider this one
-#     ;;
-  *)
-  echo "OS not supported (yet): $OSTYPE"
-  exit 1
-  ;;
 
-esac
+# Try to install brew if it does not exist
+if ! command -v brew &> /dev/null ; then
+  os_independent_homebrew_install
+fi
+
+
+# 2.1 If brew does not exist, install basic packages from source
+if ! command -v brew &> /dev/null; then  
+  echo "installing basic: ${basics[*]}"
+
+  # TODO: installation from source
+  echo 'not yet implemented: installing from source :)'
+  exit 
+fi 
+
+# 2.2 Otherwise, brew exists so install all programs
+programs=("${basics[@]}" "${programs[@]}")
+echo "installing all: ${programs[*]}"
+brew install ${programs[*]}
+
+# 2.3 Also set up said programs 
+vim +'PlugInstall --sync' +qall
+
+
+# 3. And, if we're on mac, install the casks
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  brew install ${casks[*]}
+fi
 

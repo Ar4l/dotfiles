@@ -80,3 +80,5 @@ source "$HOME/.bashrc.xterm"
 
 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 . "$HOME/.cargo/env"
+
+eval "$(/opt/homebrew/bin/brew shellenv)"
