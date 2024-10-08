@@ -31,6 +31,9 @@ $ make restow
 ## SSH Features 
 Servers often have different OS, packages, and tooling available. These dotfiles try to make use of existing ones, and download additional packages when needed. 
 
+> [!WARNING]
+> Very much a work-in-progress.
+
 By default, try installing `zsh` on the server for use as the login shell. Stored under `$HOME/bin/zsh` by default. 
 
 If docker is available on the server, assume that the server owners want me to work in a container. In this case, spin up a container and mount `$HOME` directory in the container. 
