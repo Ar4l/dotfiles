@@ -139,7 +139,9 @@ set softtabstop=2
 set shiftwidth=2
 set noexpandtab
 set smarttab
-packadd editorconfig
+if !has('nvim')
+  packadd editorconfig
+endif
 
 " figure out filetype on open
 filetype plugin indent on
@@ -148,21 +150,23 @@ filetype plugin indent on
 set background=dark
 
 " AUTOCOMMANDS
-" Open new windows in a vsplit instead of default hsplit
-" TODO: this overrides NERDTreeToggle, which should always be left.
-augroup VSplitWindow
-  autocmd!
-  autocmd WinNew * wincmd H
-augroup END
+if !has('nvim')
+  " Open new windows in a vsplit instead of default hsplit
+  " TODO: this overrides NERDTreeToggle, which should always be left.
+  augroup VSplitWindow
+    autocmd!
+    autocmd WinNew * wincmd H
+  augroup END
 
-augroup FileTypeSpecific
-  autocmd!
-  " enable spelling in git commits
-  autocmd FileType gitcommit setlocal spell
-  " use default indenting for manpages and vim help
-  " this below does nothing
-  " autocmd FileType man,help let b:EditorConfig_disable = 1
-augroup END
+  augroup FileTypeSpecific
+    autocmd!
+    " enable spelling in git commits
+    autocmd FileType gitcommit setlocal spell
+    " use default indenting for manpages and vim help
+    " this below does nothing
+    " autocmd FileType man,help let b:EditorConfig_disable = 1
+  augroup END
+endif
 
 "" KEYBINDINGS
 " prefix        mode
