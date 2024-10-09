@@ -69,6 +69,51 @@ function cl() {
   ls 
 }
 
+# create a pytorch docker container named aral if it does not yet exist
+# and enter the container 
+#
+# Takes a single argument, corresponding to which GPUs to use
+function dock() {
+  container_name=aral-pytorch
+
+  # if container exists and is running, enter it 
+  if [ "$(docker ps -q -f name=$container_name)" ]; then
+    docker exec -it $container_name bash
+
+  else 
+
+    # Prompt user to enter which GPUs to use
+    nvidia-smi
+    read -p "Enter which GPUs to use (e.g., 0,1): " gpus
+    echo "You selected GPUs: $gpus"
+
+    # if the container does not exist, download it if necessary 
+    if ! [ "$(docker ps -aqf name=$container_name)" ]; then
+      tag='24.08-py3'
+      echo "running nvidia/pytorch:$tag"
+
+      # Collect all dotfiles and dotfolders in your home directory
+      MOUNTS=""
+      for dotfile in ${HOME}/.[^.]*; do
+        MOUNTS+="-v $dotfile:/root/$(basename $dotfile) "
+      done
+
+      # gpus to use
+      # interactive & detached
+      # mount dotfiles to /root
+      # home dir into /workspace
+      docker run --name $container_name --gpus "\"device=$gpus\"" -itd $MOUNTS -v ${HOME}:/workspace --ulimit memlock=-1 --ulimit stack=67108864 nvcr.io/nvidia/pytorch:$tag
+      docker exec -it $container_name bash
+
+    # the container exists but is not running
+    # this is trickier, as we cannot change the GPUs without
+    # committing the container to an image.
+    else 
+      echo 'not yet implemented: container exists but is not running'
+    fi
+  fi
+}
+
 function killge() {
 
   if [ "$#" -lt 1 ]; then
