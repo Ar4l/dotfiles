@@ -58,11 +58,21 @@ Useful features I would like to have one day.
 
 ## TODO 
 
+- `C-hjkl` for changing windows anywhere; while also keeping the original application keybinds in case anything goes awry.
+  - within `kitty`
+  - within `tmux`
+  - over ssh, within docker; see if `tmux` outside a container can work with `vim` inside a container. 
 - `nvim`/`sniprun`: allow python snippets to run in markdown.
 - `zsh`: export `TERM=xterm-256color` does not work on `ace`.
 - `tmux`: swap v/h layout of pane with preceding pane: [SO](https://stackoverflow.com/questions/15439294/tmux-switch-the-split-style-of-two-adjacent-panes). Do not use the `-n` bindings to be able to use the same functionality in vim.
   - Or generalised for any direction: This [SO post](https://stackoverflow.com/a/70024796/340947)
 
+- `install.sh`
+  - [ ] install xclip on linux systems
+  - [ ] set up `vim`/`nvim` clipboards so they work: 
+    - [ ] on local machine and inside tmux
+    - [ ] on host and inside tmux
+    - [ ] inside docker container 
 
 - `vim`
   - [ ] double check that we didn't lose any plugin confs

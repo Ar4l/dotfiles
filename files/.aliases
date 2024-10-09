@@ -7,6 +7,7 @@ alias ll="ls -FAlh --color"
 alias ln="ln -v"
 alias mkdir="mkdir -p"
 alias g='cd "$(walk --icons --preview)"'
+alias ta='tmux attach'
 
 
 # if (( $+commands[emacs] )); then
