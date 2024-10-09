@@ -22,7 +22,8 @@
 
 [ ! -e "/Applications/kitty.app" ]  &&    # MacOS
 [ ! -e "$HOME/.local/kitty.app" ]   &&    # Linux
-curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
+echo 'installing kitty'             &&
+curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin 
 
 
 # 2. Install programs 
@@ -85,8 +86,12 @@ os_independent_homebrew_install() {
       echo 'installing homebrew for linux'
       NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"  &&
 
-      (echo; echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"') >> ~/.bashrc  &&
-      (echo; echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"') >> ~/.zshrc   &&
+      # Add to path in shells
+      # Starting conditional checks if the file actually exists,
+      # necessary when working within docker containers with brew, on a server
+      # which does not have brew
+      echo '[ -e /home/linuxbrew/.linuxbrew/bin/brew ] && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.bashrc
+      echo '[ -e /home/linuxbrew/.linuxbrew/bin/brew ] && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.zshrc
       eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" 
     ;;
 
@@ -124,7 +129,10 @@ fi
 # 2.2 Otherwise, brew exists so install all programs
 programs=("${basics[@]}" "${programs[@]}")
 echo "installing all: ${programs[*]}"
-brew install ${programs[*]}
+brew install ${programs[*]} > /dev/null
+
+echo 'run the following in case brew is not yet available in this shell'
+echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"'
 
 # 2.3 Also set up said programs 
 

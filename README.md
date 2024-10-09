@@ -34,9 +34,15 @@ Servers often have different OS, packages, and tooling available. These dotfiles
 > [!WARNING]
 > Very much a work-in-progress.
 
-By default, try installing `zsh` on the server for use as the login shell. Stored under `$HOME/bin/zsh` by default. 
+- [ ] TODO: By default, try installing `zsh` on the server for use as the login shell. Stored under `$HOME/bin/zsh` by default. Currently installs via homebrew, for use in docker container, which means it is not available under `/bin/zsh`
 
-If docker is available on the server, assume that the server owners want me to work in a container. In this case, spin up a container and mount `$HOME` directory in the container. 
+If docker is available on the server, assume that the server owners want me to work in a container. I provide a `dock` command, which spins up a `aral-pytorch` container and mounts `$HOME` directory in the container. 
+
+1. Dotfiles are mounted under the container's `/root` (assuming root user), and the entire home is mounted under the `/workspace` directory as well for convenience. The `xterm-kitty` `infocmp` is added to the container.
+2. It is possible to directly connect to a container on a host via ssh, but this requires port-forwarding – which I won't attempt as the university is not open about what ports are blocked by its firewall.
+
+- [ ] TODO: `dock` defaults to `bash`, would be nice if I don't have to type `exec zsh` each time.
+- [ ] TODO: kittens are not exposed properly within the docker container, as it installs to `.local`, but does not add it to the path.
 
 ## Roadmap 
 Useful features I would like to have one day. 

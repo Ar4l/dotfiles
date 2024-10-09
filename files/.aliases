@@ -76,9 +76,20 @@ function cl() {
 function dock() {
   container_name=aral-pytorch
 
+  # copies kitty conf, and enters zsh if available
+  function safe_enter() {
+    # copy kitty infocmp over to the container
+    infocmp -a xterm-kitty | docker exec -i "$container_name" tic -x -o /root/.terminfo /dev/stdin &> /dev/null
+    # check if zsh is in the container, defaulting to bash
+    # TODO: this does not work as intended, always using bash atm.
+    shell=$(docker exec $container_name sh -c 'if command -v zsh > /dev/null 2>&1; then echo zsh; else echo bash; fi')
+    # run this in the container
+    docker exec -it -e TERM="$TERM" $container_name $shell
+  }
+
   # if container exists and is running, enter it 
   if [ "$(docker ps -q -f name=$container_name)" ]; then
-    docker exec -it $container_name bash
+    safe_enter
 
   else 
 
@@ -103,7 +114,7 @@ function dock() {
       # mount dotfiles to /root
       # home dir into /workspace
       docker run --name $container_name --gpus "\"device=$gpus\"" -itd $MOUNTS -v ${HOME}:/workspace --ulimit memlock=-1 --ulimit stack=67108864 nvcr.io/nvidia/pytorch:$tag
-      docker exec -it $container_name bash
+      safe_enter
 
     # the container exists but is not running
     # this is trickier, as we cannot change the GPUs without
