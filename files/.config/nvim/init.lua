@@ -5,9 +5,6 @@ let &packpath = &runtimepath
 source ~/.vim/common.vim
 ]])
 
--- vim: foldmethod=marker
-
--- settings {{{
 vim.opt.hlsearch = true
 vim.opt.incsearch = true
 vim.opt.laststatus = 2
@@ -48,15 +45,22 @@ vim.opt.wildmode = "longest:full,full"
 --   fold = "·", -- MIDDLE DOT (U+00B7, UTF-8: C2 B7)
 --   vert = "┃", -- BOX DRAWINGS HEAVY VERTICAL (U+2503, UTF-8: E2 94 83)
 -- }
-vim.opt.foldmethod = 'indent'
+
+-- fold using treesitter expressions
+vim.opt.foldmethod = 'expr'
+vim.opt.foldexpr = "v:lua.vim.treesitter.foldexpr()"
+vim.opt.foldtext = "v:lua.vim.treesitter.foldtext()"
+
 vim.opt.foldlevelstart = 99
 vim.opt.linebreak = true
 vim.opt.breakindent = false
 vim.opt.smarttab = true
+
 vim.opt.formatoptions = vim.opt.formatoptions + "n"
 vim.opt.formatoptions = vim.opt.formatoptions + "1"
 vim.opt.formatoptions = vim.opt.formatoptions + "j"
 vim.opt.formatoptions = vim.opt.formatoptions + "p"
+
 vim.opt.modelineexpr = true
 vim.opt.concealcursor = vim.opt.concealcursor + "i"
 vim.opt.concealcursor = vim.opt.concealcursor + "n"
@@ -66,6 +70,7 @@ vim.opt.ruler = true
 vim.opt.ignorecase = true
 vim.opt.smartcase = true
 vim.opt.infercase = true
+
 -- vim.opt.textwidth = 70   -- hardwrap sentences at given length
 -- vim.opt.expandtab = true -- use spaces to indent (not tabs)
 vim.opt.tabstop = 4      -- width of a tab
@@ -73,11 +78,14 @@ vim.opt.shiftwidth = 4   -- width when shifting text
 vim.opt.termguicolors = true
 -- vim.opt.spellfile = "~/.vim/spell/en.utf-8.add"
 -- vim.opt.spelllang = "en"
+
 vim.opt.mouse = "a"
 vim.opt.mousescroll = 'ver:1,hor:1'
+
 vim.opt.completeopt = vim.opt.completeopt + "menu"
 vim.opt.completeopt = vim.opt.completeopt + "menuone"
 vim.opt.completeopt = vim.opt.completeopt + "noselect"
+
 vim.opt.list = false
 -- vim.opt.listchars = {
 --   nbsp = "⦸",
@@ -96,8 +104,8 @@ vim.g.markdown_folding = true
 vim.opt.pumblend = 10
 vim.opt.pumheight = 10
 vim.opt.winblend = 10
--- end settings }}}
--- keybindings {{{
+
+-- Keybindings
 vim.g.mapleader = " "
 vim.g.maplocalleader = "\\"
 vim.keymap.set("n", "<leader><tab>", "zA")
@@ -112,8 +120,7 @@ vim.keymap.set("n", "j", "v:count == 0 ? 'gj' : 'j'", { expr = true, silent = tr
 vim.keymap.set("n", "<Esc>", "<cmd>nohlsearch<cr>")
 
 vim.keymap.set("t", "<Esc><Esc>", "<C-\\><C-n>", { desc = "Exit terminal mode" })
--- end keybindings }}}
--- lazy {{{1
+
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not vim.loop.fs_stat(lazypath) then
   vim.fn.system({
@@ -128,7 +135,6 @@ end
 vim.opt.rtp:prepend(lazypath)
 
 require("lazy").setup({
-  -- which-key {{{2
   {                     -- Useful plugin to show you pending keybinds.
     "folke/which-key.nvim",
     event = "VimEnter", -- Sets the loading event to 'VimEnter'
@@ -146,17 +152,12 @@ require("lazy").setup({
       })
     end,
   },
-  -- end which-key}}}
-  -- gitsigns {{{2
-  { "lewis6991/gitsigns.nvim", opts = {} },
-  -- end gitsigns 2}}}
 
-  -- gruvbox {{{2
+  { "lewis6991/gitsigns.nvim", opts = {} },
+
   { "ellisonleao/gruvbox.nvim", priority = 1000 , config = true, opts = ...},
   { "sainnhe/gruvbox-material", priority = 1000},
-  -- end gruvbox }}}
 
-  -- session management {{{
   {
     "olimorris/persisted.nvim",
     lazy = false, -- make sure the plugin is always loaded at startup
@@ -199,9 +200,7 @@ require("lazy").setup({
       })
     end,
   },
-  -- }}}
 
-  -- sniprun {{{
   {
     "michaelb/sniprun",
     branch = "master",
@@ -296,13 +295,9 @@ require("lazy").setup({
 
     end,
   },
-  -- }}}
 
-  -- vim-printer {{{
   { "meain/vim-printer" },  -- # <leader> p to quickly insert a print statement
-  -- }}}
 
-  -- lualine {{{2
   {
     "nvim-lualine/lualine.nvim",
     dependencies = {
@@ -325,8 +320,7 @@ require("lazy").setup({
       })
     end,
   },
-  -- end lualine 2}}}
-  -- telescope {{{2
+
   { -- Fuzzy Finder (files, lsp, etc)
     "nvim-telescope/telescope.nvim",
     event = "VimEnter",
@@ -433,8 +427,7 @@ require("lazy").setup({
       end, { desc = "[S]earch [N]eovim files" })
     end,
   },
-  -- end telescope 2}}}
-  -- nvim-lspconfig {{{2
+
   { -- LSP Configuration & Plugins
     "neovim/nvim-lspconfig",
     dependencies = {
@@ -570,16 +563,17 @@ require("lazy").setup({
       local servers = {
         -- clangd = {},
         -- gopls = {},
-        pyright = {
-          -- NOTE: fix lag in python files, taken from <https://youtu.be/hp7FFr9oM1k?si=f-mY0WCFr2CP3266&t=698>
-          capabilities = {
-            workspace = {
-              didChangeWatchedFiles = {
-                dynamicRegistration = false,
-              },
-            },
-          },
-        },
+        -- pyright = {
+        --   -- NOTE: fix lag in python files, taken from <https://youtu.be/hp7FFr9oM1k?si=f-mY0WCFr2CP3266&t=698>
+        --   capabilities = {
+        --     workspace = {
+        --       didChangeWatchedFiles = {
+        --         dynamicRegistration = false,
+        --       },
+        --     },
+        --   },
+        -- },
+
         marksman = {
           filetypes = { "markdown", "quarto" },
         },
@@ -651,8 +645,7 @@ require("lazy").setup({
       })
     end,
   },
-  -- end nvim-lspconfig}}}
-  -- conform {{{2
+
   { -- Autoformat
     "stevearc/conform.nvim",
     enabled = false,
@@ -674,8 +667,7 @@ require("lazy").setup({
       },
     },
   },
-  -- end conform}}}
-  -- nvim-cmp {{{2
+
   { -- Autocompletion
     "hrsh7th/nvim-cmp",
     event = "InsertEnter",
@@ -768,8 +760,7 @@ require("lazy").setup({
       })
     end,
   },
-  -- end nvim-cmp}}}
-  -- tpope {{{2
+
   "tpope/vim-commentary",
   "tpope/vim-unimpaired",
   "tpope/vim-surround",
@@ -779,8 +770,7 @@ require("lazy").setup({
   "tpope/vim-eunuch",
   "tpope/vim-dispatch",
   "tpope/vim-abolish",
-  -- end tpope 2}}}
-  -- wincent {{{2
+
   {
     "wincent/loupe",
     init = function()
@@ -789,8 +779,7 @@ require("lazy").setup({
     end,
   },
   "wincent/pinnacle",
-  -- end wincent 2}}}
-  -- indent-blankline {{{2
+
   {
     "lukas-reineke/indent-blankline.nvim",
     main = "ibl",
@@ -799,8 +788,7 @@ require("lazy").setup({
       require("ibl").setup()
     end,
   },
-  -- end indent-blankline 2}}}
-  -- vim-easy-align {{{2
+
   {
     "junegunn/vim-easy-align",
     config = function()
@@ -808,8 +796,7 @@ require("lazy").setup({
       vim.keymap.set("n", "ga", "<Plug>(LiveEasyAlign)")
     end,
   },
-  -- end vim-easy-align 2}}}
-  -- nvim-treesitter {{{2
+
   { -- Highlight, edit, and navigate code
     "nvim-treesitter/nvim-treesitter",
     build = ":TSUpdate",
@@ -818,7 +805,7 @@ require("lazy").setup({
 
       ---@diagnostic disable-next-line: missing-fields
       require("nvim-treesitter.configs").setup({
-        ensure_installed = { "bash", "c", "html", "lua", "markdown", "vim", "vimdoc" },
+        ensure_installed = { "bash", "c", "html", "lua", "markdown", "vim", "vimdoc", "python" },
         -- Autoinstall languages that are not installed
         auto_install = true,
         highlight = { enable = true },
@@ -833,8 +820,7 @@ require("lazy").setup({
       --    - Treesitter + textobjects: https://github.com/nvim-treesitter/nvim-treesitter-textobjects
     end,
   },
-  -- end nvim-treesitter 2}}}
-  -- nvim-tree {{{2
+
   {
     "nvim-tree/nvim-tree.lua",
     init = function()
@@ -848,8 +834,7 @@ require("lazy").setup({
       vim.keymap.set("n", "<leader>b", ":NvimTreeToggle<cr>")
     end,
   },
-  -- end nvim-tree 2}}}
-  -- diagnostics {{{2
+
   {
     dir = "vim.diagnostics",
     init = function()
@@ -873,8 +858,7 @@ require("lazy").setup({
       end
     end,
   },
-  --- end diagnostics 2}}}
-  -- mini {{{2
+
   {
     "echasnovski/mini.nvim",
     priority = 1000,
@@ -882,10 +866,8 @@ require("lazy").setup({
       vim.cmd.colorscheme("minischeme")
     end,
   },
-  -- end mini 2}}}
 })
--- end lazy }}}
--- highlights {{{
+
 -- See `:help vim.highlight.on_yank()`
 local highlight_group = vim.api.nvim_create_augroup("YankHighlight", { clear = true })
 vim.api.nvim_create_autocmd("TextYankPost", {
@@ -895,7 +877,6 @@ vim.api.nvim_create_autocmd("TextYankPost", {
   group = highlight_group,
   pattern = "*",
 })
--- end highlights }}}
 
 vim.o.background = "dark" -- or "light" for light mode
 -- let g:gruvbox_material_background = 'soft' but in lua 

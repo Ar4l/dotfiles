@@ -61,6 +61,9 @@ Useful features I would like to have one day.
 - `C-hjkl` for changing windows anywhere; while also keeping the original application keybinds in case anything goes awry.
   - within `kitty`
   - within `tmux`
+
+- `nvim`: [better folding based on tree-sitter expr](https://www.reddit.com/r/neovim/comments/16xz3q9/treesitter_highlighted_folds_are_now_in_neovim/). Folding works, `foldtext` does not. 
+
   - over ssh, within docker; see if `tmux` outside a container can work with `vim` inside a container. 
 - `nvim`/`sniprun`: allow python snippets to run in markdown.
 - `zsh`: export `TERM=xterm-256color` does not work on `ace`.
