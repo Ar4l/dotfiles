@@ -5,10 +5,8 @@ touches:
 
 - `kitty`: Terminal configuration (theme, font, keybinds)
 - `tmux`: Terminal session management (`C-b`)
-
 - `zsh`: Main terminal shell 
 - `bash`: Fall-back terminal shell
-
 - `nvim`: Main text editor (`\` &rarr; `Space`)
 - `vim`: Fall-back text-editor
 
@@ -27,6 +25,14 @@ $ make all
 # Reload
 $ make restow
 ```
+
+#### TODO: MacOS New Install
+- [x] `kitty` for terminal with GUI capabilities (todo: issues with color scheme & maintaining border colours)
+- [x] `rectangle` for window management (todo: obsolete after Sonoma)
+- [ ] `xcode-select --install` for basic cli tooling.
+- [ ] `obsidian` for nicer `md` rendering. 
+- [ ] `arc` + iCloud passwords ext. (may want [Zen](https://zen-browser.app/) later)
+- [ ] `brew` installation needs to be done manually, may be nice to give an update.
 
 ## SSH Features 
 Servers often have different OS, packages, and tooling available. These dotfiles try to make use of existing ones, and download additional packages when needed. 
@@ -58,6 +64,7 @@ Useful features I would like to have one day.
 
 ## TODO 
 
+- [ ] let the user know which package is currently being installed, and show the already installed packages. 
 - `C-hjkl` for changing windows anywhere; while also keeping the original application keybinds in case anything goes awry.
   - within `kitty`
   - within `tmux`
