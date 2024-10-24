@@ -63,6 +63,7 @@ programs=(
   zsh-history-substring-search 
 
                 # MISC
+  pandoc        # document converter
   # fd          # friendly find
   # fzf         # fuzzy find 
   # glow        # CLI markdown renderer https://github.com/charmbracelet/glow
