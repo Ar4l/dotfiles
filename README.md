@@ -79,6 +79,7 @@ Useful features I would like to have one day.
 
 - `install.sh`
   - [ ] install xclip on linux systems
+  - [ ] set up `git-lfs` when installed: `git lfs install` with optional `--system` flag. 
   - [ ] set up `vim`/`nvim` clipboards so they work: 
     - [ ] on local machine and inside tmux
     - [ ] on host and inside tmux
