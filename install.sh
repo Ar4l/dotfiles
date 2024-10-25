@@ -64,6 +64,7 @@ programs=(
 
                 # MISC
   pandoc        # document converter
+  git-lfs       # large file storage with git 
   # fd          # friendly find
   # fzf         # fuzzy find 
   # glow        # CLI markdown renderer https://github.com/charmbracelet/glow
