@@ -155,6 +155,9 @@ require("lazy").setup({
 
   { "lewis6991/gitsigns.nvim", opts = {} },
 
+  -- navigation within kitty/tmux 
+  { 'NikoKS/kitty-vim-tmux-navigator', lazy = false },
+  -- themes
   { "ellisonleao/gruvbox.nvim", priority = 1000 , config = true, opts = ...},
   { "sainnhe/gruvbox-material", priority = 1000},
 
