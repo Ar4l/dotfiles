@@ -72,7 +72,8 @@ programs=(
 )
 
 casks=(
-  rectangle     # window management TODO: add keybindings
+  rectangle           # window management TODO: add keybindings
+  karabiner-elements  # key remapping, for those dutch keyboards
 )
 
 ## Onto the installation 
