@@ -30,6 +30,7 @@
   glog = log -E -i --grep
 
 [core]
+  editor = vim
   excludesFile = ~/.gitignore_global
   autocrlf = input
 
