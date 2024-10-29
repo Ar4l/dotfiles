@@ -96,8 +96,8 @@ vim.opt.list = false
 --   space = "·",
 -- }
 vim.wo.signcolumn = "yes"
-vim.opt.number = true
-vim.opt.relativenumber = true
+vim.opt.number = false
+vim.opt.relativenumber = false
 vim.g.markdown_folding = true
 
 -- UI tweaks
