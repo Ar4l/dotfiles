@@ -26,6 +26,12 @@ $ make all
 $ make restow
 ```
 
+Note, installing these dotfiles depends on the following:
+- `make` (super unnecessary)
+- `curl` downloading files
+- `xz-utils` extracting files
+- `git` for installing homebrew
+
 #### TODO: MacOS New Install
 - [x] `kitty` for terminal with GUI capabilities (todo: issues with color scheme & maintaining border colours)
 - [x] `rectangle` for window management (todo: obsolete after Sonoma)
