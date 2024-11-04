@@ -31,30 +31,7 @@ export XDG_CONFIG_HOME="$HOME/.config"
 export XDG_DATA_HOME="$HOME/.local/share"
 export XDG_DATA_BIN="$HOME/.local/bin"
 
-# filename (if known), line number if known, falling back to percent if known,
-# falling back to byte offset, falling back to dash
-export LESSPROMPT='?f%f .?ltLine %lt:?pt%pt\%:?btByte %bt:-...'
-
-# i: search case insensitive
-# M: show detailed prompt
-# F: exit if output fits on one screen
-# R: ansi color support
-# X: suppress alternate screen
-export LESS=iFMRX
-
-# colour ls listings, do not have to use -G flag
-# and works across shells
-export CLICOLOR=true
 export RIPGREP_CONFIG_PATH="$HOME/.rgrc"
-
-# Color man pages.
-export LESS_TERMCAP_mb=$'\E[01;31m'
-export LESS_TERMCAP_md=$'\E[01;38;5;208m'
-export LESS_TERMCAP_me=$'\E[0m'
-export LESS_TERMCAP_se=$'\E[0m'
-export LESS_TERMCAP_ue=$'\E[0m'
-export LESS_TERMCAP_us=$'\E[04;38;5;111m'
-
 
 # # path: add personal binaries to path
 paths=("$HOME/dotfiles/bin")
