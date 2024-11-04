@@ -122,6 +122,26 @@ fi
 
 # 2.1 If brew does not exist, install basic packages from source
 if ! command -v brew &> /dev/null; then  
+
+  # echo "installing stow"
+  # according to the docs, this should work. In practice, it does not. 
+  # https://github.com/aspiers/stow/blob/master/INSTALL.md
+  
+  # I also don't like the dependency on perl and modules. 
+  # Perhaps https://github.com/RaphGL/Tuckr is better, as it 
+  # compiles to a binary (w/o deps other than rust, on any platform).
+
+  # curl -O https://ftp.gnu.org/gnu/stow/stow-2.4.1.tar.gz
+  # tar -xzf stow-2.4.1.tar.gz 
+  # cd stow-2.4.1
+
+  # installation_path=~/.local
+  # mkdir -p $installation_path
+  # abs_installation_path=$(cd $installation_path; pwd)
+
+  # ./configure --prefix=$abs_installation_path
+  # make install
+
   echo "installing basic: ${basics[*]}"
 
   # TODO: installation from source
