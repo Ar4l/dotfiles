@@ -72,13 +72,20 @@ zstyle ':completion:*' menu select
 # End completion }}}
 # {{{ prompt
 
-fpath+=("$(brew --prefix)/share/zsh/site-functions")
+if command -v brew > /dev/null; then 
+  fpath+=("$(brew --prefix)/share/zsh/site-functions")
+fi
 autoload -Uz promptinit
 promptinit
 # autoload -U colors
 # colors
 # use the original pure prompt; much faster than starship's implementation
-prompt pure
+if prompt -l | grep -q pure; then 
+  prompt pure
+else 
+  # default to built-in prompt 
+  prompt fade yellow
+fi
 
 # export LC_ALL=en_GB.UTF-8 # causes warnings on remote servers as no one uses GB in bash
 export XDG_CONFIG_HOME="$HOME/.config"
@@ -110,15 +117,17 @@ select-word-style bash # only alphanumeric chars are considered WORDCHARS
 # NOTE zsh-history-substring should be the last plugin
 # <https://github.com/zsh-users/zsh-history-substring-search#usage>
 
-plugins=(
-  "$(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
-  "$(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
-  "$(brew --prefix)/share/zsh-history-substring-search/zsh-history-substring-search.zsh"
-)
+if command -v brew > /dev/null; then 
+  plugins=(
+    "$(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+    "$(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+    "$(brew --prefix)/share/zsh-history-substring-search/zsh-history-substring-search.zsh"
+  )
 
-for plugin in $plugins; do
-  [[ -e $plugin ]] && source $plugin
-done
+  for plugin in $plugins; do
+    [[ -e $plugin ]] && source $plugin
+  done
+fi 
 
 # For speed:
 # https://github.com/zsh-users/zsh-autosuggestions#disabling-automatic-widget-re-binding
