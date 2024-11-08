@@ -99,6 +99,9 @@ Useful features I would like to have one day.
   - [ ] alt-delete to delete a word
   - [ ] Highlight copied selection akin to nvim
   - [ ] single line mouse scrolling. This is possible but not like the way I want.
+ 
+- `nvim`
+  - why is wrap turned on for python by default, and off for markdown? it should be the opposite. 
 
 
 ## Notes
