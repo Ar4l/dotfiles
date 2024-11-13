@@ -159,7 +159,7 @@ bindkey -M vicmd 'k' history-substring-search-up
 bindkey -M vicmd 'j' history-substring-search-down
 
 # Enable vi mode 
-bindkey -v
+# bindkey -v
 
 # Allow editing command line
 autoload -U edit-command-line

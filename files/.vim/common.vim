@@ -30,14 +30,14 @@ nmap <leader>q :bp<bar>sp<bar>bn<bar>bd<CR>
 nnoremap <leader>w    :w<cr>
 nnoremap <leader>wq   :wq<cr>
 nnoremap <leader>wqa  :wqa<cr>
+
 " 3. switch between buffers without having to type 
 nmap <leader>n :bn<cr>
 nmap <leader>p :bp<cr>
 
-
 " add newline (above or) below with (shift) Enter in Normal mode
-nmap <CR> o<esc>
-nmap <S-CR> O<esc>j
+noremap <CR> o<esc>
+noremap <S-CR> O<esc>j
 
 
 if (has("termguicolors")) " If this vim version supports it,
