@@ -1,0 +1,35 @@
+#!/bin/bash
+
+echo 'hello, world!'
+
+# store ip address in icloud drive under device name 
+device="$(uname -n)"
+icloud_path="/Users/$USER/Library/Mobile Documents/com~apple~CloudDocs/ip/"
+mkdir -p "$icloud_path"
+
+internal_ip_file="$icloud_path/$USER@$device.internal.txt"
+external_ip_file="$icloud_path/$USER@$device.external.txt"
+
+# only save when changed
+old_internal_ip=$(cat "$internal_ip_file")
+old_external_ip=$(cat "$external_ip_file")
+
+internal_ip=$(/usr/sbin/ipconfig getifaddr en0)		# Internal IP
+external_ip=$(dig -4 TXT +short o-o.myaddr.l.google.com @ns1.google.com)
+
+if ! [ "$internal_ip" == "$old_internal_ip" ]; then
+  echo $internal_ip > "$internal_ip_file"
+  echo "replaced internal ip with $internal_ip ($old_internal_ip)"
+  echo "in $internal_ip_file"
+else 
+  echo "internal ip: $internal_ip in $internal_ip_file)"
+fi
+
+if ! [ "$external_ip" == "$old_external_ip" ]; then
+  echo $external_ip > "$external_ip_file" 
+  echo "replaced external ip with $external_ip ($old_external_ip)"
+  echo "in $external_ip_file"
+else 
+  echo "internal ip: $internal_ip in $internal_ip_file)"
+fi
+

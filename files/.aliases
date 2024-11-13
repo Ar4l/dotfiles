@@ -25,9 +25,10 @@ alias diff='diff --color=auto --side-by-side'
 # alias -s html='open -a "Firefox.app"'
 # alias -s md='glow --pager --width 70'
 
-# # kitty stuff, probably should not override ssh 
+# kitty stuff; see https://sw.kovidgoyal.net/kitty/kittens/ssh/
+# copies over some config files to the host
 if [[ "$TERM" =~ 'kitty' ]]; then
-  alias ssh='kitty +kitten ssh -R 50000:${KITTY_LISTEN_ON#*:}'
+  alias s='kitty +kitten ssh -R 50000:${KITTY_LISTEN_ON#*:}'
 fi
 
 # Application shorthands
