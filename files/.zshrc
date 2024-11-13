@@ -158,9 +158,13 @@ bindkey '^N' history-substring-search-down
 bindkey -M vicmd 'k' history-substring-search-up
 bindkey -M vicmd 'j' history-substring-search-down
 
+# Enable vi mode 
+bindkey -v
+
+# Allow editing command line
 autoload -U edit-command-line
 zle -N edit-command-line
-bindkey '^x^x' edit-command-line
+bindkey -M vicmd v edit-command-line
 
 bindkey ' ' magic-space # do history expansion on space
 

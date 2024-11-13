@@ -24,6 +24,19 @@ else
   export EDITOR=vim
 fi
 
+# use vi mode keys 
+# e.g. 
+# EMACS   VIM
+# Ctrl+A	0	    Move cursor to beginning of line.
+# Ctrl+E	$	    Move cursor to end of line.
+# Alt+B	  b	    Move cursor back one word.
+# Alt+F	  w	    Move cursor right one word.
+# Ctrl+B	h	    Move cursor back one character.
+# Ctrl+F	l	    Move cursor right one character.
+# Ctrl+P	k	    Move up in Bash command history.
+# Ctrl+R	j	    Move down in Bash command history.
+set -o vi 
+
 export PAGER=less
 export MANPAGER=$PAGER
 # export LC_ALL=en_GB.UTF-8 # causes warnings on every server I connect to as they don't have the GB language pack
