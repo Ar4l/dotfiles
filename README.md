@@ -74,9 +74,7 @@ Useful features I would like to have one day.
 - [ ] let the user know which package is currently being installed, and show the already installed packages. 
 - `C-hjkl` for changing windows anywhere; while also keeping the original application keybinds in case anything goes awry.
   - within `kitty`
-  - within `tmux`
-
-- `nvim`: [better folding based on tree-sitter expr](https://www.reddit.com/r/neovim/comments/16xz3q9/treesitter_highlighted_folds_are_now_in_neovim/). Folding works, `foldtext` does not. 
+  - within `tmux` 
 
   - over ssh, within docker; see if `tmux` outside a container can work with `vim` inside a container. 
 - `nvim`/`sniprun`: allow python snippets to run in markdown.
@@ -92,6 +90,9 @@ Useful features I would like to have one day.
     - [ ] on host and inside tmux
     - [ ] inside docker container 
 
+- `tmux`
+  - [ ] cmd+shift+hjkl enters that window and maximises it.
+
 - `vim`
   - [ ] double check that we didn't lose any plugin confs
   - [ ] show slider bar
@@ -99,9 +100,12 @@ Useful features I would like to have one day.
   - [ ] alt-delete to delete a word
   - [ ] Highlight copied selection akin to nvim
   - [ ] single line mouse scrolling. This is possible but not like the way I want.
+  - [ ] tree on right side, hide tree after selecting file
  
 - `nvim`
-  - why is wrap turned on for python by default, and off for markdown? it should be the opposite. 
+  - why is wrap turned on for python by default, and off for markdown? it should be the opposite.
+  - [better folding based on tree-sitter expr](https://www.reddit.com/r/neovim/comments/16xz3q9/treesitter_highlighted_folds_are_now_in_neovim/). Folding works, `foldtext` does not.
+
 
 
 ## Notes
