@@ -105,6 +105,7 @@ Useful features I would like to have one day.
 - `nvim`
   - why is wrap turned on for python by default, and off for markdown? it should be the opposite.
   - [better folding based on tree-sitter expr](https://www.reddit.com/r/neovim/comments/16xz3q9/treesitter_highlighted_folds_are_now_in_neovim/). Folding works, `foldtext` does not.
+  - no need to underline the current class – looks ugly. But, would be useful if a header appeared if the definition falls off-screen.
 
 
 
