@@ -69,7 +69,14 @@ Useful features I would like to have one day.
   - [ ] [Integrate with kitty](https://github.com/kovidgoyal/kitty/discussions/6529): `mosh kitten run-shell`
 
 ## TODO 
-- [ ] `stow` is not available by default on most machines; and I would like to be able to at least have my config files available regardless of superuser permissions. So, either embed `stow` in this repository, or write your own symlinking script. 
+
+- [ ] Change gruvbox colour scheme with rest of the OS
+  - [ ] `kitty`
+  - [ ] `nvim`: `set background=(light/dark)`
+  - [ ] `btop`
+  - [ ] `tmux`: only need to change the status bar.
+
+- [ ] `stow` is not available by default on most machines; and I would like to be able to at least have my config files available regardless of superuser permissions. So, either embed `stow` in this repository (a nightmare because of dependencies), or write your own symlinking script and enjoy the additional control when directories already exist.
 
 - [ ] let the user know which package is currently being installed, and show the already installed packages. 
 - `C-hjkl` for changing windows anywhere; while also keeping the original application keybinds in case anything goes awry.
