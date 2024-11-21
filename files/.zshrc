@@ -71,7 +71,6 @@ zstyle ':completion:*:descriptions' format %F{default}%B%{$__WINCENT[ITALIC_ON]%
 zstyle ':completion:*' menu select
 # End completion }}}
 # {{{ prompt
-
 if command -v brew > /dev/null; then 
   fpath+=("$(brew --prefix)/share/zsh/site-functions")
 fi
