@@ -39,6 +39,7 @@ Note, installing these dotfiles depends on the following:
 - [ ] `obsidian` for nicer `md` rendering. 
 - [ ] `arc` + iCloud passwords ext. (may want [Zen](https://zen-browser.app/) later)
 - [ ] `brew` installation needs to be done manually, may be nice to give an update.
+- [ ] allow ssh to machine & publish ip address to other devices: `sudo systemsetup -setremotelogin on` && `bin/checkip`. Also requires router-specific settings.
 
 ## SSH Features 
 Servers often have different OS, packages, and tooling available. These dotfiles try to make use of existing ones, and download additional packages when needed. 
