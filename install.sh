@@ -71,9 +71,10 @@ programs=(
   # tldr        # shorter manpages
 )
 
+# Applications to install on a fresh Mac
 casks=(
-  rectangle           # window management TODO: add keybindings
   karabiner-elements  # key remapping, for those dutch keyboards
+  mactex              # LaTeX compiler 
 )
 
 ## Onto the installation 
