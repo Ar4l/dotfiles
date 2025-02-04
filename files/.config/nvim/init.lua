@@ -168,6 +168,7 @@ require("lazy").setup({
       require("persisted").setup({ -- default settings on github, except for autoload
 
         autostart = true, -- Automatically start the plugin on load?
+        autoload = true, -- Automatically load the plugin on load?
 
         -- Function to determine if a session should be saved
         ---@type fun(): boolean
@@ -200,6 +201,18 @@ require("lazy").setup({
             branch = " ",
           },
         },
+				
+				-- when switching sessions, automatically save this one 
+				vim.api.nvim_create_autocmd("User", {
+					pattern = "PersistedTelescopeLoadPre",
+					callback = function(session)
+						-- Save the currently loaded session using the global variable
+						require("persisted").save({ session = vim.g.persisted_loaded_session })
+				
+						-- Delete all of the open buffers
+						vim.api.nvim_input("<ESC>:%bd!<CR>")
+					end,
+				})
       })
     end,
   },
@@ -271,7 +284,9 @@ require("lazy").setup({
         --# customize highlight groups (setting this overrides colorscheme)
         --# any parameters of nvim_set_hl() can be passed as-is
         snipruncolors = {
-          SniprunVirtualTextOk   =  {bg="#66eeff", fg="#000000", ctermbg="Cyan", ctermfg="Black"},
+          -- SniprunVirtualTextOk   =  {bg="#66eeff", fg="#000000", ctermbg="Cyan", ctermfg="Black"},
+          -- SniprunFloatingWinOk   =  {fg="#66eeff", ctermfg="Cyan"},
+          SniprunVirtualTextOk   =  {bg="#32302f", fg="#a79a84", ctermbg="Gray", ctermfg="White"},
           SniprunFloatingWinOk   =  {fg="#66eeff", ctermfg="Cyan"},
           SniprunVirtualTextErr  =  {bg="#881515", fg="#000000", ctermbg="DarkRed", ctermfg="Black"},
           SniprunFloatingWinErr  =  {fg="#881515", ctermfg="DarkRed", bold=true},
@@ -289,8 +304,17 @@ require("lazy").setup({
             
       })
 
+			-- run a single line
       vim.api.nvim_set_keymap('v', '<leader>r', '<Plug>SnipRun', {silent = true})
       vim.api.nvim_set_keymap('n', '<leader>r', '<Plug>SnipRun', {silent = true})
+
+		-- hard reset with space+R
+      vim.api.nvim_set_keymap('n', '<leader>R', '<Plug>SnipReplMemoryClean <Plug>SnipReset <Plug>SnipClose', {silent = true})
+		-- run above
+      vim.api.nvim_set_keymap('n', '<leader>k', '<Esc>k$vgg0<Plug>SnipRun <C-o>j', {silent = true})
+		-- run next para and move down
+      vim.api.nvim_set_keymap('n', '<leader>j', '<Esc>vap<Plug>SnipRun }', {silent = true})
+		-- space-f + movement (h,j,k, }, {, ...) to run the selection
       vim.api.nvim_set_keymap('n', '<leader>f', '<Plug>SnipRunOperator', {silent = true})
 
       -- enable running the following languages in markdown
