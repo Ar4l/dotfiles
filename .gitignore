@@ -3,3 +3,6 @@
 plug.vim
 plugged/
 
+# don't care too much about small changes to btop
+files/.config/btop/
+
