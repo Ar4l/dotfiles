@@ -881,29 +881,29 @@ require("lazy").setup({
   },
 
   -- Aru left no documentation for this, and I can't find it
-  {
-    dir = "vim.diagnostics",
-    init = function()
-      local opts = { noremap = true, silent = true }
-    vim.keymap.set("n", "<leader>e", vim.diagnostic.open_float, opts)
-      vim.keymap.set("n", "[d", vim.diagnostic.goto_prev, opts)
-      vim.keymap.set("n", "]d", vim.diagnostic.goto_next, opts)
-      vim.keymap.set("n", "<leader>q", vim.diagnostic.setloclist, opts)
-      vim.diagnostic.config({
-        float = { border = "rounded" },
-        -- only show signs, underline & virtual text for errors
-        signs = { severity = vim.diagnostic.severity.ERROR },
-        underline = { severity = vim.diagnostic.severity.ERROR },
-        virtual_text = { severity = vim.diagnostic.severity.ERROR },
-      })
-      -- better diagnostics signs (taken from wincent)
-      local signs = { Error = "✖", Warn = "⚠", Hint = "➤", Info = "ℹ" }
-      for type, icon in pairs(signs) do
-        local hl = "DiagnosticSign" .. type
-        vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = hl })
-      end
-    end,
-  },
+  -- {
+  --   dir = "vim.diagnostics",
+  --   init = function()
+  --     local opts = { noremap = true, silent = true }
+  --   vim.keymap.set("n", "<leader>e", vim.diagnostic.open_float, opts)
+  --     vim.keymap.set("n", "[d", vim.diagnostic.goto_prev, opts)
+  --     vim.keymap.set("n", "]d", vim.diagnostic.goto_next, opts)
+  --     vim.keymap.set("n", "<leader>q", vim.diagnostic.setloclist, opts)
+  --     vim.diagnostic.config({
+  --       float = { border = "rounded" },
+  --       -- only show signs, underline & virtual text for errors
+  --       signs = { severity = vim.diagnostic.severity.ERROR },
+  --       underline = { severity = vim.diagnostic.severity.ERROR },
+  --       virtual_text = { severity = vim.diagnostic.severity.ERROR },
+  --     })
+  --     -- better diagnostics signs (taken from wincent)
+  --     local signs = { Error = "✖", Warn = "⚠", Hint = "➤", Info = "ℹ" }
+  --     for type, icon in pairs(signs) do
+  --       local hl = "DiagnosticSign" .. type
+  --       vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = hl })
+  --     end
+  --   end,
+  -- },
 
   {
     "echasnovski/mini.nvim",
@@ -939,3 +939,14 @@ vim.cmd([[set wrap!]])
 -- Let's put a soft visual indicator that we're in nvim and not vim
 -- i.e. gruvbox-material instead of gruvbox
 vim.cmd([[colorscheme gruvbox-material]])
+
+-- Dont show fucking lsp messages unless they are errors 
+-- because I don't agree with your arbitrary rules that 
+-- differ per lsp client.
+vim.diagnostic.config({
+  -- only show signs, underline & virtual text for errors
+  signs = { severity = vim.diagnostic.severity.ERROR },
+  underline = { severity = vim.diagnostic.severity.ERROR },
+  virtual_text = { severity = vim.diagnostic.severity.ERROR },
+})
+
