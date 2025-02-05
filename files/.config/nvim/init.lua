@@ -135,7 +135,24 @@ end
 vim.opt.rtp:prepend(lazypath)
 
 require("lazy").setup({
-  {                     -- Useful plugin to show you pending keybinds.
+
+  { 
+    -- ai code completions baby
+    'ggml-org/llama.vim',
+
+    -- see opts with :help llama_config
+    init = function()
+
+      -- Change colors (doesn't seem to fucking work)
+      -- No clue where this came from; same as sniprun fg 
+      vim.api.nvim_set_hl(0, "llama_hl_hint", {fg = "#a79a84", ctermfg=209})
+      -- Gruvbox Material Dark Medium: grey0 
+      vim.api.nvim_set_hl(0, "llama_hl_info", {fg = "#7c6f64", ctermfg=119})
+    end,
+  },
+
+  {                     
+    -- Useful plugin to show you pending keybinds.
     "folke/which-key.nvim",
     event = "VimEnter", -- Sets the loading event to 'VimEnter'
     config = function() -- This is the function that runs, AFTER loading
@@ -284,8 +301,9 @@ require("lazy").setup({
         --# customize highlight groups (setting this overrides colorscheme)
         --# any parameters of nvim_set_hl() can be passed as-is
         snipruncolors = {
-          -- SniprunVirtualTextOk   =  {bg="#66eeff", fg="#000000", ctermbg="Cyan", ctermfg="Black"},
-          -- SniprunFloatingWinOk   =  {fg="#66eeff", ctermfg="Cyan"},
+
+          -- Virtual text is displayed inline 
+          -- Floating window is displayed in a floating window
           SniprunVirtualTextOk   =  {bg="#32302f", fg="#a79a84", ctermbg="Gray", ctermfg="White"},
           SniprunFloatingWinOk   =  {fg="#66eeff", ctermfg="Cyan"},
           SniprunVirtualTextErr  =  {bg="#881515", fg="#000000", ctermbg="DarkRed", ctermfg="Black"},
@@ -862,6 +880,7 @@ require("lazy").setup({
     end,
   },
 
+  -- Aru left no documentation for this, and I can't find it
   {
     dir = "vim.diagnostics",
     init = function()
