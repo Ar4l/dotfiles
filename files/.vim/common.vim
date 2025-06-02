@@ -150,10 +150,11 @@ set foldlevelstart=20
 
 " Tab with 2 spaces, because I'm an adult who minds his indentation.
 " Use editorconfig, which ships with vim >= 9.0.1799 and nvim >= 0.9.
-set softtabstop=2
-set shiftwidth=2
-set noexpandtab
-set smarttab
+set tabstop=4
+set shiftwidth=4
+set expandtab
+" set smarttab
+
 if !has('nvim')
   silent! packadd editorconfig
 endif

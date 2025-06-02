@@ -72,9 +72,6 @@ vim.opt.smartcase = true
 vim.opt.infercase = true
 
 -- vim.opt.textwidth = 70   -- hardwrap sentences at given length
--- vim.opt.expandtab = true -- use spaces to indent (not tabs)
-vim.opt.tabstop = 4      -- width of a tab
-vim.opt.shiftwidth = 4   -- width when shifting text
 vim.opt.termguicolors = true
 -- vim.opt.spellfile = "~/.vim/spell/en.utf-8.add"
 -- vim.opt.spelllang = "en"
