@@ -341,8 +341,6 @@ require("lazy").setup({
     end,
   },
 
-  { "meain/vim-printer" },  -- # <leader> p to quickly insert a print statement
-
   {
     "nvim-lualine/lualine.nvim",
     dependencies = {

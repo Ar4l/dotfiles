@@ -39,7 +39,13 @@ nmap <leader>p :bp<cr>
 noremap <CR> o<esc>
 noremap <S-CR> O<esc>j
 
+" Yank rel path 
+nmap yp :let @+ = expand('%')<cr>
 
+" Yank abs path
+nmap yP :let @+ = expand('%:p')<cr>
+ 
+ 
 if (has("termguicolors")) " If this vim version supports it,
   set termguicolors       " use a full 24-bit color theme (16M colours)
 endif
