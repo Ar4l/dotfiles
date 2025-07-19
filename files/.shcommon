@@ -30,3 +30,4 @@ if [[ -d ~/.local/bin ]]; then
   PATH=~/.local/bin:$PATH
 fi
 
+export PYTHONSTARTUP="$HOME/.config/python/startup.py"
