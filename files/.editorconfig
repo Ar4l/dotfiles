@@ -7,6 +7,10 @@ indent_style = space
 indent_size = 2
 tab_width = 2
 
+[*.md]
+tab_width = 4
+indent_size = 4
+
 [*.py]
 indent_style = space
 tab_width = 4
