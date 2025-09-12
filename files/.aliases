@@ -41,7 +41,7 @@ export research='/Users/Aral/Aral/Delft/YEAR 4'
 export rp="/Users/Aral/Aral/Delft/YEAR 3/0 RESEARCH PROJECT/LLM4CodeCompression"
 
 export ml="/Users/Aral/Desktop/Music Library"
-export brain="/Users/Aral/Library/Mobile Documents/iCloud~md~obsidian/Documents/Brain 2.0"
+export brain="/Users/$USER/Library/Mobile Documents/iCloud~md~obsidian/Documents/Brain 2.0"
 export dev='/Users/Aral/Aral/Dev'
 
 if [ -x /usr/bin/dircolors ]; then

@@ -81,3 +81,5 @@
 
 [help]
   autocorrect = 10 ; auto-correct command after 1 second
+[apply]
+	whitespace = fix

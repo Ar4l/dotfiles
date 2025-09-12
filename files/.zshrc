@@ -337,3 +337,9 @@ zstyle ':chpwd:*' recent-dirs-default true
 
 
 
+
+# The next line updates PATH for the Google Cloud SDK.
+if [ -f '/Users/Aral.De.Moor/Downloads/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/Aral.De.Moor/Downloads/google-cloud-sdk/path.zsh.inc'; fi
+
+# The next line enables shell command completion for gcloud.
+if [ -f '/Users/Aral.De.Moor/Downloads/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/Aral.De.Moor/Downloads/google-cloud-sdk/completion.zsh.inc'; fi

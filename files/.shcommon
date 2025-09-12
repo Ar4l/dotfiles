@@ -30,4 +30,8 @@ if [[ -d ~/.local/bin ]]; then
   PATH=~/.local/bin:$PATH
 fi
 
+# Handy python functions
 export PYTHONSTARTUP="$HOME/.config/python/startup.py"
+
+# Use better-featured BuildKit (not fully backwards-compatible)
+export BUILDKIT=1
