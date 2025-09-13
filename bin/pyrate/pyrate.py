@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-import pickle, fire, subprocess, os, requests, tabulate
-from dataclasses import dataclass
+import os, logging, pickle, fire, subprocess, requests, tabulate, dataclasses as dc
 
-@dataclass
+@dc.dataclass
 class Data:
-    library_path: str = None    # path to music library
-    playlists: dict = None      # { name: url }
+    library_path: str | None = None    # path to music library
+    playlists: dict | None = None      # { name: url }
 
+logging.basicConfig(level=logging.ERROR)
 
 class Pyrate(object):
     '''
