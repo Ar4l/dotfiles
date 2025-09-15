@@ -34,4 +34,4 @@ fi
 export PYTHONSTARTUP="$HOME/.config/python/startup.py"
 
 # Use better-featured BuildKit (not fully backwards-compatible)
-export BUILDKIT=1
+export DOCKER_BUILDKIT=1

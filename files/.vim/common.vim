@@ -64,7 +64,9 @@ if has('mouse')
   " map <ScrollWheelDown> <C-E>
 endif
 
-set scrolloff=4 " n lines to keep around the cursor
+set autowriteall      " Auto-save files
+
+set scrolloff=2 " n lines to keep around the cursor
 
 if has('balloonevalterm') " not included by default on MacOS, nor nvim
   set balloonevalterm " display info where mouse is pointing (no usage tho)

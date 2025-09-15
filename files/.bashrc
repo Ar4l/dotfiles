@@ -65,3 +65,4 @@ paths=("$HOME/dotfiles/bin")
 source "$HOME/.bashrc.dumb"
 source "$HOME/.bashrc.xterm"
 
+. "$HOME/.cargo/env"
