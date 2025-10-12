@@ -148,6 +148,17 @@ require("lazy").setup({
     end,
   },
 
+  {
+    "lervag/vimtex",
+    lazy = false,
+    config = function()
+      vim.g.vimtex_view_method = "skim"
+      vim.g.vimtex_compiler_method = "latexmk"
+      vim.g.vimtex_view_skim_sync = 1
+      vim.g.vimtex_view_skim_activate = 1
+    end,
+  },
+
   {                     
     -- Useful plugin to show you pending keybinds.
     "folke/which-key.nvim",
@@ -738,6 +749,9 @@ require("lazy").setup({
       --    for various frameworks/libraries/etc. but you will have to
       --    set up the ones that are useful for you.
       -- 'rafamadriz/friendly-snippets',
+
+      -- vimtex requires another package to expose the completions 
+      'micangl/cmp-vimtex',
     },
     config = function()
       -- See `:help cmp`
@@ -796,6 +810,7 @@ require("lazy").setup({
           { name = "nvim_lsp" },
           { name = "luasnip" },
           { name = "path" },
+          { name = "vimtex" },
         },
       })
     end,
