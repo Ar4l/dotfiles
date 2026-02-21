@@ -46,12 +46,6 @@ vim.opt.wildmode = "longest:full,full"
 --   vert = "┃", -- BOX DRAWINGS HEAVY VERTICAL (U+2503, UTF-8: E2 94 83)
 -- }
 
--- fold using treesitter expressions
-vim.opt.foldmethod = 'expr'
-vim.opt.foldexpr = "v:lua.vim.treesitter.foldexpr()"
-vim.opt.foldtext = "v:lua.vim.treesitter.foldtext()"
-
-vim.opt.foldlevelstart = 99
 vim.opt.linebreak = true
 vim.opt.breakindent = false
 vim.opt.smarttab = true
@@ -65,7 +59,6 @@ vim.opt.modelineexpr = true
 vim.opt.concealcursor = vim.opt.concealcursor + "i"
 vim.opt.concealcursor = vim.opt.concealcursor + "n"
 vim.opt.concealcursor = vim.opt.concealcursor + "c"
-vim.opt.cursorline = true
 vim.opt.ruler = true
 vim.opt.ignorecase = true
 vim.opt.smartcase = true
@@ -133,8 +126,24 @@ vim.opt.rtp:prepend(lazypath)
 
 require("lazy").setup({
 
-  { 
-    -- ai code completions baby
+  { -- Highlight, edit, and navigate code
+    "nvim-treesitter/nvim-treesitter",
+    lazy = false,
+    build = ":TSUpdate",
+
+    config = function()
+      vim.api.nvim_create_autocmd('FileType', {
+        pattern = { 'python' },
+        callback = function() 
+          vim.treesitter.start() 
+          vim.wo[0][0].foldexpr = 'v:lua.vim.treesitter.foldexpr()'
+          vim.wo[0][0].foldmethod = 'expr'
+        end,
+      })
+    end,
+  },
+
+  { -- ai code completions baby
     'ggml-org/llama.vim',
 
     -- see opts with :help llama_config
@@ -148,7 +157,7 @@ require("lazy").setup({
     end,
   },
 
-  {
+  { -- compile tex from vim 
     "lervag/vimtex",
     lazy = false,
     config = function()
@@ -159,8 +168,7 @@ require("lazy").setup({
     end,
   },
 
-  {                     
-    -- Useful plugin to show you pending keybinds.
+  { -- Useful plugin to show you pending keybinds.                    
     "folke/which-key.nvim",
     event = "VimEnter", -- Sets the loading event to 'VimEnter'
     config = function() -- This is the function that runs, AFTER loading
@@ -181,12 +189,14 @@ require("lazy").setup({
   { "lewis6991/gitsigns.nvim", opts = {} },
 
   -- navigation within kitty/tmux 
-  { 'NikoKS/kitty-vim-tmux-navigator', lazy = false },
+  -- doesn't work as advertised, i use vim inside tmux inside kitty which isn't supported...
+  -- { 'NikoKS/kitty-vim-tmux-navigator', lazy = false },
+
   -- themes
   { "ellisonleao/gruvbox.nvim", priority = 1000 , config = true, opts = ...},
   { "sainnhe/gruvbox-material", priority = 1000},
 
-  {
+  { -- persist session
     "olimorris/persisted.nvim",
     lazy = false, -- make sure the plugin is always loaded at startup
     config = function() 
@@ -242,7 +252,7 @@ require("lazy").setup({
     end,
   },
 
-  {
+  { -- sniprun: run parts of your python file by shipping to an interpreter
     "michaelb/sniprun",
     branch = "master",
 
@@ -349,7 +359,7 @@ require("lazy").setup({
     end,
   },
 
-  {
+  { -- Statusline written in lua
     "nvim-lualine/lualine.nvim",
     dependencies = {
       -- "nvim-tree/nvim-web-devicons",
@@ -375,7 +385,7 @@ require("lazy").setup({
   { -- Fuzzy Finder (files, lsp, etc)
     "nvim-telescope/telescope.nvim",
     event = "VimEnter",
-    branch = "0.1.x",
+    -- branch = "0.1.x",
     dependencies = {
       "nvim-lua/plenary.nvim",
       { -- If encountering errors, see telescope-fzf-native README for install instructions
@@ -524,11 +534,7 @@ require("lazy").setup({
       vim.api.nvim_create_autocmd("LspAttach", {
         group = vim.api.nvim_create_augroup("kickstart-lsp-attach", { clear = true }),
         callback = function(event)
-          -- NOTE: Remember that lua is a real programming language, and as such it is possible
-          -- to define small helper and utility functions so you don't have to repeat yourself
-          -- many times.
-          --
-          -- In this case, we create a function that lets us more easily define mappings specific
+          -- function that lets us more easily define mappings specific
           -- for LSP related items. It sets the mode, buffer and description for us each time.
           local map = function(keys, func, desc)
             vim.keymap.set("n", keys, func, { buffer = event.buf, desc = "LSP: " .. desc })
@@ -852,30 +858,6 @@ require("lazy").setup({
     end,
   },
 
-  { -- Highlight, edit, and navigate code
-    "nvim-treesitter/nvim-treesitter",
-    build = ":TSUpdate",
-    config = function()
-      -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
-
-      ---@diagnostic disable-next-line: missing-fields
-      require("nvim-treesitter.configs").setup({
-        ensure_installed = { "bash", "c", "html", "lua", "markdown", "vim", "vimdoc", "python" },
-        -- Autoinstall languages that are not installed
-        auto_install = true,
-        highlight = { enable = true },
-        indent = { enable = true },
-      })
-
-      -- There are additional nvim-treesitter modules that you can use to interact
-      -- with nvim-treesitter. You should go explore a few and see what interests you:
-      --
-      --    - Incremental selection: Included, see `:help nvim-treesitter-incremental-selection-mod`
-      --    - Show your current context: https://github.com/nvim-treesitter/nvim-treesitter-context
-      --    - Treesitter + textobjects: https://github.com/nvim-treesitter/nvim-treesitter-textobjects
-    end,
-  },
-
   {
     "nvim-tree/nvim-tree.lua",
     init = function()
@@ -889,31 +871,6 @@ require("lazy").setup({
       vim.keymap.set("n", "<leader>b", ":NvimTreeToggle<cr>")
     end,
   },
-
-  -- Aru left no documentation for this, and I can't find it
-  -- {
-  --   dir = "vim.diagnostics",
-  --   init = function()
-  --     local opts = { noremap = true, silent = true }
-  --   vim.keymap.set("n", "<leader>e", vim.diagnostic.open_float, opts)
-  --     vim.keymap.set("n", "[d", vim.diagnostic.goto_prev, opts)
-  --     vim.keymap.set("n", "]d", vim.diagnostic.goto_next, opts)
-  --     vim.keymap.set("n", "<leader>q", vim.diagnostic.setloclist, opts)
-  --     vim.diagnostic.config({
-  --       float = { border = "rounded" },
-  --       -- only show signs, underline & virtual text for errors
-  --       signs = { severity = vim.diagnostic.severity.ERROR },
-  --       underline = { severity = vim.diagnostic.severity.ERROR },
-  --       virtual_text = { severity = vim.diagnostic.severity.ERROR },
-  --     })
-  --     -- better diagnostics signs (taken from wincent)
-  --     local signs = { Error = "✖", Warn = "⚠", Hint = "➤", Info = "ℹ" }
-  --     for type, icon in pairs(signs) do
-  --       local hl = "DiagnosticSign" .. type
-  --       vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = hl })
-  --     end
-  --   end,
-  -- },
 
   {
     "echasnovski/mini.nvim",
@@ -959,4 +916,3 @@ vim.diagnostic.config({
   underline = { severity = vim.diagnostic.severity.ERROR },
   virtual_text = { severity = vim.diagnostic.severity.ERROR },
 })
-

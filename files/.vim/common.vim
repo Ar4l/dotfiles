@@ -39,6 +39,12 @@ nmap <leader>p :bp<cr>
 noremap <CR> o<esc>
 noremap <S-CR> O<esc>j
 
+" focus panes with ctrl-hjkl
+noremap <C-h> <C-w>h
+noremap <C-j> <C-w>j
+noremap <C-k> <C-w>k
+noremap <C-l> <C-w>l
+
 " Yank rel path 
 nmap yp :let @+ = expand('%')<cr>
 
@@ -146,6 +152,14 @@ set fillchars=diff:∙      " deleted lines of diff option
 set fillchars+=fold:∙     " filling foldtext
 set fillchars+=eob:       " eol below end of the buffer
 set fillchars+=vert:┃     " vertical pane separator
+
+" highlight current line when focused
+set cursorline
+augroup CursorLineControl
+  autocmd!
+  autocmd WinEnter * setlocal cursorline
+  autocmd WinLeave * setlocal nocursorline
+augroup END
 
 " start UNfolded
 set foldlevelstart=20
