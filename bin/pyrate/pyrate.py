@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, logging, pickle, fire, subprocess, requests, tabulate, dataclasses as dc
+import os, logging, re, pickle, fire, subprocess, requests, tabulate, dataclasses as dc
 
 @dc.dataclass
 class Data:
@@ -42,9 +42,9 @@ class Pyrate(object):
             track_count = len(open(m3u_file, 'r').readlines()) \
                 if os.path.isfile(m3u_file) \
                 else '\033[1;31mmissing\033[0m'
-            hyperlinked_name = f'\x1b]8;;{url}\x1b\\\033[1m{pl:.35}\033[0m\x1b]8;;\x1b\\'
+            # hyperlinked_name = f'\x1b]8;;{url}\x1b\\\033[1m{pl:.35}\033[0m\x1b]8;;\x1b\\'
 
-            return [track_count, hyperlinked_name]
+            return [track_count, pl]
 
         print(tabulate.tabulate(
             [get_info(*pl_item) for index, pl_item in enumerate(self._metadata.playlists.items())],
@@ -54,25 +54,25 @@ class Pyrate(object):
 
         print() # add a newline for cleanliness
 
-    def get(self, url):
+    def get(self, url, block=False):
         '''
         provided a playlist url, get it from the appropriate source
         '''
 
-        # first, assert that the user does not have the playlist saved already, by checking its url
-        for name, playlist_url in self._metadata.playlists.items():
-            if playlist_url == url:
-                print(f'Playlist {name} already exists in metadata. Just sync it.')
-                return
+        # # first, assert that the user does not have the playlist saved already, by checking its url
+        # for name, playlist_url in self._metadata.playlists.items():
+        #     if playlist_url == url:
+        #         print(f'Playlist {name} already exists in metadata. Just sync it.')
+        #         return
 
         if 'spotify' in url:
-            self._get_spotify_playlist(url)
+            self._get_spotify_playlist(url, block=block)
         elif 'youtube' in url:
             print('fetching from youtube')
             self._get_youtube_song(url)
         elif 'soundcloud' in url:
             print('fetching from soundcloud')
-            self._get_soundcloud_song(url)
+            self._get_soundcloud_playlist(url)
 
     def sync(self, playlist_input=None):
         '''
@@ -91,11 +91,11 @@ class Pyrate(object):
 
         if opt_all:
             for name, url in self._metadata.playlists.items():
-                self._get_spotify_playlist(url, name, block=True)
+                self.get(url, block=True)
         elif opt_name:
-            self._get_spotify_playlist(self._metadata.playlists[playlist_input], playlist_input, block=True)
+            self.get(self._metadata.playlists[playlist_input], block=True)
         elif opt_index:
-            self._get_spotify_playlist(list(self._metadata.playlists.values())[int(playlist_input)], list(self._metadata.playlists.keys())[int(playlist_input)], block=True)
+            self.get(list(self._metadata.playlists.values())[int(playlist_input)], block=True)
         else:
             print('Invalid input. Please try again.')
             return
@@ -198,11 +198,17 @@ class Pyrate(object):
 
         # call spotdl to download the playlist
         #    sync <url> --format m4a --save-file <pl_name>.spotdl --m3u <pl_name>.m3u
-        p = subprocess.Popen(f'''
-            spotdl sync {url} --format m4a --save-file '{name}.spotdl' --m3u '{name}.m3u' --threads 16
-            '''.strip(),
-            shell=True,
-        )
+        # cmd = f'''
+        #     spotdl sync {url} --format m4a --save-file '{name}.spotdl' --m3u '{name}.m3u' 
+        # '''.strip()
+
+        # the above causes rate limit atm for some reason, but there is also no more need 
+        # for a sync save file (or at least, duplicates aren't downloaded)
+        cmd = f'''
+            spotdl {url} --format m4a --m3u '{name}.m3u' 
+        '''.strip()
+
+        p = subprocess.Popen(cmd, shell=True)
         if block: p.wait()
 
     def _get_youtube_song(self, url):
@@ -212,12 +218,55 @@ class Pyrate(object):
         print('TODO')
         pass
 
-    def _get_soundcloud_song(self, url):
+    def _get_soundcloud_playlist(self, url):
         '''
         get a soundcloud song and add to 'soundcloud' playlist
         '''
-        print('TODO')
-        pass
+        if '?' in url:
+            url = url.split('?')[0]
+
+        name = os.path.join(
+            os.path.basename(os.path.dirname(os.path.dirname(url))), # user
+            os.path.basename(url)   # playlist name
+        )
+
+        # add playlist to metadata
+        self._metadata.playlists[name] = url
+        self._save_metadata()
+
+        playlist_path = os.path.join(
+            self._metadata.library_path, 
+            self.SOUNDCLOUD_FOLDER, 
+            name,
+        )
+        os.makedirs(playlist_path, exist_ok=True)
+        os.chdir(playlist_path)
+        m3u_file = f'{os.path.basename(name)}.m3u'
+
+        cmd = fr'''
+            yt-dlp \
+                -o "%(title)s.mp3" \
+                --print-to-file "%(title)s.mp3" "{m3u_file}" \
+                --download-archive downloaded.txt \
+                -x --audio-format mp3 \
+                {url}
+        '''.strip()
+        subprocess.run(cmd, shell=True)
+
+        # need to cleanup files and m3u file 
+        # regex = r"[^a-zA-Z0-9()\[\] \*-.]"
+        regex = r'[\/*＊]'
+        for filename in os.listdir(playlist_path):
+            if filename.endswith('flac'):
+                new_name = re.sub(regex, '', filename)
+                new_path = os.path.join(playlist_path, new_name)
+                os.rename(f'{playlist_path}/{filename}', new_path)
+
+        with open(m3u_file) as f:
+            m3u_contents = ''.join(re.sub(regex, '', line) for line in f.readlines())
+
+        with open(m3u_file, 'w') as f:
+            f.write(m3u_contents)
 
     def _load_metadata(self, metadata_path):
 
