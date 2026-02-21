@@ -33,7 +33,9 @@ Plug 'mileszs/ack.vim'                  " for the day I learn how to use ack
 " Plug 'easymotion/vim-easymotion'
 
 " Kitty integration
-Plug 'NikoKS/kitty-vim-tmux-navigator' 			" Navigation with Ctrl+hjkl
+" Plug 'NikoKS/kitty-vim-tmux-navigator' 			" Navigation with Ctrl+hjkl
+" " this only works two-layers deep, 
+" " i.e. doesn't work in kitty -> tmux -> vim as i use my term
 Plug 'sainnhe/gruvbox-material'					" match with kitty (easy on eyes)
 
 " Aru's recommendations
