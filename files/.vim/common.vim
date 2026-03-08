@@ -121,6 +121,8 @@ au Filetype * :setl fo-=o
 "" OPTIONS
 " never, ever modify the text when wrapping it.
 set textwidth=0
+" except in markdown
+autocmd FileType markdown setlocal textwidth=70
 
 " see :h sortmess for more info
 set shortmess=a " short for shortmess=filmnrwx

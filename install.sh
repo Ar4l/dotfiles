@@ -69,6 +69,9 @@ programs=(
   # fzf         # fuzzy find 
   # glow        # CLI markdown renderer https://github.com/charmbracelet/glow
   # tldr        # shorter manpages
+
+  zoxide        # better cd (requires fzf) https://github.com/ajeetdsouza/zoxide 
+  eza           # better ls 
 )
 
 # Applications to install on a fresh Mac

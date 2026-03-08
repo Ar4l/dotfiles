@@ -336,6 +336,8 @@ zstyle ':completion:*:*:cdr:*:*' menu selection
 zstyle ':chpwd:*' recent-dirs-default true
 
 
+# Add zoxide 
+eval "$(zoxide init zsh)"
 
 
 # The next line updates PATH for the Google Cloud SDK.
