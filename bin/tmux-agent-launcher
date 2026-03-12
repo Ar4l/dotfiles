@@ -1,0 +1,103 @@
+#!/bin/zsh
+
+set -eu
+
+readonly SCRIPT_PATH="${HOME}/dotfiles/bin/tmux-agent-launcher"
+readonly LLAMA_MODEL="${HOME}/Library/Caches/llama.cpp/Qwen_Qwen3-Coder-Next-GGUF_Qwen3-Coder-Next-Q4_K_M_Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf"
+readonly LLAMA_ALIAS="qwen3-coder-next"
+readonly LLAMA_LOG="/tmp/llama-server-qwen3-coder-next.log"
+readonly MINI_CONFIG="${HOME}/.config/mini-swe-agent/qwen3-coder-next.yaml"
+
+shell_quote() {
+  printf "%q" "$1"
+}
+
+show_tool_menu() {
+  local cwd="$1"
+  local pane_id="$2"
+  local cwd_q pane_q
+  cwd_q="$(shell_quote "$cwd")"
+  pane_q="$(shell_quote "$pane_id")"
+
+  tmux display-menu -T "Agent tool" \
+    "claude" c "run-shell '/bin/zsh $SCRIPT_PATH target claude $cwd_q $pane_q'" \
+    "codex" o "run-shell '/bin/zsh $SCRIPT_PATH target codex $cwd_q $pane_q'" \
+    "mini" m "run-shell '/bin/zsh $SCRIPT_PATH target mini $cwd_q $pane_q'"
+}
+
+show_target_menu() {
+  local tool="$1"
+  local cwd="$2"
+  local pane_id="$3"
+  local cwd_q pane_q
+  cwd_q="$(shell_quote "$cwd")"
+  pane_q="$(shell_quote "$pane_id")"
+
+  tmux display-menu -T "Launch $tool" \
+    "new vsplit" v "run-shell '/bin/zsh $SCRIPT_PATH launch $tool vsplit $cwd_q $pane_q'" \
+    "tab" t "run-shell '/bin/zsh $SCRIPT_PATH launch $tool tab $cwd_q $pane_q'"
+}
+
+agent_command() {
+  case "$1" in
+    claude)
+      printf "%s" "/bin/zsh -lc 'exec /opt/homebrew/bin/claude'"
+      ;;
+    codex)
+      printf "%s" "/bin/zsh -lc 'exec /opt/homebrew/bin/codex'"
+      ;;
+    mini)
+      local model_q config_q log_q alias_q
+      model_q="$(shell_quote "$LLAMA_MODEL")"
+      config_q="$(shell_quote "$MINI_CONFIG")"
+      log_q="$(shell_quote "$LLAMA_LOG")"
+      alias_q="$(shell_quote "$LLAMA_ALIAS")"
+      printf "%s" "/bin/zsh -lc 'if ! pgrep -f -- \"llama-server.*--alias ${alias_q}\" >/dev/null 2>&1; then nohup /opt/homebrew/bin/llama-server -m ${model_q} --verbose --verbose-prompt --alias ${alias_q} --jinja > ${log_q} 2>&1 & fi; until curl -sf http://127.0.0.1:8080/v1/models >/dev/null 2>&1; do sleep 1; done; exec \"${HOME}/.local/bin/mini\" -c ${config_q}'"
+      ;;
+    *)
+      tmux display-message "Unknown agent tool: $1"
+      return 1
+      ;;
+  esac
+}
+
+launch_agent() {
+  local tool="$1"
+  local target="$2"
+  local cwd="$3"
+  local pane_id="$4"
+  local cmd
+  cmd="$(agent_command "$tool")"
+
+  case "$target" in
+    vsplit)
+      tmux split-window -h -c "$cwd" "$cmd"
+      tmux select-pane -T "$tool"
+      ;;
+    tab)
+      tmux new-window -c "$cwd" -n "$tool" "$cmd"
+      ;;
+    *)
+      tmux display-message "Unknown launch target: $target"
+      return 1
+      ;;
+  esac
+
+  tmux display-message "Launched $tool in $target"
+}
+
+case "${1:-}" in
+  open)
+    show_tool_menu "${2:?cwd is required}" "${3:?pane_id is required}"
+    ;;
+  target)
+    show_target_menu "${2:?tool is required}" "${3:?cwd is required}" "${4:?pane_id is required}"
+    ;;
+  launch)
+    launch_agent "${2:?tool is required}" "${3:?target is required}" "${4:?cwd is required}" "${5:?pane_id is required}"
+    ;;
+  *)
+    echo "usage: $SCRIPT_PATH {open|target|launch} ..." >&2
+    exit 1
+    ;;
+esac
