@@ -16,6 +16,10 @@
 .history/
 .devcontainer/
 
+# agent tooling
+**/.claude/settings.local.json
+.claude/
+
 # python
 __pycache__/
 *.pyc
