@@ -20,6 +20,7 @@
   b = branch
   ac = commit -am
   l = log --graph --oneline --decorate -n 7
+  dl = log --pretty=format:'%C(yellow)%h%Creset %C(dim)%<(12,trunc)%ad%Creset %C(auto)%d%Creset %s %C(dim yellow)%aN%Creset' --date=relative --decorate -n 7 --graph
   aa = commit --all --amend
   ad = !sh -c 'cd -- ${GIT_PREFIX:-.} && git add -- "$@" && git status' --
   branches = for-each-ref --sort=-committerdate --format=\"%(color:blue)%(authordate:relative)\t%(color:red)%(authorname)\t%(color:white)%(color:bold)%(refname:short)\" refs/remotes
