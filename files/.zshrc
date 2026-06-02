@@ -345,3 +345,7 @@ if [ -f '/Users/Aral.De.Moor/Downloads/google-cloud-sdk/path.zsh.inc' ]; then . 
 
 # The next line enables shell command completion for gcloud.
 if [ -f '/Users/Aral.De.Moor/Downloads/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/Aral.De.Moor/Downloads/google-cloud-sdk/completion.zsh.inc'; fi
+
+# The next line updates PATH for YDB CLI.
+if [ -f '/Users/Aral.De.Moor/ydb/path.bash.inc' ]; then source '/Users/Aral.De.Moor/ydb/path.bash.inc'; fi
+
