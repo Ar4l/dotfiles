@@ -280,3 +280,44 @@ alias nv='watch -d -n "10" nvidia-smi'
 
 alias gis='git status'
 alias giff='git diff'
+
+# cd into a git worktree by branch name; `cwt -` jumps back to the previous worktree
+cwt() {
+  local target
+  if [ "$1" = "-" ]; then
+    target="$OLDWT"
+  else
+    target="$(git worktree list --porcelain | awk -v b="$1" '
+      /^worktree / {path=$2}
+      $0 == "branch refs/heads/" b {print path; exit}
+    ')"
+  fi
+  OLDWT="$PWD"
+  cd "$target"
+}
+
+_cwt_branches() {
+  git worktree list --porcelain 2>/dev/null \
+    | awk '/^branch refs\/heads\//{sub(/^branch refs\/heads\//,""); print}'
+}
+
+if [ -n "$ZSH_VERSION" ]; then
+  _cwt() {
+    local -a branches
+    branches=(${(f)"$(_cwt_branches)"})
+    compadd "$@" -- $branches
+  }
+  # compdef requires compinit, which hasn't run yet when .aliases is sourced;
+  # defer via a one-shot precmd hook that fires after compinit completes.
+  autoload -Uz add-zsh-hook
+  _cwt_register() {
+    compdef _cwt cwt
+    add-zsh-hook -d precmd _cwt_register
+  }
+  add-zsh-hook precmd _cwt_register
+elif [ -n "$BASH_VERSION" ]; then
+  _cwt_complete() {
+    COMPREPLY=($(compgen -W "$(_cwt_branches)" -- "${COMP_WORDS[COMP_CWORD]}"))
+  }
+  complete -F _cwt_complete cwt
+fi
