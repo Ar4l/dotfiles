@@ -1,0 +1,49 @@
+views:
+  v1/pods:
+    columns:
+      - AGE
+      - NAMESPACE
+      - NAME
+      - VS
+      - PF
+      - READY
+      - STATUS
+      - RESTARTS
+      - CPU
+      - "%CPU/R"
+      - "%CPU/L"
+      - MEM
+      - "%MEM/R"
+      - "%MEM/L"
+      - IP
+      - NODE
+
+  v1/nodes:
+    columns:
+      - AGE
+      - NAME
+      - STATUS
+      - ROLE
+      - TAINTS
+      - VERSION
+      - PODS
+      - CPU
+      - CPU/A
+      - "%CPU"
+      - MEM
+      - MEM/A
+      - "%MEM"
+      - GPU/A
+      - GPU/C
+      - SH-GPU/A
+      - SH-GPU/C
+
+  apps/v1/deployments:
+    columns:
+      - AGE
+      - NAMESPACE
+      - NAME
+      - VS
+      - READY
+      - UP-TO-DATE
+      - AVAILABLE
