@@ -45,9 +45,6 @@
 [safe]
   directory = /home/jovyan
 
-[color]
-  ui = true
-
 [diff]
   colorMoved = default
   tool = kitty
