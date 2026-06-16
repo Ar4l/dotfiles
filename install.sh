@@ -105,7 +105,7 @@ os_independent_homebrew_install() {
     "darwin"*) 
       printf 'You need to install homebrew on macos manually! run:\n\n'
       echo 'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
-      exit 
+      exit 1
 
       # (echo; echo 'eval "$(/opt/homebrew/bin/brew shellenv)"') >> ~/.bashrc &&
       # (echo; echo 'eval "$(/opt/homebrew/bin/brew shellenv)"') >> ~/.zshrc  &&
