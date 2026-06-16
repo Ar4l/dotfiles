@@ -204,11 +204,9 @@ class Pyrate(object):
 
         # the above causes rate limit atm for some reason, but there is also no more need 
         # for a sync save file (or at least, duplicates aren't downloaded)
-        cmd = f'''
-            spotdl {url} --format m4a --m3u '{name}.m3u' 
-        '''.strip()
+        cmd = ['spotdl', url, '--format', 'm4a', '--m3u', f'{name}.m3u']
 
-        p = subprocess.Popen(cmd, shell=True)
+        p = subprocess.Popen(cmd)
         if block: p.wait()
 
     def _get_youtube_song(self, url):
@@ -243,15 +241,15 @@ class Pyrate(object):
         os.chdir(playlist_path)
         m3u_file = f'{os.path.basename(name)}.m3u'
 
-        cmd = fr'''
-            yt-dlp \
-                -o "%(title)s.mp3" \
-                --print-to-file "%(title)s.mp3" "{m3u_file}" \
-                --download-archive downloaded.txt \
-                -x --audio-format mp3 \
-                {url}
-        '''.strip()
-        subprocess.run(cmd, shell=True)
+        cmd = [
+            'yt-dlp',
+            '-o', '%(title)s.mp3',
+            '--print-to-file', '%(title)s.mp3', m3u_file,
+            '--download-archive', 'downloaded.txt',
+            '-x', '--audio-format', 'mp3',
+            url,
+        ]
+        subprocess.run(cmd)
 
         # need to cleanup files and m3u file 
         # regex = r"[^a-zA-Z0-9()\[\] \*-.]"
