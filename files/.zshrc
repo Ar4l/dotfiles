@@ -225,8 +225,6 @@ bindkey "^[[1;5D" backward-word # For Arch.
 # eval "$(starship init zsh)"
 
 # Edit the current command line in $EDITOR
-autoload -U edit-command-line
-zle -N edit-command-line
 bindkey '\C-x\C-e' edit-command-line
 
 # end plugins }}}
@@ -341,11 +339,10 @@ eval "$(zoxide init zsh)"
 
 
 # The next line updates PATH for the Google Cloud SDK.
-if [ -f '/Users/Aral.De.Moor/Downloads/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/Aral.De.Moor/Downloads/google-cloud-sdk/path.zsh.inc'; fi
+if [ -f "$HOME/Downloads/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/Downloads/google-cloud-sdk/path.zsh.inc"; fi
 
 # The next line enables shell command completion for gcloud.
-if [ -f '/Users/Aral.De.Moor/Downloads/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/Aral.De.Moor/Downloads/google-cloud-sdk/completion.zsh.inc'; fi
+if [ -f "$HOME/Downloads/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/Downloads/google-cloud-sdk/completion.zsh.inc"; fi
 
 # The next line updates PATH for YDB CLI.
-if [ -f '/Users/Aral.De.Moor/ydb/path.bash.inc' ]; then source '/Users/Aral.De.Moor/ydb/path.bash.inc'; fi
-
+if [ -f "$HOME/ydb/path.bash.inc" ]; then source "$HOME/ydb/path.bash.inc"; fi
