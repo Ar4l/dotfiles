@@ -3,7 +3,6 @@ alias cp='cp -v'
 alias mv='mv -v'
 alias rm='rm -v'
 alias ls="ls -FA --color"
-alias ll="ls -FAlh --color"
 alias ln="ln -v"
 alias mkdir="mkdir -p"
 alias g='cd "$(walk --icons --preview)"'
@@ -14,7 +13,7 @@ alias ta='tmux attach'
 #   alias e="emacsclient -nw --alternate-editor '' --quiet"
 #   alias E="emacsclient --alternate-editor ''  --no-wait --quiet --create-frame"
 # fi
-alias path="echo $PATH | sed 's/:/\n/g'" 
+alias path='echo $PATH | sed "s/:/\n/g"'
 
 alias grep='grep --ignore-case --line-number --extended-regexp --color'
 alias rgrep='grep --ignore-case --line-number --extended-regexp --color --exclude-dir ".git" --recursive'
@@ -36,23 +35,18 @@ export vs="Visual Studio Code"
 export ij="IntelliJ IDEA"
 
 # Path shorthands
-export aise='/Users/Aral/Aral/Delft/YEAR 4'
-export research='/Users/Aral/Aral/Delft/YEAR 4'
-export rp="/Users/Aral/Aral/Delft/YEAR 3/0 RESEARCH PROJECT/LLM4CodeCompression"
+export aise="$HOME/Aral/Delft/YEAR 4"
+export research="$HOME/Aral/Delft/YEAR 4"
+export rp="$HOME/Aral/Delft/YEAR 3/0 RESEARCH PROJECT/LLM4CodeCompression"
 
-export ml="/Users/Aral/Desktop/Music Library"
-export brain="/Users/$USER/Library/Mobile Documents/iCloud~md~obsidian/Documents/Brain 2.0"
-export dev='/Users/Aral/Aral/Dev'
+export ml="$HOME/Desktop/Music Library"
+export brain="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Brain 2.0"
+export dev="$HOME/Aral/Dev"
 
 if [ -x /usr/bin/dircolors ]; then
     test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
-    alias ls='ls --color=auto'
     #alias dir='dir --color=auto'
     #alias vdir='vdir --color=auto'
-
-    alias grep='grep --color=auto'
-    alias fgrep='fgrep --color=auto'
-    alias egrep='egrep --color=auto'
 fi
 
 # some more ls aliases
@@ -62,12 +56,12 @@ alias l='ls -CF'
 
 # Command Shorthands
 function mkd() {
-  mkdir $1
-  cd $1
+  mkdir "$1"
+  cd "$1"
 }
 
 function cl() {
-  cd $1
+  cd "$1"
   ls 
 }
 
