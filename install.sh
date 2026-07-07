@@ -173,23 +173,8 @@ echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"'
 # 2.4 Symlink the dotfiles into $HOME.
 # This must happen in this script, not a later `make restow`: brew's bin
 # dir (and thus stow) is only on PATH here, via the shellenv eval above.
-# stow aborts ALL links on a single conflict, and a fresh machine ships
-# default rc files (~/.bashrc, ~/.profile on Ubuntu; plus the ~/.zshrc the
-# homebrew step above may have created) — so move conflicting regular files
-# aside first. Only top-level files need this; directories are folded into.
-dotfiles_dir="$(cd "$(dirname "$0")" && pwd)"
-
-for file in "$dotfiles_dir"/files/.* "$dotfiles_dir"/files/*; do
-  [ -f "$file" ] || continue
-  name="$(basename "$file")"
-  if [ -e "$HOME/$name" ] && [ ! -L "$HOME/$name" ]; then
-    echo "backing up existing ~/$name to ~/$name.bak"
-    mv "$HOME/$name" "$HOME/$name.bak"
-  fi
-done
-
 echo "symlinking dotfiles into $HOME"
-stow -v --dir="$dotfiles_dir/files" --target="$HOME" -R .
+"$(dirname "$0")/link.sh"
 
 
 # 3. And, if we're on mac, install the casks
