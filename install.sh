@@ -97,9 +97,11 @@ os_independent_homebrew_install() {
       # Starting conditional checks if the file actually exists,
       # necessary when working within docker containers with brew, on a server
       # which does not have brew
+      # Skip stowed rc files (symlinks): they handle the brew PATH themselves,
+      # and appending would write through the link into this repo
       shellenv_line='[ -e /home/linuxbrew/.linuxbrew/bin/brew ] && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"'
-      grep -qxF "$shellenv_line" ~/.bashrc 2> /dev/null || echo "$shellenv_line" >> ~/.bashrc
-      grep -qxF "$shellenv_line" ~/.zshrc  2> /dev/null || echo "$shellenv_line" >> ~/.zshrc
+      grep -qxF "$shellenv_line" ~/.bashrc 2> /dev/null || [ -L ~/.bashrc ] || echo "$shellenv_line" >> ~/.bashrc
+      grep -qxF "$shellenv_line" ~/.zshrc  2> /dev/null || [ -L ~/.zshrc  ] || echo "$shellenv_line" >> ~/.zshrc
       eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" 
     ;;
 
@@ -162,10 +164,32 @@ brew install ${programs[*]} > /dev/null
 echo 'run the following in case brew is not yet available in this shell'
 echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"'
 
-# 2.3 Also set up said programs 
+# 2.3 Also set up said programs
 
-# no longer necessary, this happens on vim startup 
+# no longer necessary, this happens on vim startup
 # vim +'PlugInstall --sync' +qall
+
+
+# 2.4 Symlink the dotfiles into $HOME.
+# This must happen in this script, not a later `make restow`: brew's bin
+# dir (and thus stow) is only on PATH here, via the shellenv eval above.
+# stow aborts ALL links on a single conflict, and a fresh machine ships
+# default rc files (~/.bashrc, ~/.profile on Ubuntu; plus the ~/.zshrc the
+# homebrew step above may have created) — so move conflicting regular files
+# aside first. Only top-level files need this; directories are folded into.
+dotfiles_dir="$(cd "$(dirname "$0")" && pwd)"
+
+for file in "$dotfiles_dir"/files/.* "$dotfiles_dir"/files/*; do
+  [ -f "$file" ] || continue
+  name="$(basename "$file")"
+  if [ -e "$HOME/$name" ] && [ ! -L "$HOME/$name" ]; then
+    echo "backing up existing ~/$name to ~/$name.bak"
+    mv "$HOME/$name" "$HOME/$name.bak"
+  fi
+done
+
+echo "symlinking dotfiles into $HOME"
+stow -v --dir="$dotfiles_dir/files" --target="$HOME" -R .
 
 
 # 3. And, if we're on mac, install the casks
