@@ -30,6 +30,8 @@ curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
 
 basics=(        # BASICS
   tmux          # shell server to persist sessions
+                # (tmux-resurrect + tmux-continuum are vendored under
+                #  files/.tmux/plugins and stowed; no TPM needed)
   coreutils     # basic text utilities 'expected to exist on every OS' https://www.gnu.org/software/coreutils/
   git           # cmon who is running machines w/o git 
   bash          # you'd be surprised who hasn't updated their bash since 1990
@@ -43,13 +45,32 @@ programs=(
                 # SHELL TOOLING
   starship      # extensive cross-shell prompt https://starship.rs/
   walk          # file browser
-  tree          # basic file tree 
-  btop          # monitor procs 
+  tree          # basic file tree
+  btop          # monitor procs
+  bat           # better cat
+  dust          # better du
+  gitui         # git TUI
+  gh            # github CLI
+  mosh          # ssh that survives roaming and sleep
+  nmap          # network scanner
 
                 # PACKAGE MANAGERS
   # conda       # TODO: may be worth adding seeing I saw some outrageous 2003 version
   pixi          # conda 2024 version
   uv            # pip 2024 version
+  pipx          # installs python CLIs in isolated envs
+  poetry        # python project manager
+
+                # KUBERNETES
+  helm          # k8s package manager
+  kubectx       # switch k8s contexts and namespaces
+  derailed/k9s/k9s          # k8s TUI
+
+                # AI
+  llama.cpp     # run LLMs locally
+  ollama        # local LLM server
+  anomalyco/tap/opencode    # AI coding agent
+  charmbracelet/tap/crush   # AI coding agent
 
                 # EDITORS
   vim           # the only editor you need
@@ -66,18 +87,37 @@ programs=(
   pandoc        # document converter
   git-lfs       # large file storage with git 
   # fd          # friendly find
-  # fzf         # fuzzy find 
+  fzf           # fuzzy find
   # glow        # CLI markdown renderer https://github.com/charmbracelet/glow
   # tldr        # shorter manpages
 
-  zoxide        # better cd (requires fzf) https://github.com/ajeetdsouza/zoxide 
-  eza           # better ls 
+  zoxide        # better cd (requires fzf) https://github.com/ajeetdsouza/zoxide
+  eza           # better ls
+  ffmpeg        # audio/video converter
+  yt-dlp        # video downloader
 )
 
 # Applications to install on a fresh Mac
 casks=(
-  karabiner-elements  # key remapping, for those dutch keyboards
-  mactex              # LaTeX compiler 
+  karabiner-elements      # key remapping, for those dutch keyboards
+  mactex                  # LaTeX compiler
+  chai                    # keeps the mac awake
+  claude-code             # AI coding agent
+  codex                   # AI coding agent
+  jupyter-notebook-viewer # quicklook for .ipynb
+  macfuse                 # userspace filesystems (sshfs et al.)
+  paseo                   # menubar pasteboard manager
+  qlmarkdown              # quicklook for markdown
+  skim                    # PDF reader, plays nice with LaTeX
+  vscodium                # vscode without the telemetry
+  warp                    # terminal
+  yeti                    # menubar app
+)
+
+# Formulae that only build on macOS
+darwin_programs=(
+  macmon              # Apple Silicon hardware monitor
+  terminal-notifier   # notifications from the CLI
 )
 
 ## Onto the installation 
@@ -177,8 +217,18 @@ echo "symlinking dotfiles into $HOME"
 "$(dirname "$0")/link.sh"
 
 
-# 3. And, if we're on mac, install the casks
+# 2.5 jbcentral (JetBrains central-cli, no brew formula)
+# proxies coding agents through JetBrains Central; run `jbcentral login` after
+command -v jbcentral &> /dev/null ||
+curl -fsSL https://central-cli.labs.jb.gg/install.sh | bash
+
+
+# 3. And, if we're on mac, install the casks and mac-only formulae
 if [[ "$OSTYPE" == "darwin"* ]]; then
-  brew install ${casks[*]}
+  brew install ${casks[*]} ${darwin_programs[*]}
+else
+  # claude-code has no linuxbrew formula; use the native installer
+  command -v claude &> /dev/null ||
+  curl -fsSL https://claude.ai/install.sh | bash
 fi
 
