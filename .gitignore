@@ -9,3 +9,6 @@ plugged/
 # don't care too much about small changes to btop
 files/.config/btop/
 
+
+# pyrate scratch captures (raw API requests; contain session tokens)
+bin/pyrate/temp/
