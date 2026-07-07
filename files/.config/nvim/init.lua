@@ -879,6 +879,16 @@ require("lazy").setup({
       vim.cmd.colorscheme("minischeme")
     end,
   },
+
+  { -- kubectl.nvim: a Kubernetes dashboard inside neovim; browse and manage cluster resources (pods, deployments, services, etc.) without leaving the editor
+    "Ramilito/kubectl.nvim",
+    version = "2.*",
+    dependencies = "saghen/blink.download",
+    config = function()
+      require("kubectl").setup()
+      vim.keymap.set("n", "<leader>ku", require("kubectl").toggle, { desc = "[K]ubectl toggle" })
+    end,
+  },
 })
 
 -- See `:help vim.highlight.on_yank()`
