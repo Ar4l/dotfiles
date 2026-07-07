@@ -93,12 +93,13 @@ os_independent_homebrew_install() {
       echo 'installing homebrew for linux'
       NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"  &&
 
-      # Add to path in shells
+      # Add to path in shells, unless already present (keeps reruns idempotent)
       # Starting conditional checks if the file actually exists,
       # necessary when working within docker containers with brew, on a server
       # which does not have brew
-      echo '[ -e /home/linuxbrew/.linuxbrew/bin/brew ] && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.bashrc
-      echo '[ -e /home/linuxbrew/.linuxbrew/bin/brew ] && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.zshrc
+      shellenv_line='[ -e /home/linuxbrew/.linuxbrew/bin/brew ] && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"'
+      grep -qxF "$shellenv_line" ~/.bashrc 2> /dev/null || echo "$shellenv_line" >> ~/.bashrc
+      grep -qxF "$shellenv_line" ~/.zshrc  2> /dev/null || echo "$shellenv_line" >> ~/.zshrc
       eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" 
     ;;
 
