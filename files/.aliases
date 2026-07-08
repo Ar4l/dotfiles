@@ -282,6 +282,25 @@ alias nv='watch -d -n "10" nvidia-smi'
 alias gis='git status'
 alias giff='git diff'
 
+# launch claude, upgrading the brew cask first if a newer version is out.
+# queries formulae.brew.sh directly (~0.2s): `brew outdated` only compares
+# against local tap metadata, which goes stale without a slow `brew update`.
+if [ -d "${HOMEBREW_PREFIX:-/opt/homebrew}/Caskroom/claude-code" ]; then
+  claude() {
+    local caskroom="${HOMEBREW_PREFIX:-/opt/homebrew}/Caskroom/claude-code"
+    local installed latest
+    installed=$(command ls -1 "$caskroom" | sort -V | tail -1)
+    latest=$(curl -fsS --max-time 2 https://formulae.brew.sh/api/cask/claude-code.json 2>/dev/null \
+      | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
+    if [ -n "$latest" ] && [ "$latest" != "$installed" ]; then
+      echo "claude-code $installed -> $latest, upgrading..."
+      brew update --quiet && brew upgrade --cask claude-code
+      echo 'note: if Downloads/Desktop access EPERMs in tmux after this, restart the tmux server from kitty (TCC re-attribution)'
+    fi
+    command claude "$@"
+  }
+fi
+
 # cd into a git worktree by branch name; `cwt -` jumps back to the previous worktree
 cwt() {
   local target
