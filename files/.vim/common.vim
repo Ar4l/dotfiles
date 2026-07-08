@@ -19,6 +19,10 @@ filetype plugin indent on   " figure out filetype on open
 " more in :h map-overview
 
 let mapleader = "\<Space>"                " Use space as leader key
+let maplocalleader = "\\"
+" space is the leader, not a motion
+nnoremap <silent> <Space> <Nop>
+vnoremap <silent> <Space> <Nop>
 " reload with space + so
 nmap <leader>so :source $MYVIMRC<cr>
 
@@ -50,6 +54,13 @@ nmap yp :let @+ = expand('%')<cr>
 
 " Yank abs path
 nmap yP :let @+ = expand('%:p')<cr>
+
+" move by display line when wrapped, unless j/k is given a count
+nnoremap <expr> j v:count == 0 ? 'gj' : 'j'
+nnoremap <expr> k v:count == 0 ? 'gk' : 'k'
+
+" toggle folds
+nnoremap <leader><tab> zA
  
  
 if (has("termguicolors")) " If this vim version supports it,
@@ -72,22 +83,37 @@ endif
 
 set autowriteall      " Auto-save files
 
-set scrolloff=2 " n lines to keep around the cursor
+set scrolloff=3       " n lines to keep around the cursor
+set sidescrolloff=3   " n columns, when 'wrap' is off
 
 if has('balloonevalterm') " not included by default on MacOS, nor nvim
   set balloonevalterm " display info where mouse is pointing (no usage tho)
 endif
 
 set incsearch         " Search as you type with `?` or `/`
+set hlsearch          " highlight matches; vim-cool auto-clears (nvim maps <Esc>)
 set ignorecase        " ignore case when searching lowercase
 set smartcase         " do not ignore case when capital letters present
 
 set noswapfile        " I still don't know how useful these are?
+set nobackup nowritebackup  " no backup files; autowrite saves plenty
+set backupcopy=yes    " write files in place, preserving inode/watchers
 set autowrite         " always write on close
 set autoread          " read in a file when it was changed outside vim
 set clipboard^=unnamed,unnamedplus  " share clipboards between vim and os
 
-set breakindent       " visualy indent wrapped lines
+" persistent undo across sessions. nvim keeps it in its own state dir; vim's
+" default scatters undo files next to the files themselves, so give it a
+" state dir too (NOT under ~/.vim, which symlinks into the dotfiles repo)
+if has('persistent_undo')
+  if !has('nvim')
+    set undodir=~/.local/state/vim/undo
+    silent! call mkdir(expand('~/.local/state/vim/undo'), 'p')
+  endif
+  set undofile
+endif
+
+set nobreakindent     " don't visually indent wrapped lines
 set linebreak         " break at word boundaries
 set nojoinspaces      " when joining two lines, do not insert two spaces between
 set autoindent        " copy indent from current line on newline
@@ -116,6 +142,7 @@ set formatoptions+=n    " add numbers in numbered lists
 set formatoptions+=l    " do not wrap a pre-existing long line on insert
 set formatoptions+=1    " don't break after a one-letter word.
 set formatoptions+=j    " remove comment leader when joining lines with `J`
+silent! set formatoptions+=p    " don't break after period + single space (vim >= 8.2)
 au Filetype * :setl fo-=o
 
 "" OPTIONS
@@ -133,6 +160,8 @@ set shortmess+=t
 set shortmess+=T
 set shortmess+=W
 set shortmess+=I  " Disable the default Vim startup message.
+set shortmess+=A  " no swapfile ATTENTION prompts (swapfiles are off anyway)
+silent! set shortmess+=c  " no ins-completion-menu messages
 
 " auto expand command menus
 set wildmenu
@@ -140,13 +169,20 @@ silent! set wildoptions=pum
 set wildmode=longest:full
 set wildmode+=full
 
-" show hidden spaces & indicate long lines
-set list
-set listchars=nbsp:⦸        " non-breakable space
-set listchars+=extends:»    " line spanning past right margin
-set listchars+=precedes:«   " line spanning past left margin
-set listchars+=tab:▷⋯       " tabs
-" set listchars+=trail:•
+set laststatus=2      " always show the statusline
+set ruler             " show line/column in the statusline
+silent! set belloff=all
+set switchbuf=usetab  " reuse an existing window when jumping to a buffer
+set infercase         " match case in keyword completion
+silent! set modelineexpr  " allow expression options in modelines
+set concealcursor=inc " keep text concealed under the cursor too
+silent! set completeopt=menu,menuone,noselect
+
+" fold sections in markdown (runtime ftplugin feature, vim and nvim)
+let g:markdown_folding = 1
+
+" don't render whitespace markers
+set nolist
 
 " fill the statuslines, vertical seps, and other special lines
 set fillchars=diff:∙      " deleted lines of diff option
@@ -170,29 +206,10 @@ set foldlevelstart=20
 set tabstop=4
 set shiftwidth=4
 set expandtab
-" set smarttab
+set smarttab
 
 if !has('nvim')
   silent! packadd editorconfig
-endif
-
-" AUTOCOMMANDS
-if !has('nvim')
-  " Open new windows in a vsplit instead of default hsplit
-  " TODO: this overrides NERDTreeToggle, which should always be left.
-  augroup VSplitWindow
-    autocmd!
-    autocmd WinNew * wincmd H
-  augroup END
-
-  augroup FileTypeSpecific
-    autocmd!
-    " enable spelling in git commits
-    autocmd FileType gitcommit setlocal spell
-    " use default indenting for manpages and vim help
-    " this below does nothing
-    " autocmd FileType man,help let b:EditorConfig_disable = 1
-  augroup END
 endif
 
 

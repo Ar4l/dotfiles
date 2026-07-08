@@ -10,8 +10,9 @@ source ~/.vim/plugins.vim
 " resorted to vim-cool, because esc fucks with ssh
 " map <ESC> :noh<cr>
 
-" Escape in terminal actually escapes the terminal
-tnoremap <Esc> <C-\><C-n>
+" Double-Esc escapes the terminal, leaving single Esc for TUI apps inside it
+" (matches nvim's mapping)
+tnoremap <Esc><Esc> <C-\><C-n>
 
 " " SETTINGS
 " Fix the cursor to not blink 
