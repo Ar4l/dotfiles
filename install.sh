@@ -87,6 +87,7 @@ programs=(
   pandoc        # document converter
   git-lfs       # large file storage with git 
   ripgrep       # better grep (reads defaults from ~/.rgrc)
+  fd            # friendly find; .bashrc.xterm wires it into fzf
   fzf           # fuzzy find
   # glow        # CLI markdown renderer https://github.com/charmbracelet/glow
   # tldr        # shorter manpages
