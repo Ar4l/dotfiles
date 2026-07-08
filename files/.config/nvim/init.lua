@@ -193,7 +193,7 @@ require("lazy").setup({
   -- { 'NikoKS/kitty-vim-tmux-navigator', lazy = false },
 
   -- themes
-  { "ellisonleao/gruvbox.nvim", priority = 1000 , config = true, opts = ...},
+  { "ellisonleao/gruvbox.nvim", priority = 1000, config = true },
   { "sainnhe/gruvbox-material", priority = 1000},
 
   { -- persist session
@@ -685,9 +685,6 @@ require("lazy").setup({
       -- You can add other tools here that you want Mason to install
       -- for you, so that they are available from within Neovim.
       local ensure_installed = vim.tbl_keys(servers or {})
-      vim.list_extend(ensure_installed, {
-        "stylua", -- Used to format lua code
-      })
       require("mason-tool-installer").setup({ ensure_installed = ensure_installed })
 
       require("mason-lspconfig").setup({
@@ -874,13 +871,7 @@ require("lazy").setup({
     end,
   },
 
-  {
-    "echasnovski/mini.nvim",
-    priority = 1000,
-    config = function()
-      vim.cmd.colorscheme("minischeme")
-    end,
-  },
+  { "echasnovski/mini.nvim" },
 
   { -- kubectl.nvim: a Kubernetes dashboard inside neovim; browse and manage cluster resources (pods, deployments, services, etc.) without leaving the editor
     "Ramilito/kubectl.nvim",
