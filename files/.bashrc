@@ -1,6 +1,13 @@
 # source linuxbrew binaries
 [[ -d /home/linuxbrew/.linuxbrew/bin ]] && PATH=/home/linuxbrew/.linuxbrew/bin:$PATH
 
+# hand off to zsh where available (ssh servers whose login shell is bash and
+# chsh isn't an option). Login shells only, so an intentional `bash` from
+# within zsh stays bash.
+if [[ $- == *i* ]] && shopt -q login_shell && command -v zsh >/dev/null; then
+  exec zsh -l
+fi
+
 # Alias definitions.
 # See /usr/share/doc/bash-doc/examples in the bash-doc package.
 if [ -f ~/.aliases ]; then
@@ -67,5 +74,3 @@ paths=("$HOME/dotfiles/bin")
 
 source "$HOME/.bashrc.dumb"
 source "$HOME/.bashrc.xterm"
-
-. "$HOME/.cargo/env"
