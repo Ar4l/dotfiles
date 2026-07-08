@@ -14,7 +14,9 @@ if [ -f ~/.aliases ]; then
     . ~/.aliases
 fi
 
-#  settings 
+[ -f ~/.shcommon ] && . ~/.shcommon
+
+#  settings
 HISTCONTROL=ignoreboth # no duplicates or lines starting with space in history
 HISTSIZE=10000
 HISTFILESIZE=2000
@@ -46,15 +48,6 @@ fi
 # Ctrl+P	k	    Move up in Bash command history.
 # Ctrl+R	j	    Move down in Bash command history.
 set -o vi 
-
-export PAGER=less
-export MANPAGER=$PAGER
-# export LC_ALL=en_GB.UTF-8 # causes warnings on every server I connect to as they don't have the GB language pack
-export XDG_CONFIG_HOME="$HOME/.config"
-export XDG_DATA_HOME="$HOME/.local/share"
-export XDG_DATA_BIN="$HOME/.local/bin"
-
-export RIPGREP_CONFIG_PATH="$HOME/.rgrc"
 
 # # path: add personal binaries to path
 paths=("$HOME/dotfiles/bin")
