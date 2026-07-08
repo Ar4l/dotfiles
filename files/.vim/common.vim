@@ -132,7 +132,6 @@ set shortmess+=s
 set shortmess+=t
 set shortmess+=T
 set shortmess+=W
-set shortmess+=I
 set shortmess+=I  " Disable the default Vim startup message.
 
 " auto expand command menus
