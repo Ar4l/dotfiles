@@ -13,5 +13,5 @@ try:
             )
         )
 
-except: pass
+except ImportError: pass
 
