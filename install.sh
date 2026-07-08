@@ -75,6 +75,7 @@ programs=(
                 # EDITORS
   vim           # the only editor you need
   neovim        # a second editor if you must
+  tree-sitter   # nvim builds syntax parsers with this on first launch
 
                 # ZSH 
   zsh           # better bash

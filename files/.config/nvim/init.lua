@@ -132,10 +132,19 @@ require("lazy").setup({
     build = ":TSUpdate",
 
     config = function()
+      -- parsers are compiled per-machine (~/.local/share/nvim/site/parser),
+      -- so ssh'd servers don't have them; build there too (needs cc +
+      -- tree-sitter CLI, skips languages that are already installed)
+      require("nvim-treesitter").install({ "python" })
+
       vim.api.nvim_create_autocmd('FileType', {
         pattern = { 'python' },
-        callback = function() 
-          vim.treesitter.start() 
+        callback = function()
+          -- no parser (still building, or host can't build one): keep the
+          -- regex highlighting fallback instead of erroring on every buffer
+          if not pcall(vim.treesitter.start) then
+            return
+          end
           vim.wo[0][0].foldexpr = 'v:lua.vim.treesitter.foldexpr()'
           vim.wo[0][0].foldmethod = 'expr'
         end,
