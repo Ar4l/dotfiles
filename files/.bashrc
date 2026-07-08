@@ -19,7 +19,7 @@ fi
 #  settings
 HISTCONTROL=ignoreboth # no duplicates or lines starting with space in history
 HISTSIZE=10000
-HISTFILESIZE=2000
+HISTFILESIZE=10000
 
 shopt -s histappend   # append to history file, don't overwrite it.
 shopt -s checkwinsize # [default] check window size after each command
