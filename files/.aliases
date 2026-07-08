@@ -26,8 +26,15 @@ alias diff='diff --color=auto --side-by-side'
 
 # kitty stuff; see https://sw.kovidgoyal.net/kitty/kittens/ssh/
 # copies over some config files to the host
-if [[ "$TERM" =~ 'kitty' ]]; then
-  alias s='kitty +kitten ssh -R 50000:${KITTY_LISTEN_ON#*:}'
+# guard on KITTY_WINDOW_ID, not TERM: inside tmux TERM is tmux-256color but
+# we're still running under kitty. The reverse tunnel (for remote kitty
+# control) only works when kitty is actually listening on a socket.
+if [[ -n "$KITTY_WINDOW_ID" || "$TERM" =~ 'kitty' ]]; then
+  if [[ -n "$KITTY_LISTEN_ON" ]]; then
+    alias s='kitty +kitten ssh -R 50000:${KITTY_LISTEN_ON#*:}'
+  else
+    alias s='kitty +kitten ssh'
+  fi
 fi
 
 # Application shorthands
