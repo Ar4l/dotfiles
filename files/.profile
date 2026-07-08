@@ -8,4 +8,4 @@
 # to a different directory.
 
 # nvim/Sniprun on MacOS requires cargo deps
-[-f $HOME/.cargo/env ] && . "$HOME/.cargo/env"
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
