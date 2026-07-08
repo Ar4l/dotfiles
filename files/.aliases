@@ -37,19 +37,6 @@ if [[ -n "$KITTY_WINDOW_ID" || "$TERM" =~ 'kitty' ]]; then
   fi
 fi
 
-# Application shorthands
-export vs="Visual Studio Code"
-export ij="IntelliJ IDEA"
-
-# Path shorthands
-export aise="$HOME/Aral/Delft/YEAR 4"
-export research="$HOME/Aral/Delft/YEAR 4"
-export rp="$HOME/Aral/Delft/YEAR 3/0 RESEARCH PROJECT/LLM4CodeCompression"
-
-export ml="$HOME/Desktop/Music Library"
-export brain="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Brain 2.0"
-export dev="$HOME/Aral/Dev"
-
 if [ -x /usr/bin/dircolors ]; then
     test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
     #alias dir='dir --color=auto'
