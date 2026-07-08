@@ -86,7 +86,7 @@ programs=(
                 # MISC
   pandoc        # document converter
   git-lfs       # large file storage with git 
-  # fd          # friendly find
+  ripgrep       # better grep (reads defaults from ~/.rgrc)
   fzf           # fuzzy find
   # glow        # CLI markdown renderer https://github.com/charmbracelet/glow
   # tldr        # shorter manpages

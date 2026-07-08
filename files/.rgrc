@@ -1,0 +1,4 @@
+# ripgrep defaults; rg finds this via RIPGREP_CONFIG_PATH (exported in .shcommon)
+
+# case-insensitive unless the pattern contains an uppercase letter
+--smart-case
