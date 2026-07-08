@@ -5,110 +5,17 @@ let &packpath = &runtimepath
 source ~/.vim/common.vim
 ]])
 
-vim.opt.hlsearch = true
-vim.opt.incsearch = true
-vim.opt.laststatus = 2
-vim.opt.belloff = "all"
-vim.opt.shortmess = vim.opt.shortmess + "A"
-vim.opt.shortmess = vim.opt.shortmess + "I"
-vim.opt.shortmess = vim.opt.shortmess + "O"
-vim.opt.shortmess = vim.opt.shortmess + "T"
-vim.opt.shortmess = vim.opt.shortmess + "W"
-vim.opt.shortmess = vim.opt.shortmess + "a"
-vim.opt.shortmess = vim.opt.shortmess + "c"
-vim.opt.shortmess = vim.opt.shortmess + "o"
-vim.opt.shortmess = vim.opt.shortmess + "s"
-vim.opt.shortmess = vim.opt.shortmess + "t"
-vim.opt.backspace = "indent,start,eol"
-vim.opt.clipboard = vim.opt.clipboard + "unnamedplus"
-vim.opt.autoindent = true
-vim.opt.autowrite = true
-vim.opt.autoread = true
-vim.opt.backupcopy = "yes"
-vim.opt.backup = false
-vim.opt.writebackup = false
-vim.opt.joinspaces = false
-vim.opt.swapfile = false
-vim.opt.undofile = true
-vim.opt.sidescrolloff = 3
-vim.opt.scrolloff = 3
-vim.opt.shiftround = false
-vim.opt.splitbelow = true
-vim.opt.splitright = true
-vim.opt.switchbuf = "usetab"
-vim.opt.wildmenu = true
-vim.opt.wildoptions = "pum"
-vim.opt.wildmode = "longest:full,full"
--- vim.opt.fillchars = {
---   diff = "∙", -- BULLET OPERATOR (U+2219, UTF-8: E2 88 99)
---   eob = " ", -- NO-BREAK SPACE (U+00A0, UTF-8: C2 A0) to suppress ~ at EndOfBuffer
---   fold = "·", -- MIDDLE DOT (U+00B7, UTF-8: C2 B7)
---   vert = "┃", -- BOX DRAWINGS HEAVY VERTICAL (U+2503, UTF-8: E2 94 83)
--- }
-
-vim.opt.linebreak = true
-vim.opt.breakindent = false
-vim.opt.smarttab = true
-
-vim.opt.formatoptions = vim.opt.formatoptions + "n"
-vim.opt.formatoptions = vim.opt.formatoptions + "1"
-vim.opt.formatoptions = vim.opt.formatoptions + "j"
-vim.opt.formatoptions = vim.opt.formatoptions + "p"
-
-vim.opt.modelineexpr = true
-vim.opt.concealcursor = vim.opt.concealcursor + "i"
-vim.opt.concealcursor = vim.opt.concealcursor + "n"
-vim.opt.concealcursor = vim.opt.concealcursor + "c"
-vim.opt.ruler = true
-vim.opt.ignorecase = true
-vim.opt.smartcase = true
-vim.opt.infercase = true
-
--- vim.opt.textwidth = 70   -- hardwrap sentences at given length
-vim.opt.termguicolors = true
--- vim.opt.spellfile = "~/.vim/spell/en.utf-8.add"
--- vim.opt.spelllang = "en"
-
-vim.opt.mouse = "a"
-vim.opt.mousescroll = 'ver:1,hor:1'
-
-vim.opt.completeopt = vim.opt.completeopt + "menu"
-vim.opt.completeopt = vim.opt.completeopt + "menuone"
-vim.opt.completeopt = vim.opt.completeopt + "noselect"
-
-vim.opt.list = false
--- vim.opt.listchars = {
---   nbsp = "⦸",
---   extends = "»",
---   precedes = "«",
---   tab = "▷⋯",
---   trail = "•",
---   space = "·",
--- }
+-- Shared behavior lives in common.vim; only nvim-only options belong here.
+vim.opt.mousescroll = "ver:1,hor:1"
 vim.wo.signcolumn = "yes"
-vim.opt.number = false
-vim.opt.relativenumber = false
-vim.g.markdown_folding = true
-
--- UI tweaks
 vim.opt.pumblend = 10
 vim.opt.pumheight = 10
 vim.opt.winblend = 10
 
--- Keybindings
-vim.g.mapleader = " "
-vim.g.maplocalleader = "\\"
-vim.keymap.set("n", "<leader><tab>", "zA")
-
-vim.keymap.set({ "n", "v" }, "<Space>", "<Nop>", { silent = true })
-
--- Remap for dealing with word wrap
-vim.keymap.set("n", "k", "v:count == 0 ? 'gk' : 'k'", { expr = true, silent = true })
-vim.keymap.set("n", "j", "v:count == 0 ? 'gj' : 'j'", { expr = true, silent = true })
-
--- Clear hlsearch with <esc> in normal mode
+-- Clear hlsearch with <esc> in normal mode (vim gets the same via vim-cool)
 vim.keymap.set("n", "<Esc>", "<cmd>nohlsearch<cr>")
 
+-- Exit terminal mode with double-Esc (mirrored in ~/.vim/vimrc)
 vim.keymap.set("t", "<Esc><Esc>", "<C-\\><C-n>", { desc = "Exit terminal mode" })
 
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
