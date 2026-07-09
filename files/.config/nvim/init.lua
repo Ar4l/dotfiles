@@ -44,19 +44,32 @@ require("lazy").setup({
       -- that are already installed). Building needs the tree-sitter CLI,
       -- which mason ensure_installed provides — on a machine that doesn't
       -- have it yet, wait for mason to finish downloading it first.
+      -- building also needs a C compiler. tree-sitter invokes `cc` but
+      -- honors $CC, so fall back to gcc/clang on hosts without the alias;
+      -- no compiler at all means skip the build entirely (the FileType
+      -- autocmd below then keeps the regex highlighting fallback).
+      local cc = vim.fn.executable("cc") == 1 and "cc"
+          or vim.fn.executable("gcc") == 1 and "gcc"
+          or vim.fn.executable("clang") == 1 and "clang"
+
       local function build_parsers()
+        if cc ~= "cc" then
+          vim.env.CC = cc
+        end
         require("nvim-treesitter").install({ "python" })
       end
 
-      if vim.fn.executable("tree-sitter") == 1
-          or vim.uv.fs_stat(vim.fn.stdpath("data") .. "/mason/bin/tree-sitter") then
-        build_parsers()
-      else
-        vim.api.nvim_create_autocmd("User", {
-          pattern = "MasonToolsUpdateCompleted",
-          once = true,
-          callback = build_parsers,
-        })
+      if cc then
+        if vim.fn.executable("tree-sitter") == 1
+            or vim.uv.fs_stat(vim.fn.stdpath("data") .. "/mason/bin/tree-sitter") then
+          build_parsers()
+        else
+          vim.api.nvim_create_autocmd("User", {
+            pattern = "MasonToolsUpdateCompleted",
+            once = true,
+            callback = build_parsers,
+          })
+        end
       end
 
       vim.api.nvim_create_autocmd('FileType', {
