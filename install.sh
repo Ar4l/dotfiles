@@ -64,13 +64,13 @@ programs=(
                 # KUBERNETES
   helm          # k8s package manager
   kubectx       # switch k8s contexts and namespaces
-  derailed/k9s/k9s          # k8s TUI
+  k9s           # k8s TUI
 
                 # AI
   llama.cpp     # run LLMs locally
   ollama        # local LLM server
-  anomalyco/tap/opencode    # AI coding agent
-  charmbracelet/tap/crush   # AI coding agent
+  opencode      # AI coding agent
+  crush         # AI coding agent
 
                 # EDITORS
   vim           # the only editor you need
@@ -119,6 +119,15 @@ casks=(
 darwin_programs=(
   macmon              # Apple Silicon hardware monitor
   terminal-notifier   # notifications from the CLI
+)
+
+# Formulae only needed on Linux
+linux_programs=(
+  glibc               # crt startup objects + headers; hosts without libc6-dev
+                      # can't link otherwise. Must precede gcc: gcc's
+                      # postinstall writes a specs file pointing at brew glibc
+  gcc                 # servers often ship no compiler; nvim needs one to
+                      # build tree-sitter parsers (macOS has clang via CLT)
 )
 
 ## Onto the installation 
@@ -197,10 +206,18 @@ if ! command -v brew &> /dev/null; then
   exit 
 fi 
 
-# 2.2 Otherwise, brew exists so install all programs
+# 2.2 Otherwise, brew exists so install all programs.
+# One formula at a time: a single broken formula must not abort the rest
+# (brew gives up on the whole batch), and reruns stay idempotent since brew
+# no-ops on anything already installed.
 programs=("${basics[@]}" "${programs[@]}")
+[[ "$OSTYPE" == "linux-gnu"* ]] && programs+=("${linux_programs[@]}")
 echo "installing all: ${programs[*]}"
-brew install ${programs[*]} > /dev/null
+failed=()
+for formula in "${programs[@]}"; do
+  brew install "$formula" > /dev/null || failed+=("$formula")
+done
+[ ${#failed[@]} -gt 0 ] && echo "FAILED to install: ${failed[*]}" >&2
 
 echo 'run the following in case brew is not yet available in this shell'
 echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"'
@@ -219,8 +236,10 @@ echo "symlinking dotfiles into $HOME"
 
 
 # 2.5 jbcentral (JetBrains central-cli, no brew formula)
-# proxies coding agents through JetBrains Central; run `jbcentral login` after
-command -v jbcentral &> /dev/null ||
+# proxies coding agents through JetBrains Central; run `central login` after.
+# The installer names the binary `central` and puts it in ~/.local/bin,
+# which may not be on PATH yet mid-install — check the path too.
+command -v central &> /dev/null || [ -x "$HOME/.local/bin/central" ] ||
 curl -fsSL https://central-cli.labs.jb.gg/install.sh | bash
 
 
@@ -229,7 +248,11 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
   brew install ${casks[*]} ${darwin_programs[*]}
 else
   # claude-code has no linuxbrew formula; use the native installer
-  command -v claude &> /dev/null ||
+  # (installs to ~/.local/bin, which may not be on PATH mid-install)
+  command -v claude &> /dev/null || [ -x "$HOME/.local/bin/claude" ] ||
   curl -fsSL https://claude.ai/install.sh | bash
 fi
+
+# Surface brew failures in the exit status, after everything else has run
+[ ${#failed[@]} -eq 0 ]
 
