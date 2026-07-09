@@ -70,7 +70,6 @@ programs=(
   llama.cpp     # run LLMs locally
   ollama        # local LLM server
   opencode      # AI coding agent
-  crush         # AI coding agent
 
                 # EDITORS
   vim           # the only editor you need
@@ -119,6 +118,9 @@ casks=(
 darwin_programs=(
   macmon              # Apple Silicon hardware monitor
   terminal-notifier   # notifications from the CLI
+  charmbracelet/tap/crush   # AI coding agent; the tap has no Linux bottle
+                            # and brew won't source-build without a system
+                            # toolchain, so mac-only
 )
 
 # Formulae only needed on Linux
