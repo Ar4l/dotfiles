@@ -40,9 +40,24 @@ require("lazy").setup({
 
     config = function()
       -- parsers are compiled per-machine (~/.local/share/nvim/site/parser),
-      -- so ssh'd servers don't have them; build there too (needs cc +
-      -- tree-sitter CLI, skips languages that are already installed)
-      require("nvim-treesitter").install({ "python" })
+      -- so ssh'd servers don't have them; build there too (skips languages
+      -- that are already installed). Building needs the tree-sitter CLI,
+      -- which mason ensure_installed provides — on a machine that doesn't
+      -- have it yet, wait for mason to finish downloading it first.
+      local function build_parsers()
+        require("nvim-treesitter").install({ "python" })
+      end
+
+      if vim.fn.executable("tree-sitter") == 1
+          or vim.uv.fs_stat(vim.fn.stdpath("data") .. "/mason/bin/tree-sitter") then
+        build_parsers()
+      else
+        vim.api.nvim_create_autocmd("User", {
+          pattern = "MasonToolsUpdateCompleted",
+          once = true,
+          callback = build_parsers,
+        })
+      end
 
       vim.api.nvim_create_autocmd('FileType', {
         pattern = { 'python' },
@@ -601,6 +616,9 @@ require("lazy").setup({
       -- You can add other tools here that you want Mason to install
       -- for you, so that they are available from within Neovim.
       local ensure_installed = vim.tbl_keys(servers or {})
+      vim.list_extend(ensure_installed, {
+        "tree-sitter-cli", -- nvim-treesitter builds parsers with this
+      })
       require("mason-tool-installer").setup({ ensure_installed = ensure_installed })
 
       require("mason-lspconfig").setup({

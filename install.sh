@@ -75,8 +75,6 @@ programs=(
                 # EDITORS
   vim           # the only editor you need
   neovim        # a second editor if you must
-  tree-sitter-cli   # nvim builds syntax parsers with this on first launch
-                    # (plain tree-sitter is only the C library, no binary)
 
                 # ZSH 
   zsh           # better bash
