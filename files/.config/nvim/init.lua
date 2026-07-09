@@ -45,12 +45,20 @@ require("lazy").setup({
       -- which mason ensure_installed provides — on a machine that doesn't
       -- have it yet, wait for mason to finish downloading it first.
       -- building also needs a C compiler. tree-sitter invokes `cc` but
-      -- honors $CC, so fall back to gcc/clang on hosts without the alias;
+      -- honors $CC, so fall back to gcc/clang on hosts without the alias —
+      -- including versioned names, since brew on Linux only ships gcc-16;
       -- no compiler at all means skip the build entirely (the FileType
       -- autocmd below then keeps the regex highlighting fallback).
+      local function versioned(name)
+        for v = 30, 10, -1 do
+          local candidate = name .. "-" .. v
+          if vim.fn.executable(candidate) == 1 then return candidate end
+        end
+      end
       local cc = vim.fn.executable("cc") == 1 and "cc"
           or vim.fn.executable("gcc") == 1 and "gcc"
           or vim.fn.executable("clang") == 1 and "clang"
+          or versioned("gcc") or versioned("clang")
 
       local function build_parsers()
         if cc ~= "cc" then
