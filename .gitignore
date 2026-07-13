@@ -9,6 +9,13 @@ plugged/
 # don't care too much about small changes to btop
 files/.config/btop/
 
+# nvim rewrites plugin pins whenever it updates; not worth tracking
+files/.config/nvim/lazy-lock.json
+
+# k9s writes these at runtime (views.yaml stays tracked)
+files/.config/k9s/aliases.yaml
+files/.config/k9s/config.yaml
+
 
 # pyrate scratch captures (raw API requests; contain session tokens)
 bin/pyrate/temp/
