@@ -19,6 +19,7 @@
 # agent tooling
 **/.claude/settings.local.json
 .claude/
+.codex/
 
 # python
 __pycache__/

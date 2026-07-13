@@ -253,6 +253,10 @@ else
   # (installs to ~/.local/bin, which may not be on PATH mid-install)
   command -v claude &> /dev/null || [ -x "$HOME/.local/bin/claude" ] ||
   curl -fsSL https://claude.ai/install.sh | bash
+
+  # the codex cask ships a linux-musl binary, so it installs fine here
+  # even though the rest of the casks are mac-only
+  command -v codex &> /dev/null || brew install --cask codex || failed+=(codex)
 fi
 
 # Surface brew failures in the exit status, after everything else has run
