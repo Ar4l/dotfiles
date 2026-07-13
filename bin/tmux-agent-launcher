@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/usr/bin/env zsh
 
 set -eu
 
@@ -20,9 +20,9 @@ show_tool_menu() {
   pane_q="$(shell_quote "$pane_id")"
 
   tmux display-menu -T "Agent tool" \
-    "claude" c "run-shell '/bin/zsh $SCRIPT_PATH target claude $cwd_q $pane_q'" \
-    "codex" o "run-shell '/bin/zsh $SCRIPT_PATH target codex $cwd_q $pane_q'" \
-    "mini" m "run-shell '/bin/zsh $SCRIPT_PATH target mini $cwd_q $pane_q'"
+    "claude" c "run-shell '/usr/bin/env zsh $SCRIPT_PATH target claude $cwd_q $pane_q'" \
+    "codex" o "run-shell '/usr/bin/env zsh $SCRIPT_PATH target codex $cwd_q $pane_q'" \
+    "mini" m "run-shell '/usr/bin/env zsh $SCRIPT_PATH target mini $cwd_q $pane_q'"
 }
 
 show_target_menu() {
@@ -34,17 +34,19 @@ show_target_menu() {
   pane_q="$(shell_quote "$pane_id")"
 
   tmux display-menu -T "Launch $tool" \
-    "new vsplit" v "run-shell '/bin/zsh $SCRIPT_PATH launch $tool vsplit $cwd_q $pane_q'" \
-    "tab" t "run-shell '/bin/zsh $SCRIPT_PATH launch $tool tab $cwd_q $pane_q'"
+    "new vsplit" v "run-shell '/usr/bin/env zsh $SCRIPT_PATH launch $tool vsplit $cwd_q $pane_q'" \
+    "tab" t "run-shell '/usr/bin/env zsh $SCRIPT_PATH launch $tool tab $cwd_q $pane_q'"
 }
 
 agent_command() {
   case "$1" in
     claude)
-      printf "%s" "/bin/zsh -lc 'exec /opt/homebrew/bin/claude'"
+      # resolved via PATH: .zshenv adds the brew dirs and ~/.local/bin,
+      # covering both the mac and linux install locations
+      printf "%s" "/usr/bin/env zsh -lc 'exec claude'"
       ;;
     codex)
-      printf "%s" "/bin/zsh -lc 'exec /opt/homebrew/bin/codex'"
+      printf "%s" "/usr/bin/env zsh -lc 'exec codex'"
       ;;
     mini)
       local model_q config_q log_q alias_q
@@ -52,7 +54,7 @@ agent_command() {
       config_q="$(shell_quote "$MINI_CONFIG")"
       log_q="$(shell_quote "$LLAMA_LOG")"
       alias_q="$(shell_quote "$LLAMA_ALIAS")"
-      printf "%s" "/bin/zsh -lc 'if ! pgrep -f -- \"llama-server.*--alias ${alias_q}\" >/dev/null 2>&1; then nohup /opt/homebrew/bin/llama-server -m ${model_q} --verbose --verbose-prompt --alias ${alias_q} --jinja > ${log_q} 2>&1 & fi; until curl -sf http://127.0.0.1:8080/v1/models >/dev/null 2>&1; do sleep 1; done; exec \"${HOME}/.local/bin/mini\" -c ${config_q}'"
+      printf "%s" "/usr/bin/env zsh -lc 'if ! pgrep -f -- \"llama-server.*--alias ${alias_q}\" >/dev/null 2>&1; then nohup /opt/homebrew/bin/llama-server -m ${model_q} --verbose --verbose-prompt --alias ${alias_q} --jinja > ${log_q} 2>&1 & fi; until curl -sf http://127.0.0.1:8080/v1/models >/dev/null 2>&1; do sleep 1; done; exec \"${HOME}/.local/bin/mini\" -c ${config_q}'"
       ;;
     *)
       tmux display-message "Unknown agent tool: $1"

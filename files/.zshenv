@@ -3,8 +3,11 @@
 # source brew binaries on MacOS 
 [[ -d /opt/homebrew/bin ]] && PATH=/opt/homebrew/bin/:$PATH
 
-# source linuxbrew binaries 
+# source linuxbrew binaries
 [[ -d /home/linuxbrew/.linuxbrew/bin ]] && PATH=/home/linuxbrew/.linuxbrew/bin:$PATH
+
+# user-local binaries (claude and central install here on Linux)
+[[ -d $HOME/.local/bin ]] && PATH=$HOME/.local/bin:$PATH
 
 # nvim/Sniprun on MacOS requires cargo deps
 [ -f $HOME/.cargo/env ] && . "$HOME/.cargo/env"
