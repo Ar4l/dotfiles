@@ -18,12 +18,14 @@
 # 3. If not on a server: install applications (casks) for the OS 
 
 
-# 1. Install Kitty 
+# 1. Install Kitty
+# On macOS it's a cask (see `casks` below) so `brew upgrade` keeps it
+# current; the curl installer left it stale for years (0.36 -> 0.48).
 
-[ ! -e "/Applications/kitty.app" ]  &&    # MacOS
-[ ! -e "$HOME/.local/kitty.app" ]   &&    # Linux
+[[ "$OSTYPE" != "darwin"* ]]        &&    # Linux (macOS uses the cask)
+[ ! -e "$HOME/.local/kitty.app" ]   &&
 echo 'installing kitty'             &&
-curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin 
+curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
 
 
 # 2. Install programs 
@@ -105,6 +107,7 @@ casks=(
   claude-code             # AI coding agent
   codex                   # AI coding agent
   jupyter-notebook-viewer # quicklook for .ipynb
+  kitty                   # terminal emulator (cask so upgrades ride brew)
   macfuse                 # userspace filesystems (sshfs et al.)
   paseo                   # menubar pasteboard manager
   qlmarkdown              # quicklook for markdown
