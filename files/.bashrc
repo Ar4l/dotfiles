@@ -29,13 +29,6 @@ shopt -s dirspell     # check minor dir spell errors
 shopt -s direxpand
 
 
-# export neovim as EDITOR when available, fall back to vim
-if [[ -x "$(command -v nvim)" ]]; then
-  export EDITOR=nvim
-else
-  export EDITOR=vim
-fi
-
 # use vi mode keys 
 # e.g. 
 # EMACS   VIM

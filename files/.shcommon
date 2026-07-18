@@ -42,3 +42,12 @@ export PYTHONSTARTUP="$HOME/.config/python/startup.py"
 
 # Use better-featured BuildKit (not fully backwards-compatible)
 export DOCKER_BUILDKIT=1
+
+# neovim as editor when available, fall back to vim; VISUAL is what
+# claude/codex ctrl+g pick up first
+if [ -x "$(command -v nvim)" ]; then
+  export EDITOR=nvim
+else
+  export EDITOR=vim
+fi
+export VISUAL=$EDITOR
