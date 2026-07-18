@@ -1,0 +1,23 @@
+#!/bin/sh
+# Launch the codex CLI via the JetBrains LiteLLM proxy (litellm.labs.jb.gg),
+# authed with the $key env var, model pinned to gpt-5.6-sol. Uses session-only
+# -c overrides — ~/.codex/config.toml is never modified, so regular codex
+# sessions are unaffected. Override the model per-run with -m/--model.
+# Key resolution: $key env var if set, otherwise the user-scoped encrypted
+# systemd credential (see claude-jb for the refresh command).
+if [ -z "$key" ]; then
+  key=$(systemd-creds decrypt --user --name=jb-litellm-key "$HOME/.config/jb-litellm/key.cred" - 2>/dev/null)
+  export key
+fi
+if [ -z "$key" ]; then
+  echo "codex-jb: 'key' not in env and could not decrypt ~/.config/jb-litellm/key.cred" >&2
+  exit 1
+fi
+exec codex \
+  -c 'model_providers.jb.name="JetBrains LiteLLM"' \
+  -c 'model_providers.jb.base_url="https://litellm.labs.jb.gg/v1"' \
+  -c 'model_providers.jb.env_key="key"' \
+  -c 'model_providers.jb.wire_api="responses"' \
+  -c 'model_provider="jb"' \
+  -c 'model="openai/gpt-5.6-sol"' \
+  "$@"

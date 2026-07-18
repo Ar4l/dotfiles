@@ -1,0 +1,26 @@
+#!/bin/sh
+# Launch Claude Code via the JetBrains LiteLLM proxy (litellm.labs.jb.gg),
+# authed with the $key env var. Opt-in fallback for when normal quota runs
+# out — only affects the session started by this command. Uses flag-level
+# --settings, which outranks the central-proxy config in
+# ~/.claude/settings.json (loaded as both user and project settings when
+# cwd is $HOME), without ever modifying that file.
+# Key resolution: $key env var if set, otherwise the user-scoped encrypted
+# systemd credential (bound to this user+machine, no plaintext on disk).
+# Refresh the stored key with:
+#   printf '%s' "$key" | systemd-creds encrypt --user --name=jb-litellm-key - ~/.config/jb-litellm/key.cred
+if [ -z "$key" ]; then
+  key=$(systemd-creds decrypt --user --name=jb-litellm-key "$HOME/.config/jb-litellm/key.cred" - 2>/dev/null)
+  export key
+fi
+if [ -z "$key" ]; then
+  echo "claude-jb: 'key' not in env and could not decrypt ~/.config/jb-litellm/key.cred" >&2
+  exit 1
+fi
+# Model pinned to opus: the proxy does not serve claude-fable-5, the default
+# from ~/.claude/settings.json. Override per-run with --model if needed.
+exec claude --settings '{
+  "env": { "ANTHROPIC_BASE_URL": "https://litellm.labs.jb.gg" },
+  "apiKeyHelper": "printenv key",
+  "model": "claude-opus-4-8"
+}' "$@"
