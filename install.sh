@@ -106,6 +106,7 @@ casks=(
   chai                    # keeps the mac awake
   claude-code             # AI coding agent
   codex                   # AI coding agent
+  fluidvoice              # local push-to-talk dictation (talk to agents)
   jupyter-notebook-viewer # quicklook for .ipynb
   kitty                   # terminal emulator (cask so upgrades ride brew)
   macfuse                 # userspace filesystems (sshfs et al.)
