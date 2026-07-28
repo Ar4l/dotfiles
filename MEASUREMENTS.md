@@ -197,3 +197,27 @@ Also ruled out: rem-dev's `sshkeep-watch` loop (`/usr/local/sbin/sshkeep-watch`,
 `sleep 2`). In steady state it only reads; `nft -a` handles were identical across
 three samples 2s apart, its 2.0s period does not match the observed ~3.6s, and
 the spikes occur on LAN pings that never reach rem-dev.
+
+## RESOLVED: AirDrop / AWDL was the cause
+
+`awdl0` was `UP` with AirDrop `DiscoverableMode = Everyone`. Setting AirDrop
+receiving to Off in Control Centre (interface stays `UP`) removed the jitter.
+
+Gateway leg, identical 60-packet test:
+
+```
+BEFORE  med  4.1  max 89.6  sd 27.6   ++..##...##......##...##......#+...##...##.+....##...##....#
+AFTER   med  3.1  max  7.0  sd  0.8   ...................+..................................+.....
+```
+
+End-to-end Mac → rem-dev:
+
+| Test | Before | After |
+| --- | --- | --- |
+| ICMP 60 pkts | 16.6 / 30.7 / 129.0, σ 25.4 | **17.3 / 18.8 / 28.3, σ 1.58** |
+| TCP :22, 20 samples | 25.7 / 43.3 / 120.9, σ 29.7 | **24.5 / 27.7 / 32.5, σ 2.2** |
+
+Single radio + AWDL discovery windows = periodic off-channel hops. Consistent
+with every earlier observation: periodic cadence, immune to link saturation,
+excellent signal, present on all over-the-air targets but absent on a local
+virtual interface.

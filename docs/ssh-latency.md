@@ -2,57 +2,43 @@
 
 2026-07-28. Measurements in [`../MEASUREMENTS.md`](../MEASUREMENTS.md).
 
-## TL;DR
+## TL;DR — SOLVED
 
-Your problem is **jitter, not latency** — and the jitter is **your local Wi-Fi**,
-not the network path, not WARP, and not GCP.
+**Cause: AirDrop.** It was set to "Everyone", which keeps Apple Wireless Direct
+Link (`awdl0`) discoverable. The Mac has one Wi-Fi radio, so staying discoverable
+means periodically hopping off the home channel and back — stalling traffic every
+~3.6s. Turning AirDrop receiving off in Control Centre fixed it outright.
 
-- p50 RTT is **20–31ms** and packet loss is **0%**. The median is genuinely fine.
-- But ~22–28% of packets spike to 3–4× median. That tail is what you feel.
-- **The spikes are already fully present at hop one.** Jitter measured against
-  three targets at increasing distance:
+Measured before/after, Mac → rem-dev, identical tests:
 
-  | Target | min | avg | max | **σ** |
-  | --- | --- | --- | --- | --- |
-  | home router (Wi-Fi only) | 2.4 | 16.0 | 90.8 | **24.5** |
-  | Cloudflare edge (+WARP) | 11.9 | 29.2 | 96.3 | **26.1** |
-  | rem-dev (+internet +GCP) | 17.3 | 42.7 | 107.1 | **30.4** |
+| Metric | Before | After | |
+| --- | --- | --- | --- |
+| avg latency | 30.7ms | **18.8ms** | 39% faster |
+| max latency | 129.0ms | **28.3ms** | 4.6× better |
+| jitter (σ) | 25.4 | **1.58** | **16× better** |
+| TCP handshake p50 | 30.8ms | **27.1ms** | |
+| TCP handshake max | 120.9ms | **32.5ms** | |
+| TCP handshake σ | 29.7 | **2.2** | **13× better** |
 
-  Minimum RTT rises with distance (real propagation, and it's small). **σ barely
-  moves.** Everything past your router contributes ~6ms of σ combined.
+Local Wi-Fi leg went from `med 4.1 / max 89.6 / σ 27.6` to
+`med 3.1 / max 7.0 / σ 0.8`. The link is now as stable as rem-dev's own leg into
+Cloudflare (σ 1.5).
 
-- The spikes are **periodic, ~3.6s cadence**, and the identical pattern appears
-  end-to-end:
+Note `awdl0` remains `UP` — turning off *discoverability* is sufficient; the
+interface itself doesn't need to be downed. The spikes will return while AirDrop
+is set to "Everyone" or "Contacts Only", since both require AWDL discovery.
 
-  ```
-  router:   ......##...##....#......##+..##....#.+....##...##....#......##...
-  rem-dev:  ..#.+....##...##......++...##...##......++...##...##......++...##
-  ```
+**Therefore: no terminal tool, transport, or infrastructure change was ever
+needed for latency.** mosh, Eternal Terminal, Tailscale, Cloudflare Tunnel, the
+WARP split-tunnel and IAP are all irrelevant to the problem as diagnosed. The
+sections below are retained for the reasoning and for the security findings,
+which stand on their own.
 
-- Not power save (jitter is unchanged under saturation: σ 26.6 idle vs 27.0
-  loaded). Not weak signal (**-46 dBm / -94 dBm**, 48 dB SNR, 1200 Mbps,
-  802.11ax). Baseline Wi-Fi RTT is an excellent **4.2ms median** — it's the
-  periodic stalls that ruin it.
-- **Mechanism is unproven.** It is the wireless link, not the Mac and not one
-  device: pings to two *different* LAN devices (`.254`, `.1`) show the same
-  cadence and magnitude, while a local virtual interface (`.7`) is flawless at
-  **0.3ms ±0.1** — which rules out ping being descheduled by host load.
-  Whether the cause is off-channel scanning, airtime contention, or AP
-  behaviour, I did not establish. (An attempt to correlate against
-  `com.apple.wifi` scan events was **void** — the log predicate emitted nothing
-  at all, so it proved neither direction.)
-
-**Do this, in order:**
-1. **Plug in Ethernet.** Adapters are present (`en1`–`en6`) and all currently
-   `inactive`. This should remove ~80% of the jitter outright.
-2. If Ethernet isn't practical, try the AP on a **non-DFS channel** (36–48 or
-   149–165) or 6GHz — channel 108 is DFS. Treat this as a guess to test, not a
-   diagnosis; the mechanism is unproven.
-3. **Turn on ssh multiplexing** — measured **7–9×** on repeat connections, free.
-
-**Do not** adopt mosh or Eternal Terminal, and **do not** bother with the WARP
-split-tunnel change for latency reasons — see the correction note below. None of
-them touch the actual cause.
+Still worth doing, independently of latency:
+- **ssh multiplexing** — measured 7–9× on repeat connections, free.
+- **IAP** (`--tunnel-through-iap`, verified working, latency-neutral) — removes
+  dependence on the world-open `tcp:22` rules and the ephemeral-IP churn.
+- The two security findings at the end of this document.
 
 ## Why not mosh
 
