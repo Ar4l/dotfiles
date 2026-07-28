@@ -171,10 +171,29 @@ Mechanism, narrowed:
   rem-dev:  ..#.+....##...##......++...##...##......++...##...##......++...##
   ```
 - Baseline is excellent: **4.2ms median** to the router between spikes.
-- Contributing factors: **184 remembered Wi-Fi networks**; **channel 108 is DFS**.
+- Channel 108 is DFS. (An earlier draft blamed **184 remembered Wi-Fi networks**
+  — **retracted**: macOS scans with broadcast probes, so scan cost tracks
+  channels swept, not remembered SSID count. No evidence was gathered for it.)
 - Ethernet adapters `en1`–`en6` all report `inactive` — untested A/B available.
 
-Best-supported explanation is periodic off-channel scanning. Flagged as
-inference, not proof: the cadence, the immunity to load, the excellent signal
-and the large remembered-network list all fit, but I did not capture radio-level
-scan events to confirm.
+Isolated to the wireless link by pinging three LAN targets, 60 pkts each:
+
+| Target | median | max | σ |
+| --- | --- | --- | --- |
+| `192.168.2.254` (gateway) | 4.1 | 89.6 | 27.6 |
+| `192.168.2.1` (second device) | 5.2 | 91.1 | 27.0 |
+| `192.168.2.7` (local virtual iface) | **0.3** | **0.5** | **0.1** |
+
+Two independent physical devices show the same cadence; a virtual interface that
+never touches the air is flawless. That rules out host-load descheduling (load
+avg was 2.41) and rules out any single device's CPU.
+
+**Mechanism remains unproven.** Scanning, airtime contention and AP behaviour all
+remain live candidates. An attempt to correlate spikes against `com.apple.wifi`
+scan events was **void** — the log predicate emitted zero lines even as a
+validity check, the same failure mode as the buffered tcpdump earlier.
+
+Also ruled out: rem-dev's `sshkeep-watch` loop (`/usr/local/sbin/sshkeep-watch`,
+`sleep 2`). In steady state it only reads; `nft -a` handles were identical across
+three samples 2s apart, its 2.0s period does not match the observed ~3.6s, and
+the spikes occur on LAN pings that never reach rem-dev.

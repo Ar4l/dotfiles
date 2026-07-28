@@ -33,15 +33,21 @@ not the network path, not WARP, and not GCP.
   loaded). Not weak signal (**-46 dBm / -94 dBm**, 48 dB SNR, 1200 Mbps,
   802.11ax). Baseline Wi-Fi RTT is an excellent **4.2ms median** — it's the
   periodic stalls that ruin it.
-- Most likely mechanism: **off-channel background scanning**, with
-  **184 remembered Wi-Fi networks** driving it, on **channel 108 — a DFS
-  channel**.
+- **Mechanism is unproven.** It is the wireless link, not the Mac and not one
+  device: pings to two *different* LAN devices (`.254`, `.1`) show the same
+  cadence and magnitude, while a local virtual interface (`.7`) is flawless at
+  **0.3ms ±0.1** — which rules out ping being descheduled by host load.
+  Whether the cause is off-channel scanning, airtime contention, or AP
+  behaviour, I did not establish. (An attempt to correlate against
+  `com.apple.wifi` scan events was **void** — the log predicate emitted nothing
+  at all, so it proved neither direction.)
 
 **Do this, in order:**
 1. **Plug in Ethernet.** Adapters are present (`en1`–`en6`) and all currently
    `inactive`. This should remove ~80% of the jitter outright.
-2. **Prune the 184 preferred networks** and move the AP off DFS channel 108 to a
-   non-DFS channel (36–48 or 149–165), or to 6GHz.
+2. If Ethernet isn't practical, try the AP on a **non-DFS channel** (36–48 or
+   149–165) or 6GHz — channel 108 is DFS. Treat this as a guess to test, not a
+   diagnosis; the mechanism is unproven.
 3. **Turn on ssh multiplexing** — measured **7–9×** on repeat connections, free.
 
 **Do not** adopt mosh or Eternal Terminal, and **do not** bother with the WARP
