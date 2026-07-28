@@ -140,3 +140,41 @@ ping  → 100% loss ;  TCP/22 → timed out
 Every one of these settings is marked `(network policy)` and
 `Allow Mode Switch: false` — changing them is a corporate Zero Trust change, not
 self-serve.
+
+## CORRECTION (same day): the jitter is local Wi-Fi
+
+The attribution above ("the instability is in the Cloudflare-egress → GCP
+segment") is **wrong**. It came from one-way leg measurements plus a 10-packet
+gateway sample that caught a quiet window (σ 2.7, max 9.9). A 120-packet run of
+the same leg gives **min 2.4 / avg 11.9 / max 89.7 / σ 20.4**.
+
+Jitter vs distance, 40 packets each, same session:
+
+| Target | min | avg | max | σ |
+| --- | --- | --- | --- | --- |
+| 192.168.2.254 (router, Wi-Fi only) | 2.4 | 16.0 | 90.8 | 24.5 |
+| 1.1.1.1 (+WARP) | 11.9 | 29.2 | 96.3 | 26.1 |
+| 34.6.249.84 (+internet +GCP) | 17.3 | 42.7 | 107.1 | 30.4 |
+
+min scales with distance; **σ does not**. ~80% of jitter exists at hop one.
+
+Corroborating: IAP vs direct public IP measured σ 37 vs 43 with p50 152 vs 145 —
+statistically indistinguishable despite entirely different paths past Cloudflare.
+Jitter must therefore be upstream of where those paths diverge.
+
+Mechanism, narrowed:
+- **Not power save** — σ 26.6 idle vs 27.0 under saturation.
+- **Not signal** — -46 dBm / -94 dBm (48 dB SNR), 1200 Mbps, 802.11ax, 80MHz.
+- **Periodic**, ~3.6s cadence, 22–28% of packets, same pattern end-to-end:
+  ```
+  router:   ......##...##....#......##+..##....#.+....##...##....#......##...
+  rem-dev:  ..#.+....##...##......++...##...##......++...##...##......++...##
+  ```
+- Baseline is excellent: **4.2ms median** to the router between spikes.
+- Contributing factors: **184 remembered Wi-Fi networks**; **channel 108 is DFS**.
+- Ethernet adapters `en1`–`en6` all report `inactive` — untested A/B available.
+
+Best-supported explanation is periodic off-channel scanning. Flagged as
+inference, not proof: the cadence, the immunity to load, the excellent signal
+and the large remembered-network list all fit, but I did not capture radio-level
+scan events to confirm.

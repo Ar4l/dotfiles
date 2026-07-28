@@ -4,23 +4,49 @@
 
 ## TL;DR
 
-Your problem is **jitter, not latency**, and **no terminal tool fixes jitter**.
+Your problem is **jitter, not latency** — and the jitter is **your local Wi-Fi**,
+not the network path, not WARP, and not GCP.
 
-- p50 RTT is **31ms** — genuinely comfortable. Packet loss is **0%**.
-- But ~15% of round-trips spike to **100–130ms** (3–4× median). That tail is what
-  you feel.
-- Cause: both ends run WARP, but rem-dev's *inbound* is pinned to the physical
-  NIC by the workaround. So traffic exits Cloudflare's backbone and hairpins
-  back into GCP over the public internet. rem-dev's own leg to Cloudflare is
-  **7.7ms ±1.5**; the composite path is **30.7ms ±25.4**.
-- rem-dev is already in `europe-west4-a`, same country as you. **There is no
-  "move it closer" win available.** The distance is already optimal; the detour
-  is the problem.
+- p50 RTT is **20–31ms** and packet loss is **0%**. The median is genuinely fine.
+- But ~22–28% of packets spike to 3–4× median. That tail is what you feel.
+- **The spikes are already fully present at hop one.** Jitter measured against
+  three targets at increasing distance:
 
-**Do this:** turn on ssh connection multiplexing (measured **7–9×** on repeat
-connections, zero infra change). **Ask IT for this:** a WARP split-tunnel change
-so the path stays on Cloudflare's backbone. **Don't adopt mosh or Eternal
-Terminal** — reasons below, both specific to your setup rather than generic.
+  | Target | min | avg | max | **σ** |
+  | --- | --- | --- | --- | --- |
+  | home router (Wi-Fi only) | 2.4 | 16.0 | 90.8 | **24.5** |
+  | Cloudflare edge (+WARP) | 11.9 | 29.2 | 96.3 | **26.1** |
+  | rem-dev (+internet +GCP) | 17.3 | 42.7 | 107.1 | **30.4** |
+
+  Minimum RTT rises with distance (real propagation, and it's small). **σ barely
+  moves.** Everything past your router contributes ~6ms of σ combined.
+
+- The spikes are **periodic, ~3.6s cadence**, and the identical pattern appears
+  end-to-end:
+
+  ```
+  router:   ......##...##....#......##+..##....#.+....##...##....#......##...
+  rem-dev:  ..#.+....##...##......++...##...##......++...##...##......++...##
+  ```
+
+- Not power save (jitter is unchanged under saturation: σ 26.6 idle vs 27.0
+  loaded). Not weak signal (**-46 dBm / -94 dBm**, 48 dB SNR, 1200 Mbps,
+  802.11ax). Baseline Wi-Fi RTT is an excellent **4.2ms median** — it's the
+  periodic stalls that ruin it.
+- Most likely mechanism: **off-channel background scanning**, with
+  **184 remembered Wi-Fi networks** driving it, on **channel 108 — a DFS
+  channel**.
+
+**Do this, in order:**
+1. **Plug in Ethernet.** Adapters are present (`en1`–`en6`) and all currently
+   `inactive`. This should remove ~80% of the jitter outright.
+2. **Prune the 184 preferred networks** and move the AP off DFS channel 108 to a
+   non-DFS channel (36–48 or 149–165), or to 6GHz.
+3. **Turn on ssh multiplexing** — measured **7–9×** on repeat connections, free.
+
+**Do not** adopt mosh or Eternal Terminal, and **do not** bother with the WARP
+split-tunnel change for latency reasons — see the correction note below. None of
+them touch the actual cause.
 
 ## Why not mosh
 
@@ -150,9 +176,22 @@ existing master but no longer create one). `ServerAliveCountMax 6` is
 deliberately generous — set it tight and a jitter spike will kill the session,
 which is the opposite of what you want here.
 
-### 2. Ask IT for a WARP split-tunnel change — the only real latency win
+### 2. WARP split-tunnel — CORRECTED: not a latency fix
 
-This is the one change that attacks the actual cause. Two framings, either works:
+**This section originally claimed the WARP hairpin was the cause of the jitter.
+That was wrong.** It was inferred from one-way leg measurements before I isolated
+the Wi-Fi, and a 10-packet gateway sample that happened to catch a quiet window
+(σ 2.7, max 9.9 — the 120-packet run gave σ 20.4, max 89.7).
+
+Two later results falsify it. First, IAP and the direct public-IP path have
+nearly identical jitter (σ 37 vs 43) despite diverging completely after
+Cloudflare — so the jitter is upstream of the divergence. Second, the
+three-target comparison in the TL;DR puts essentially all of σ at hop one.
+
+The split-tunnel change is still worth doing for **security and routing
+hygiene** — it removes public exposure and shortens the path by ~5–14ms of
+*median* — but it will not fix what you actually notice. Keep the priority order
+in the TL;DR. Two framings, either works:
 
 - **Preferred — WARP-to-WARP.** Both machines are in the same `jetbrains` Zero
   Trust org; rem-dev holds WARP IP `100.96.12.184`. Reaching it that way keeps
