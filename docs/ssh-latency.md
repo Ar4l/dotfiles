@@ -190,30 +190,153 @@ exactly this split — worth watching.
 
 ## Two unrelated problems found while investigating
 
-### The workaround silently broke intra-VPC networking
+### 1. The workaround silently broke intra-VPC networking
 
-WARP's exclude list covers `10.0.0.0/16`, but this VM is on **`10.164.0.125`**,
-and table 65743 routes `10.128.0.0/9` into `CloudflareWARP`. Result:
-`ping 10.164.0.1` → **100% loss**. rem-dev cannot reach its own subnet gateway or
-any other VM on the internal network. GCP metadata still works only because
-`169.254.0.0/16` happens to be excluded.
+**The mechanism.** WARP's split-tunnel exclude list contains `10.0.0.0/16` — a
+sensible default for a laptop on a home LAN, and useless here. This VM sits at
+`10.164.0.125/20` (subnet `10.164.0.0/20`), which is *not* inside `10.0.0.0/16`.
+Meanwhile WARP's routing table 65743 installs `10.128.0.0/9 dev CloudflareWARP`,
+which *does* cover `10.164.x`. So every packet to the VM's own subnet gets
+tunnelled to Cloudflare, which will not route RFC1918 space, and is dropped.
 
-Fix: add the subnet (e.g. `10.164.0.0/20`) to the WARP exclude list, or extend
-`sshkeep` to mark VPC-bound egress. Worth deciding deliberately rather than
-leaving as an accident — right now it's a latent trap for anything multi-VM.
+`ip route get` shows it unambiguously — note the source address rewrite to the
+WARP virtual IP:
 
-Also: `ip rule` 77 (`from all fwmark 0x5222 lookup 177`) is **dead**. The live
-mechanism sets packet mark `0x100cf`, not `0x5222`, so rule 77 never matches.
-Harmless, but it's misleading when debugging — worth deleting or documenting.
+```
+10.164.0.1     -> dev CloudflareWARP table 65743 src 100.96.12.184   # subnet gateway
+10.164.0.2     -> dev CloudflareWARP table 65743 src 100.96.12.184   # GCP internal DNS
+10.128.0.5     -> dev CloudflareWARP table 65743 src 100.96.12.184   # a colleague's VM
+199.36.153.8   -> dev CloudflareWARP table 65743 src 100.96.12.184   # Private Google Access
+34.6.249.84    -> dev CloudflareWARP table 65743 src 100.96.12.184   # its OWN public IP
+169.254.169.254 -> via 10.164.0.1 dev ens4 src 10.164.0.125          # metadata: OK
+```
 
-### `tcp:22` is open to the entire internet
+**What actually breaks, tested:**
 
-Firewall rules `furda-ssh` and `karol` both allow `tcp:22` from `0.0.0.0/0`. A
-12-second packet capture caught brute-force attempts from three unrelated IPs
-(`197.220.92.185`, `51.91.96.79`, `103.179.198.19`). Options: scope those rules
-to known source ranges, or move to `allow-iap-22-for-all` (IAP,
-`35.235.240.0/20`) which already exists in the project. The WARP-to-WARP path in
-step 2 would make public `:22` unnecessary altogether.
+| | |
+| --- | --- |
+| `ping 10.164.0.1` (subnet gateway) | **100% loss** |
+| `https://199.36.153.8` (Private Google Access) | **timeout** |
+| Any other VM by internal `10.x` IP | **unreachable** |
+| Reaching itself via `34.6.249.84` | **unreachable** |
+
+**What still works, and why the failure is sneaky.** I initially assumed DNS
+would break too. It doesn't. `systemd-resolved` is pointed at
+`169.254.169.254`, and `169.254.0.0/16` *is* in the exclude list — so the
+metadata server stays reachable, which means:
+
+- GCP internal DNS resolution works (`c.jetbrains-grazie.internal` and friends)
+- service-account tokens work (`/service-accounts/default/token` → HTTP 200)
+- `gcloud`/`gsutil` against *public* endpoints work (they egress via WARP)
+
+That combination is the worst case for debugging. An internal hostname
+**resolves correctly** to a `10.x` address, and then the connection black-holes.
+It presents as "that VM is down" rather than "my routing is wrong." You will
+lose an hour to this the first time it bites.
+
+**Why it hasn't bitten yet:** the box is a single-VM workload — Claude Code,
+tmux, and a loopback-bound `llama-server`. Nothing currently reaches sideways.
+The `jetbrains-grazie` project has dozens of VMs in `europe-west4` on
+`10.164.x`, though, so the moment you want to talk to one — or use Private
+Google Access, or mount an internal NFS/Filestore share, or hit an internal load
+balancer — it will fail confusingly.
+
+**Fix.** Add the subnet to WARP's exclude list, which is the same class of change
+as the existing `10.0.0.0/16` entry:
+
+```
+10.164.0.0/20          # or 10.128.0.0/9 to cover every GCP internal range
+199.36.153.8/30        # private.googleapis.com, if you want Private Google Access
+```
+
+Doing it in the exclude list is preferable to extending `sshkeep`, because
+`sshkeep`'s mark is driven by `ct state new` on *inbound* connections — it
+structurally cannot help traffic the VM originates. If the exclude list is
+org-managed and you can't edit it, the alternative is a `main`-table route added
+above WARP's, or a second nft rule marking VPC-destined egress with `0x100cf`.
+
+**Also, `ip rule` 77 is dead code.** `from all fwmark 0x5222 lookup 177` (table
+177 = `default via 10.164.0.1 dev ens4 onlink`) can never match: the live
+mechanism sets *packet* mark `0x100cf`, while `0x5222` is only ever a
+**conntrack** mark. `ip rule` matches on the packet mark. It looks like an
+earlier attempt that was superseded and left behind. Harmless, but it will
+mislead the next person who debugs this — delete it or comment it.
+
+### 2. `tcp:22` is open to the entire internet — but the risk is narrower than it looks
+
+**Confirmed exposure.** Three firewall rules allow `tcp:22` from `0.0.0.0/0`
+with **no target tags**, which in GCP means they apply to *every* VM in the
+`default` network — rem-dev included:
+
+```
+furda-ssh                  -> tcp:22     from 0.0.0.0/0
+karol                      -> tcp:22     from 0.0.0.0/0
+allow-22-elena-kartysheva  -> tcp:22     from 0.0.0.0/0   (mixed in with 3 specific IPs)
+vllm-default               -> tcp:8000   from 0.0.0.0/0
+default-allow-icmp         -> icmp       from 0.0.0.0/0
+```
+
+None of these are yours. `allow-22-elena-kartysheva` is the telling one — it
+lists `31.153.33.0/24` and `31.153.33.236` *alongside* `0.0.0.0/0`, which is the
+signature of someone adding a specific IP and then widening it to unblock
+themselves. The net effect is that three people's convenience rules keep port 22
+open on every VM in the project.
+
+**The attack volume is real.** In the last 24 hours:
+
+- **4,949** failed authentication attempts
+- **86** distinct source IPs
+- usernames tried: `admin` (124), `user`, `sol`, `solana`, `ftpuser`, `postgres`
+  — commodity botnets plus crypto-wallet-hunting
+
+**But the actual risk is low, and I want to be precise rather than alarming.**
+Effective `sshd -T` config:
+
+```
+passwordauthentication      no
+kbdinteractiveauthentication no
+permitrootlogin             prohibit-password
+pubkeyauthentication        yes
+permitemptypasswords        no
+```
+
+Key-only auth means **the brute force cannot succeed**. It is guessing passwords
+against a server that does not accept passwords. I also checked 7 days of
+successful logins: exactly one key fingerprint, ~115 sessions — consistent with
+just you. **No evidence of compromise.**
+
+So this is noise, not a breach in progress. What it actually costs you:
+
+1. **Log churn** — ~5k journal entries/day burying anything real.
+2. **A standing bet on sshd being flawless.** Key-only auth protects against
+   guessing, not against a pre-auth RCE. `regreSSHion` (CVE-2024-6387, 2024) was
+   exactly that. Internet-facing `:22` means you patch on the internet's
+   schedule.
+3. **A one-flag blast radius.** The day anyone sets `PasswordAuthentication yes`
+   to debug something, 86 botnets are already knocking.
+4. **`vllm-default` opening `tcp:8000` on every VM is the sharper edge.** rem-dev
+   has nothing on 8000 today (I checked — the only internet-facing listener is
+   sshd; `llama-server` is correctly bound to `127.0.0.1:8033`). But inference
+   servers habitually bind `0.0.0.0:8000` with no auth by default. If you ever
+   start vLLM here without `--host 127.0.0.1`, it is instantly world-readable.
+   Given you already run a local model, treat this as a live foot-gun.
+
+**Options, cheapest first.** You can't delete other people's rules unilaterally,
+but you don't have to:
+
+- **`fail2ban`** — 10 minutes, kills the log noise, no coordination needed.
+- **Bind sshd to the WARP interface** once WARP-to-WARP works (step 2 above),
+  then public `:22` becomes unnecessary entirely. This is the clean end state:
+  it also makes the `sshkeep` workaround redundant, since there'd be no inbound
+  public connection to protect.
+- **Switch to IAP** — `allow-iap-22-for-all` (`35.235.240.0/20`) already exists
+  in the project, so `gcloud compute ssh --tunnel-through-iap` works today with
+  no new rule. Note this would route ssh through Google's edge instead of
+  Cloudflare's, which is an untested latency path — worth measuring before
+  committing.
+- **Raise the untagged-rule problem with whoever owns the project.** The correct
+  fix is target tags on those three rules, which benefits everyone's VMs, not
+  just yours.
 
 ## Credit where due: the workaround is well built
 
