@@ -111,7 +111,7 @@ casks=(
   jupyter-notebook-viewer # quicklook for .ipynb
   kitty                   # terminal emulator (cask so upgrades ride brew)
   macfuse                 # userspace filesystems (sshfs et al.)
-  paseo                   # menubar pasteboard manager
+  paseo                   # AI coding orchestrator (app + CLI + daemon)
   qlmarkdown              # quicklook for markdown
   skim                    # PDF reader, plays nice with LaTeX
   vscodium                # vscode without the telemetry
@@ -224,7 +224,6 @@ failed=()
 for formula in "${programs[@]}"; do
   brew install "$formula" > /dev/null || failed+=("$formula")
 done
-[ ${#failed[@]} -gt 0 ] && echo "FAILED to install: ${failed[*]}" >&2
 
 echo 'run the following in case brew is not yet available in this shell'
 echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"'
@@ -262,8 +261,27 @@ else
   # the codex cask ships a linux-musl binary, so it installs fine here
   # even though the rest of the casks are mac-only
   command -v codex &> /dev/null || brew install --cask codex || failed+=(codex)
+
+  # paseo (agent orchestrator; paseo.sh) via its first-party nix flake:
+  # npm -g is unpinned + runs postinstall scripts; releases ship no headless
+  # tarball. Determinate installer creates /nix (sudo once), enables flakes.
+  command -v nix &> /dev/null || [ -x /nix/var/nix/profiles/default/bin/nix ] ||
+  curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix |
+    sh -s -- install --no-confirm
+  source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh 2> /dev/null
+  command -v paseo &> /dev/null || nix profile add github:getpaseo/paseo || failed+=(paseo)
+
+  # daemon runs as a systemd user unit (stowed); linger keeps it up after logout;
+  # restart so reruns pick up tracked unit changes (same pattern as keyring.sh)
+  command -v systemctl &> /dev/null && {
+    loginctl enable-linger
+    systemctl --user daemon-reload
+    systemctl --user enable --now paseo.service &&
+    systemctl --user restart paseo.service || failed+=(paseo.service)
+  }
 fi
 
-# Surface brew failures in the exit status, after everything else has run
+# Surface failures in the summary and exit status, after everything else has run
+[ ${#failed[@]} -gt 0 ] && echo "FAILED to install: ${failed[*]}" >&2
 [ ${#failed[@]} -eq 0 ]
 
