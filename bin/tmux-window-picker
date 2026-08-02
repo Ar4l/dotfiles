@@ -53,8 +53,8 @@ sel="$("$SELF" list windows | fzf \
   --prompt='windows> ' \
   --preview "$SELF preview {1}" \
   --preview-window=right,60% \
-  --bind "ctrl-p:change-prompt(panes> )+reload($SELF list panes)" \
-  --bind "ctrl-w:change-prompt(windows> )+reload($SELF list windows)" \
+  --bind "ctrl-l:change-prompt(panes> )+reload($SELF list panes)" \
+  --bind "ctrl-h:change-prompt(windows> )+reload($SELF list windows)" \
   --bind "ctrl-x:execute-silent($SELF kill {1})+transform:$xreload")" || exit 0
 
 tgt="${sel%% *}"
