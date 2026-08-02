@@ -1,0 +1,21 @@
+#!/usr/bin/env zsh
+
+set -eu
+
+# Popup shells are not login shells, so brew's bin may be missing from PATH.
+command -v fzf >/dev/null || path=(/home/linuxbrew/.linuxbrew/bin /opt/homebrew/bin $path)
+
+# Same label as the status-bar tabs: window name (unless it's the noise word
+# zsh) + cwd basename. $HOME must be expanded by zsh — tmux's format engine
+# won't — so the s|| substitution sees the real path.
+fmt="#{window_id} #I #{?#{==:#W,zsh},,#W·}#{s|$HOME|~|;s|.*/||:pane_current_path}#{?window_active, *,}"
+list_cmd="tmux list-windows -F '$fmt'"
+
+sel="$(eval "$list_cmd" | fzf \
+  --with-nth=2.. \
+  --preview 'tmux capture-pane -ep -t {1}' \
+  --preview-window=right,60% \
+  --bind "ctrl-x:execute-silent(tmux kill-window -t {1})+reload($list_cmd)")" || exit 0
+
+[[ -n "$sel" ]] || exit 0
+tmux select-window -t "${sel%% *}"
