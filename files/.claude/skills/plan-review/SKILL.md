@@ -62,7 +62,13 @@ refresh it (follow the "Re-review" prompt in that doc) before proceeding. This i
 
 ## Step 2 — Assemble the review context
 
-Write a single prompt file to `/tmp/codex-plan-review-prompt.md`. YOU (Claude) compose
+Create a per-invocation work dir so concurrent sessions can't clobber each other:
+
+```sh
+d=$(mktemp -d /tmp/codex-plan-review.XXXXXX)
+```
+
+Write a single prompt file to `$d/prompt.md`. YOU (Claude) compose
 this from the live conversation — Codex has none of this context. Include, clearly
 delimited with headings:
 
@@ -129,8 +135,8 @@ codex exec \
   --sandbox read-only \
   --skip-git-repo-check \
   -c model_reasoning_effort="high" \
-  --output-last-message /tmp/codex-plan-review.out \
-  "$(cat /tmp/codex-plan-review-prompt.md)"
+  --output-last-message "$d/review.out" \
+  "$(cat "$d/prompt.md")"
 ```
 
 Notes:
@@ -142,7 +148,7 @@ Notes:
 
 ## Step 4 — Surface the review
 
-Read `/tmp/codex-plan-review.out` and give the user a concise summary:
+Read `$d/review.out` and give the user a concise summary:
 - Codex's verdict and its highest-severity issues.
 - Where Codex **agrees** with the plan and where it **disagrees**.
 - For each substantive point, add **your own** take: accept, reject (with reason), or
@@ -152,4 +158,4 @@ Read `/tmp/codex-plan-review.out` and give the user a concise summary:
 
 Propose specific edits to the plan file. Apply them to the plan **only after the user
 approves**. If in plan mode, the plan file is the one editable file — update it there.
-Leave the two `/tmp/codex-plan-review*` files in place for the user to inspect.
+Leave `$d` and its two files in place for the user to inspect, and tell the user its path.
