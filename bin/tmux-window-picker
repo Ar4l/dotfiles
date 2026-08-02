@@ -5,17 +5,59 @@ set -eu
 # Popup shells are not login shells, so brew's bin may be missing from PATH.
 command -v fzf >/dev/null || path=(/home/linuxbrew/.linuxbrew/bin /opt/homebrew/bin $path)
 
-# Same label as the status-bar tabs: window name (unless it's the noise word
-# zsh) + cwd basename. $HOME must be expanded by zsh — tmux's format engine
-# won't — so the s|| substitution sees the real path.
-fmt="#{window_id} #I #{?#{==:#W,zsh},,#W·}#{s|$HOME|~|;s|.*/||:pane_current_path}#{?window_active, *,}"
-list_cmd="tmux list-windows -F '$fmt'"
+SELF="${0:A}"
 
-sel="$(eval "$list_cmd" | fzf \
+# Window lines mirror the status-bar tabs: name (unless it's the noise word
+# zsh) + cwd basename + pane-count badge. $HOME must be expanded by zsh —
+# tmux's format engine won't — so the s|| substitution sees the real path.
+win_fmt="#{window_id} #I #{?#{==:#W,zsh},,#W·}#{s|$HOME|~|;s|.*/||:pane_current_path}#{?#{>:#{window_panes},1},⁺#{window_panes},}#{?window_active, *,}"
+# Pane lines show the pane's own command + dir, one line per pane.
+pane_fmt="#{pane_id} #I.#{pane_index} #{?#{==:#{pane_current_command},zsh},,#{pane_current_command}·}#{s|$HOME|~|;s|.*/||:pane_current_path}#{?#{&&:#{pane_active},#{window_active}}, *,}"
+# Preview header: index · command · dir, plus the pane title when it says
+# something the command doesn't (zshrc sets it to the last command; the
+# agent launcher sets it to the tool name on vsplits).
+hdr_fmt="#{pane_index} · #{pane_current_command} · #{s|$HOME|~|:pane_current_path}#{?#{||:#{==:#{pane_title},#{pane_current_command}},#{==:#{pane_title},#{host}}},, · [#{pane_title}]}"
+
+case "${1:-}" in
+  list)
+    case "${2:-windows}" in
+      panes) exec tmux list-panes -s -F "$pane_fmt" ;;
+      *)     exec tmux list-windows -F "$win_fmt" ;;
+    esac
+    ;;
+  preview)
+    t="${2:?target required}"
+    if [[ "$t" == @* ]]; then
+      # whole window: every pane stacked, trailing blank lines trimmed
+      for p in $(tmux list-panes -t "$t" -F '#{pane_id}'); do
+        printf '\e[7m ── %s \e[0m\n' "$(tmux display -p -t "$p" "$hdr_fmt")"
+        tmux capture-pane -ep -t "$p" | awk 'NF{printf "%s", b; print; b=""} !NF{b=b ORS}'
+      done
+    else
+      tmux capture-pane -ep -t "$t"
+    fi
+    exit 0
+    ;;
+  kill)
+    t="${2:?target required}"
+    if [[ "$t" == @* ]]; then tmux kill-window -t "$t"; else tmux kill-pane -t "$t"; fi
+    exit 0
+    ;;
+esac
+
+# ctrl-x must reload whichever list is currently shown; the prompt tracks mode.
+xreload='case "$FZF_PROMPT" in panes*) echo "reload('"$SELF"' list panes)";; *) echo "reload('"$SELF"' list windows)";; esac'
+
+sel="$("$SELF" list windows | fzf \
   --with-nth=2.. \
-  --preview 'tmux capture-pane -ep -t {1}' \
+  --prompt='windows> ' \
+  --preview "$SELF preview {1}" \
   --preview-window=right,60% \
-  --bind "ctrl-x:execute-silent(tmux kill-window -t {1})+reload($list_cmd)")" || exit 0
+  --bind "ctrl-l:change-prompt(panes> )+reload($SELF list panes)" \
+  --bind "ctrl-h:change-prompt(windows> )+reload($SELF list windows)" \
+  --bind "ctrl-x:execute-silent($SELF kill {1})+transform:$xreload")" || exit 0
 
-[[ -n "$sel" ]] || exit 0
-tmux select-window -t "${sel%% *}"
+tgt="${sel%% *}"
+[[ -n "$tgt" ]] || exit 0
+tmux select-window -t "$tgt"
+if [[ "$tgt" == %* ]]; then tmux select-pane -t "$tgt"; fi
