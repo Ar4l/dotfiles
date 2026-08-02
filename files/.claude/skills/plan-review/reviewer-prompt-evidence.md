@@ -1,8 +1,8 @@
 ---
 name: reviewer-prompt-evidence
 description: Empirical basis for the plan-review Codex prompt design. Re-review when stale.
-last_reviewed: 2026-06-16
-review_after: 2026-07-16
+last_reviewed: 2026-08-02
+review_after: 2026-09-02
 ---
 
 # Reviewer-prompt evidence
@@ -29,6 +29,7 @@ anecdote.
 | 7 | **Verbosity bias** (>90% prefer longer answers) and **sycophancy/leniency** (agree with authoritative/consensus framing). | Tell the reviewer length ≠ quality; keep framing neutral ("another coding agent wrote the plan"), don't signal that approval is wanted. | **Med-High** |
 | 8 | **Human-in-the-loop beats critic-alone or human-alone** (CriticGPT). | Skill already surfaces findings for the user to accept/reject and revises only on approval — keep that flow; frame Codex output as candidates, not a gate. | **High** |
 | 9 | **Verbalised self-confidence is poorly calibrated** ("confidently wrong"); self-consistency across resamples is the better signal but costs N×. | Do NOT add a self-reported confidence score. Multi-sampling was considered and declined for cost; precision is enforced by framing (#3) instead. | **Med** |
+| 10 | **Authoring-agent failure modes** (Karpathy, Jan 2026): silent assumptions, overcomplication, orthogonal edits, missing success criteria; agents loop well only against verifiable goals. | Checks 4–7 (silent assumptions → "Open questions", over-engineering, blast radius, per-step verifiability) and the "Open questions" output section. Corroborates #7 (sycophancy). | **Med** (influential practitioner observation, not an eval) |
 
 ## Caveats
 
@@ -66,6 +67,8 @@ anecdote.
 **Practitioner — mostly asserted, some data-backed:**
 - Eugene Yan, "LLM-evaluators / LLM patterns" (synthesises CoT, specific-criteria, bias data) — https://eugeneyan.com/writing/llm-evaluators/
 - Hamel Husain, "Creating an LLM-as-a-Judge" (binary + critique-before-verdict; avoid 1–5 scales) — https://hamel.dev/blog/posts/llm-judge/
+- Andrej Karpathy, coding-agent failure modes post, Jan 2026 — https://x.com/karpathy/status/2015883857489522876
+- Community distillation of the above into agent skills — https://github.com/multica-ai/andrej-karpathy-skills
 
 **Community — anecdotal unless noted:**
 - HN "Mysti" cross-model review thread (skeptical of unverified claims, demands evals) — https://news.ycombinator.com/item?id=46365105
@@ -74,9 +77,11 @@ anecdote.
 
 ## Re-review
 
-> **Re-review due 2026-07-16.** To refresh: re-run a survey of LLM-as-judge,
-> self-critique, and AI-code-review literature plus community feeds for material published
-> since 2026-06-16, prioritising empirical studies. Diff new findings against the table
-> above. Update the Codex instruction block in `SKILL.md` **only where the evidence has
+> **Re-review when past `review_after` in this file's frontmatter.** History: last full
+> survey 2026-06-16; targeted Karpathy refresh 2026-08-02 — the next pass must be the
+> full survey. To refresh: re-run a survey of LLM-as-judge, self-critique, and
+> AI-code-review literature plus community feeds for material published since the last
+> full survey, prioritising empirical studies. Diff new findings against the table above.
+> Update the Codex instruction block in `SKILL.md` **only where the evidence has
 > changed** — do not churn the prompt for its own sake. Then bump `last_reviewed` and
 > `review_after` (by one month) in this file's frontmatter.
