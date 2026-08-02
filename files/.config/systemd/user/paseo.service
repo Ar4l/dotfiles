@@ -1,0 +1,13 @@
+[Unit]
+Description=Paseo agent orchestrator daemon
+After=network-online.target
+
+[Service]
+# agents paseo spawns need claude (~/.local/bin) and codex/opencode/gh (linuxbrew)
+Environment=PATH=%h/.local/bin:%h/.nix-profile/bin:/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.nix-profile/bin/paseo daemon start --foreground --web-ui
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
