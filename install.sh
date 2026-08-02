@@ -94,6 +94,7 @@ programs=(
   # tldr        # shorter manpages
 
   zoxide        # better cd (requires fzf) https://github.com/ajeetdsouza/zoxide
+  worktrunk     # git worktree manager (wt): switch/create/list/merge; replaced custom cwt
   eza           # better ls
   ffmpeg        # audio/video converter
   yt-dlp        # video downloader
