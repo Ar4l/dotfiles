@@ -16,10 +16,15 @@ exists - even if it involves refactoring.
 Immediately after the first user message (before any research), **create and
 enter a worktree** (EnterWorktree tool) branched off the user's active
 development branch, named with a short kebab-case slug derived from that
-message. If the target development branch carries a version (branch name like
-`mellum-eval-v0.2.4`, or a version file on it), include it in the slug:
-`pl-v0.2.4-unify-eval-hooks`; otherwise just `pl-unify-eval-hooks`.
+message, unless you are already in an automatically-created worktree 
+(this can happen e.g. in a paseo environment - do not rename the
+worktree in that case).
+If a version can be inferred from the target development branch, 
+include it in the slug: e.g. `v0.2.4-slug-suffix`; otherwise leave it
+out.
 
+0. Create the plan at `.claude/plans/slug`. Make sure this is
+   persisted in git.
 1. General design requirements are deep, narrow APIs, low-code and low-LOC, minimal
    prose and comments, long-term maintainability through simplicity and logical
    separation of concerns, datastructures, etc.
@@ -34,5 +39,5 @@ message. If the target development branch carries a version (branch name like
    the plan. Leave no open questions for execution-time.
 
 You may use workflows, or fan out subagents, as appropriate - but try to be conservative.
-When planning is completed, print the plan file path so the user can
+When planning is completed, print the full plan file path so the user can
 hand it off.
