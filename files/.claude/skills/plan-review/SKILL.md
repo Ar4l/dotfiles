@@ -40,8 +40,11 @@ grep); if past due, offer a refresh per that doc's Re-review note. Advisory only
 
 ## Step 1 — Locate the plan file
 
-Default to the newest plan (`ls -t ~/.claude/plans/*.md 2>/dev/null | head -1`); prefer a
-path the session references. If multiple recent plans make it ambiguous, ask the user.
+Prefer a path the session references. Otherwise take the newest plan across the
+workspace (branch-keyed subdirs) and legacy home locations:
+`ls -t $(find .claude/plans ~/.claude/plans -name '*.md' 2>/dev/null) 2>/dev/null | head -1`
+(run from the workspace root, e.g. `libs/mellum-eval-workspace`).
+If multiple recent plans make it ambiguous, ask the user.
 
 ## Step 2 — Assemble the review context
 

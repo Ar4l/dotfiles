@@ -23,8 +23,12 @@ If a version can be inferred from the target development branch,
 include it in the slug: e.g. `v0.2.4-slug-suffix`; otherwise leave it
 out.
 
-0. Create the plan at `.claude/plans/slug`. Make sure this is
-   persisted in git.
+0. Create the plan at `<workspace>/.claude/plans/<branch>/<slug>.md` — `<workspace>`
+   is the workspace the change targets (mellum-eval work: `libs/mellum-eval-workspace`);
+   `<branch>` is the development branch the plan will be executed on, verbatim (slashes
+   become subdirectories; if the implementation branch doesn't exist yet, use the active
+   development branch the worktree was cut from). Persist it in git — the workspace
+   `.gitignore` must re-include `.claude/plans/` (mellum-eval-workspace already does).
 1. General design requirements are deep, narrow APIs, low-code and low-LOC, minimal
    prose and comments, long-term maintainability through simplicity and logical
    separation of concerns, datastructures, etc.
