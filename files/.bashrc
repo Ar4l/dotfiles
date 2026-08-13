@@ -60,3 +60,5 @@ paths=("$HOME/dotfiles/bin")
 
 source "$HOME/.bashrc.dumb"
 source "$HOME/.bashrc.xterm"
+
+export PUSK_API_TOKEN="$(cat ~/.config/pusk/token)"
