@@ -16,9 +16,12 @@ exists - even if it involves refactoring.
 Immediately after the first user message (before any research), **create and
 enter a worktree** (EnterWorktree tool) branched off the user's active
 development branch, named with a short kebab-case slug derived from that
-message, unless you are already in an automatically-created worktree 
-(this can happen e.g. in a paseo environment - do not rename the
-worktree in that case).
+message.
+EXCEPTION: if the cwd is already inside an automatically-created session
+worktree (anywhere under `~/.paseo/worktrees/`), SKIP this step entirely —
+do not call EnterWorktree or create any other worktree; stay here and commit
+on this worktree's current branch. Paseo's sidebar diffs exactly this
+worktree against its base branch, so work done elsewhere is invisible.
 If a version can be inferred from the target development branch, 
 include it in the slug: e.g. `v0.2.4-slug-suffix`; otherwise leave it
 out.
@@ -39,7 +42,13 @@ out.
    active-voice bullets — what the reader does or what changes for them — max 16
    words each; known gaps/follow-ups get one line each. As commits land, collect
    them after a `---` as a `- [x] type(scope): …` checklist, squashing same-theme
-   commits into one item (exemplar: jetbrains-ai-ml#1624).
+   commits into one item (exemplar: jetbrains-ai-ml#1624). Every plan's final
+   step: once implementation is done, rewrite the PR description to match what
+   actually shipped. Optimize hard for conciseness and human-readability — a
+   couple of bullets is almost always enough. Reach for an information hierarchy
+   (sections, nesting) only when the content genuinely cannot fit in a few
+   bullets; no PR has needed one yet (not even the v0.2.5 refactor), and needing
+   one usually means the change should be a stacked set of PRs instead.
 3. When a plan is drafted, review adversarially with codex ultra (use the
    `plan-review` skill). Provide it minimal context, and state the above design
    requirements explicitly. Iterate on the plan, or prompt the user to re-scope the task,
