@@ -1,0 +1,6 @@
+interface:
+  display_name: "Plan"
+  short_description: "Create a contextless implementation plan"
+  default_prompt: "Use $pl to draft a concise, implementation-ready plan."
+policy:
+  allow_implicit_invocation: false
