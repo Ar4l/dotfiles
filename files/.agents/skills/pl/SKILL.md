@@ -2,8 +2,8 @@
 name: pl
 description: >-
   Read-only planning session: draft a concrete, unambiguous, minimal plan for a
-  contextless implementation session. Use when the user invokes /pl, or asks to
-  plan a change before implementing it.
+  contextless implementation session. Use when the user invokes /pl or $pl, or
+  asks to plan a change before implementing it.
 disable-model-invocation: true
 ---
 
@@ -12,6 +12,8 @@ Read only. The goal of this session is to draft a concrete, unambiguous, and
 engage with the user extensively, and research to avoid any investigations during
 implementation-time. Push back if the requests are unreasonable, or a cleaner solution
 exists - even if it involves refactoring.
+On non-Claude hosts, translate Claude-specific harness tools to the closest
+equivalent while preserving each step's constraints.
 
 Immediately after the first user message (before any research), **create and
 enter a worktree** (EnterWorktree tool) branched off the user's active
@@ -26,13 +28,14 @@ If a version can be inferred from the target development branch,
 include it in the slug: e.g. `v0.2.4-slug-suffix`; otherwise leave it
 out.
 
-0. Create the plan at `<workspace>/.claude/plans/<github-handle>/<slug>.md` —
+0. Create the plan at `<workspace>/docs/plans/<github-handle>/<slug>.md` —
    `<workspace>` is the workspace the change targets (mellum-eval work:
    `libs/mellum-eval-workspace`); `<github-handle>` is the user's lowercase GitHub
    login (Aral: `ar4l`). Open the file with 3-line YAML frontmatter:
    `base-version:` (the package version at the plan's base commit), `branch:`,
-   `pr:` — fill the latter two once they exist. Persist it in git — the workspace
-   `.gitignore` must re-include `.claude/plans/` (mellum-eval-workspace already does).
+   `pr:` — fill the latter two once they exist. Persist it in git — a plain
+   tracked dir. In workspaces still on the legacy `.claude/plans/` layout
+   (gitignore re-include), write there instead.
 1. General design requirements are deep, narrow APIs, low-code and low-LOC, minimal
    prose and comments, long-term maintainability through simplicity and logical
    separation of concerns, datastructures, etc.

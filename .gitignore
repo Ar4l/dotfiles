@@ -19,3 +19,10 @@ files/.config/k9s/config.yaml
 
 # pyrate scratch captures (raw API requests; contain session tokens)
 bin/pyrate/temp/
+
+# ~/.gitignore_global ignores .claude/ — right for the runtime state Claude
+# writes through the stow fold, but it also hides new files here; re-include
+# only the skills symlinks (canonical skills live in files/.agents/skills/)
+!files/.claude/
+files/.claude/*
+!files/.claude/skills
