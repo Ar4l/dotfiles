@@ -1,39 +1,46 @@
 ---
 name: plan-review
 description: >-
-  Pipe the current plan to the Codex CLI agent for an independent second opinion.
-  Codex re-reads the original request plus the follow-up thread and independently
+  Send the current plan to a different model family for an independent second opinion:
+  Codex Ultra from Claude sessions, or Claude from every other agent. The reviewer
+  re-reads the original request plus the follow-up thread and independently
   explores the codebase (read-only), then critiques the plan for gaps, wrong
   assumptions, missed existing utilities/patterns, and sequencing/risk issues.
   Use after a plan has been written, when the user wants a review or second opinion
-  on a plan before implementing it (triggers: "review the plan", "get codex's take",
+  on a plan before implementing it (triggers: "review the plan", "second opinion",
   "second opinion on this plan", "/plan-review").
 ---
 
 # plan-review
 
-Get an independent review of the current plan from the **Codex** CLI agent (JetBrains AI
-proxy, high reasoning effort). Codex explores the codebase itself — never on the plan's
-word. Flow: locate plan → assemble context → run Codex read-only → surface → revise on approval.
+Get an independent review from a different model family: **Codex Ultra** when the current
+session is Claude, and **Claude Opus** for every other agent. The reviewer explores the
+codebase itself — never on the plan's word. Flow: locate plan → assemble context → run the
+counterpart read-only → surface → revise on approval.
 
 ## Preconditions
 
-Both checks must pass; if not, stop, have the user run the one-time setup, then resume:
+Choose from the host running the current session, not from which CLIs happen to be
+installed. Then both checks for the counterpart must pass; if not, stop, have the user
+run the one-time setup, then resume:
 
 ```sh
-codex --version          # must resolve to a real binary
+# Claude host → Codex reviewer
+codex --version
 central agents           # "Codex … installed · wired"
-```
-One-time setup if missing:
-```sh
-brew reinstall codex && central add codex
-# ensure ~/.codex/config.toml has:  model_reasoning_effort = 'high'
-```
 
-`central` is the JetBrains Central CLI (formerly `wire`); the `[model_providers.wire]`
-stanza it writes into `~/.codex/config.toml` is correct, not stale. On "refresh token …
-already used" errors, have the user run `central login` (suggest `! central login` so the
-interactive flow runs in their session), then retry.
+# Any other host → Claude reviewer
+claude --version
+central agents           # "Claude Code … installed · wired"
+```
+If missing, install the counterpart CLI and run `central add codex` or
+`central add claude`. The commands below set the model and effort explicitly; do not
+depend on either CLI's defaults.
+
+`central` is the JetBrains Central CLI (formerly `wire`); its generated agent wiring is
+authoritative. On "refresh token … already used" errors, have the user run
+`central login` (suggest `! central login` so the interactive flow runs in their
+session), then retry.
 
 Evidence freshness: check `review_after:` in `reviewer-prompt-evidence.md` (same dir, via
 grep); if past due, offer a refresh per that doc's Re-review note. Advisory only.
@@ -48,14 +55,14 @@ If multiple recent plans make it ambiguous, ask the user.
 
 ## Step 2 — Assemble the review context
 
-Create a per-invocation work dir (`d=$(mktemp -d /tmp/codex-plan-review.XXXXXX)`) so
-concurrent sessions can't clobber each other. Compose `$d/prompt.md` yourself from the
-live conversation — Codex has none of this context — with these headings:
+Create a per-invocation work dir (`d=$(mktemp -d /tmp/plan-review.XXXXXX)`) so concurrent
+sessions can't clobber each other. Compose `$d/prompt.md` yourself from the live
+conversation — the counterpart has none of this context — with these headings:
 
 1. `## Original request` — the user's original prompt, verbatim.
 2. `## Follow-up thread` — key clarifications, decisions, and constraints added since.
 3. `## The plan` — the plan file's full text, verbatim.
-4. `## Your task (Codex)` — the instruction block below.
+4. `## Your task (reviewer)` — the instruction block below.
 
 ```
 You are reviewing an engineering plan that another coding agent wrote to satisfy the
@@ -116,25 +123,41 @@ Exactly one of SHIP / REVISE / RETHINK, plus one sentence. State this LAST, afte
 analysis above.
 ```
 
-## Step 3 — Run Codex (headless, read-only, from the project root)
+## Step 3 — Run the counterpart (headless, read-only, from the project root)
+
+From a Claude session, run GPT-5.6 Codex at Ultra reasoning effort:
 
 ```sh
 codex exec \
   --cd "$PWD" \
   --sandbox read-only \
   --skip-git-repo-check \
-  -c model_reasoning_effort="high" \
+  --model gpt-5.6-sol \
+  -c model_reasoning_effort="ultra" \
   --output-last-message "$d/review.out" \
   "$(cat "$d/prompt.md")"
 ```
 
-`--sandbox read-only` guarantees Codex cannot modify files. Takes minutes; let it finish.
+From any other agent, run Claude Opus at maximum effort with read-only tools:
+
+```sh
+claude --print \
+  --model opus \
+  --effort max \
+  --permission-mode plan \
+  --tools "Read,Glob,Grep" \
+  "$(cat "$d/prompt.md")" > "$d/review.out"
+```
+
+Codex's sandbox and Claude's restricted tool set prevent repository writes. Takes
+minutes; let it finish.
 
 ## Step 4 — Surface the review
 
-Read `$d/review.out`; summarize Codex's verdict, its highest-severity issues, and where
-it agrees and disagrees with the plan. For each substantive point add **your own** take —
-accept, reject (with reason), or needs-user-decision. Do not blindly defer to Codex.
+Read `$d/review.out`; summarize the counterpart's verdict, its highest-severity issues,
+and where it agrees and disagrees with the plan. For each substantive point add **your
+own** take — accept, reject (with reason), or needs-user-decision. Do not blindly defer
+to the reviewer.
 
 ## Step 5 — Revise on approval
 

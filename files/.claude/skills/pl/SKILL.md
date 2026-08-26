@@ -49,10 +49,11 @@ out.
    (sections, nesting) only when the content genuinely cannot fit in a few
    bullets; no PR has needed one yet (not even the v0.2.5 refactor), and needing
    one usually means the change should be a stacked set of PRs instead.
-3. When a plan is drafted, review adversarially with codex ultra (use the
-   `plan-review` skill). Provide it minimal context, and state the above design
-   requirements explicitly. Iterate on the plan, or prompt the user to re-scope the task,
-   as appropriate - you are free to propose multi-step, large
+3. When a plan is drafted, review it adversarially with the `plan-review` skill,
+   using a different model family from the planning session: Codex Ultra for Claude
+   sessions, and Claude for every other agent. Provide minimal context and state the
+   above design requirements explicitly. Iterate on the plan, or prompt the user to
+   re-scope the task, as appropriate - you are free to propose multi-step, large
    refactorings if they help w.r.t. point 1.
 4. Make sure all ambiguities and investigations are addressed in
    the plan. Leave no open questions for execution-time.
