@@ -20,10 +20,13 @@ enter a worktree** (EnterWorktree tool) branched off the user's active
 development branch, named with a short kebab-case slug derived from that
 message.
 EXCEPTION: if the cwd is already inside an automatically-created session
-worktree (anywhere under `~/.paseo/worktrees/`), SKIP this step entirely —
-do not call EnterWorktree or create any other worktree; stay here and commit
-on this worktree's current branch. Paseo's sidebar diffs exactly this
-worktree against its base branch, so work done elsewhere is invisible.
+worktree (anywhere under `~/.paseo/worktrees/`), do not call EnterWorktree
+and do all research from here — but still give the plan commit **its own
+branch**: `plan/<slug>` cut from the target base (usually `origin/main`),
+created via a throwaway worktree under `~/worktrees/` (never checkout -b in
+the session worktree — its HEAD belongs to the session, and may track a live
+PR branch). NEVER commit a plan onto the session worktree's current branch
+or any existing PR branch.
 If a version can be inferred from the target development branch, 
 include it in the slug: e.g. `v0.2.4-slug-suffix`; otherwise leave it
 out.
@@ -62,5 +65,5 @@ out.
    the plan. Leave no open questions for execution-time.
 
 You may use workflows, or fan out subagents, as appropriate - but try to be conservative.
-When planning is completed, print the full plan file path so the user can
-hand it off.
+When planning is completed, print the full plan file path AND the plan's
+branch so the user can hand both off to the contextless agent.
