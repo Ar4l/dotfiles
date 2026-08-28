@@ -15,35 +15,17 @@ exists - even if it involves refactoring.
 On non-Claude hosts, translate Claude-specific harness tools to the closest
 equivalent while preserving each step's constraints.
 
-Immediately after the first user message (before any research), **create and
-enter a worktree** (EnterWorktree tool) branched off the user's active
-development branch, named with a short kebab-case slug derived from that
-message.
-EXCEPTION: if the cwd is already inside an automatically-created session
-worktree (anywhere under `~/.paseo/worktrees/`), do not call EnterWorktree
-and do all research from here — but still give the plan commit **its own
-branch**: `plan/<slug>` cut from the target base (usually `origin/main`),
-created via a throwaway worktree under `~/worktrees/` (never checkout -b in
-the session worktree — its HEAD belongs to the session, and may track a live
-PR branch). NEVER commit a plan onto the session worktree's current branch
-or any existing PR branch.
-If a version can be inferred from the target development branch, 
-include it in the slug: e.g. `v0.2.4-slug-suffix`; otherwise leave it
-out.
-
-0. Create the plan at `<workspace>/docs/plans/<github-handle>/<slug>.md` —
-   `<workspace>` is the workspace the change targets (mellum-eval work:
-   `libs/mellum-eval-workspace`); `<github-handle>` is the user's lowercase GitHub
-   login (Aral: `ar4l`). Open the file with 3-line YAML frontmatter:
+0. Create the plan at `~/.local/state/agent-plans/<project>/<slug>.md`, creating
+   parent directories as needed. Use a short, stable project or workspace name;
+   for mellum-eval use `mellum-eval`. Open with 3-line YAML frontmatter:
    `base-version:` (the package version at the plan's base commit), `branch:`,
-   `pr:` — fill the latter two once they exist. Persist it in git — a plain
-   tracked dir. In workspaces still on the legacy `.claude/plans/` layout
-   (gitignore re-include), write there instead.
+   and `pr:`; fill the latter two when known. Never commit the plan or create a
+   branch or PR solely for it.
 1. General design requirements are deep, narrow APIs, low-code and low-LOC, minimal
    prose and comments, long-term maintainability through simplicity and logical
    separation of concerns, datastructures, etc.
-2. If the change is nontrivial, always submit a **draft** PR into the user's active
-   development branch, so they can follow along. Seed its description in the house
+2. For nontrivial changes, tell the implementation session to open a **draft** PR
+   into the user's active development branch early. Seed its description in the house
    PR style: one-line plain-English preamble (+ supersedes/closes refs), then
    active-voice bullets — what the reader does or what changes for them — max 16
    words each; known gaps/follow-ups get one line each. As commits land, collect
@@ -62,8 +44,9 @@ out.
    re-scope the task, as appropriate - you are free to propose multi-step, large
    refactorings if they help w.r.t. point 1.
 4. Make sure all ambiguities and investigations are addressed in
-   the plan. Leave no open questions for execution-time.
+   the plan. Leave no open questions for execution-time. End the plan by rewriting
+   the PR description to match what shipped and deleting the local plan file.
 
 You may use workflows, or fan out subagents, as appropriate - but try to be conservative.
-When planning is completed, print the full plan file path AND the plan's
-branch so the user can hand both off to the contextless agent.
+When planning is completed, print the full plan file path so the user can hand it
+off to the contextless agent.

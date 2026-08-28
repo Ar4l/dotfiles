@@ -47,10 +47,8 @@ grep); if past due, offer a refresh per that doc's Re-review note. Advisory only
 
 ## Step 1 — Locate the plan file
 
-Prefer a path the session references. Otherwise take the newest plan across the
-workspace (`docs/plans/`, legacy `.claude/plans/`) and legacy home locations:
-`ls -t $(find docs/plans .claude/plans ~/.claude/plans -name '*.md' 2>/dev/null) 2>/dev/null | head -1`
-(run from the workspace root, e.g. `libs/mellum-eval-workspace`).
+Prefer a path the session references. Otherwise take the newest plan under
+`~/.local/state/agent-plans/`.
 If multiple recent plans make it ambiguous, ask the user.
 
 ## Step 2 — Assemble the review context
@@ -161,6 +159,5 @@ to the reviewer.
 
 ## Step 5 — Revise on approval
 
-Propose specific edits to the plan file; apply them **only after the user approves** (in
-plan mode, the plan file is the one editable file). Leave `$d` and its two files in place
-for the user to inspect, and tell the user its path.
+Propose specific edits to the plan file; apply them **only after the user approves**.
+Leave `$d` and its two files in place for the user to inspect, and tell the user its path.
