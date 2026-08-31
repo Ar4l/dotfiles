@@ -229,7 +229,7 @@ fi
 
 # rm aliased after the wt eval: aliases expand into function bodies at parse
 # time, and the wt wrapper's `rm -f` cleanup would otherwise print "removed …"
-# Fix sent upstream: https://github.com/max-sixty/worktrunk/pull/3714 — once a
-# release ships it (`command rm -f` in the wrapper), this can move back to the
-# top alias block.
+# Upstream fix (`command rm -f`) shipped in worktrunk v0.72.0
+# (https://github.com/max-sixty/worktrunk/pull/3714); ordering kept as
+# defense-in-depth for machines still on wt <= v0.71.0.
 alias rm='rm -v'
