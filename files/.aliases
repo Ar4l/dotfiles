@@ -1,7 +1,6 @@
 # {{{ alias
 alias cp='cp -v'
 alias mv='mv -v'
-alias rm='rm -v'
 alias ls="ls -FA --color"
 alias ln="ln -v"
 alias mkdir="mkdir -p"
@@ -227,3 +226,10 @@ if command -v wt >/dev/null 2>&1; then
   [ -n "$ZSH_VERSION" ] && eval "$(wt config shell init zsh 2>/dev/null)"
   [ -n "$BASH_VERSION" ] && eval "$(wt config shell init bash 2>/dev/null)"
 fi
+
+# rm aliased after the wt eval: aliases expand into function bodies at parse
+# time, and the wt wrapper's `rm -f` cleanup would otherwise print "removed …"
+# Upstream fix (`command rm -f`) shipped in worktrunk v0.72.0
+# (https://github.com/max-sixty/worktrunk/pull/3714); ordering kept as
+# defense-in-depth for machines still on wt <= v0.71.0.
+alias rm='rm -v'
