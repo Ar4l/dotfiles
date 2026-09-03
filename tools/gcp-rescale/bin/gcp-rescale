@@ -13,6 +13,8 @@
 # consent prompt, which can never be skipped for the default instance.
 set -euo pipefail
 
+readonly VERSION="0.1.0"
+
 DEFAULT_INSTANCE="aral-rem-dev"
 DEF_ZONE="europe-west4-a" DEF_PROJECT="jetbrains-grazie" DEF_USER="aral"
 SSH_ALIAS="rem-dev"
@@ -670,8 +672,8 @@ print_inventory() {
 consent() {
   if [ "$DRY_RUN" = 1 ]; then echo "(dry-run: consent skipped, nothing will be executed)"; return 0; fi
   if [ "$ASSUME_YES" = 1 ] && [ "$INSTANCE" != "$DEFAULT_INSTANCE" ]; then return 0; fi
-  [ -r /dev/tty ] || die "interactive consent is required to touch $INSTANCE (--yes only works for instance overrides)"
-  local a; read -r -p "${BOLD}Proceed? [y/N]${RST} " a </dev/tty || a=""
+  { exec 3</dev/tty; } 2>/dev/null || die "interactive consent is required to touch $INSTANCE (--yes only works for instance overrides)"
+  local a; read -r -p "${BOLD}Proceed? [y/N]${RST} " a <&3 || a=""
   case "$a" in y | Y | yes) ;; *) die "aborted — nothing changed" ;; esac
 }
 
@@ -707,7 +709,7 @@ apply_shape() { # apply_shape <machine_type> <STANDARD|SPOT> <MIGRATE|TERMINATE>
   dir=$(mktemp -d) f=$dir/instance.yaml
   gcloud compute instances export "$INSTANCE" --zone="$ZONE" --project="$PROJECT" \
     --destination="$f" 2>/dev/null || { rm -rf "$dir"; return 1; }
-  python3 - "$f" "$type" "$prov" "$maint" <<'EOF' || { rm -rf "$dir"; return 1; }
+  "${GCP_RESCALE_PYTHON:-python3}" - "$f" "$type" "$prov" "$maint" <<'EOF' || { rm -rf "$dir"; return 1; }
 import re, sys
 path, mtype, prov, maint = sys.argv[1:5]
 y = open(path).read()
@@ -769,7 +771,7 @@ ensure_gpu_driver() { # $1 = ip; install NVIDIA driver if missing (Ubuntu)
   else
     echo "  driver installed but not loaded — rebooting once"
   fi
-  mutate reset --quiet
+  mutate reset --quiet || return 1
   wait_for_ssh "$ip"
 }
 
@@ -779,7 +781,7 @@ post_start() { # post_start <gpu_count> <label>
     plan "(poll for the new external IP)"
     plan "ssh-keygen -R <old-ip>  &&  update $SSH_CONFIG: Host $SSH_ALIAS -> <new-ip>"
     plan "(wait for sshd, up to 180s)"
-    [ "$gpus" -gt 0 ] && plan "ssh: install NVIDIA driver if nvidia-smi is missing (ubuntu-drivers install --gpgpu)"
+    [ "$gpus" -gt 0 ] && plan "ssh: install NVIDIA driver if nvidia-smi is missing (on failure re-run: gcp-rescale gpu scale <preset>)"
     plan "ssh: tmux new-session -d   # tmux-continuum auto-restores all sessions"
     return 0
   fi
@@ -792,7 +794,7 @@ post_start() { # post_start <gpu_count> <label>
   fi
   if [ "$gpus" -gt 0 ]; then
     ensure_gpu_driver "$new_ip" ||
-      warn "GPU driver install failed — ssh in and run: sudo ubuntu-drivers install --gpgpu"
+      warn "GPU driver install failed — re-run: gcp-rescale gpu scale <preset>"
   fi
   remote "$new_ip" 'tmux ls >/dev/null 2>&1 || tmux new-session -d' 2>/dev/null ||
     warn "could not kick tmux restore — run 'tmux' after ssh'ing in"
@@ -881,6 +883,9 @@ Request more at https://console.cloud.google.com/iam-admin/quotas?project=$PROJE
 
 # ------------------------------------------------------------------ dispatch
 
+# sourced by the test suite to unit-test pure helpers; executed normally otherwise
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
+
 ARGS=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -891,6 +896,7 @@ while [ $# -gt 0 ]; do
     --yes | -y) ASSUME_YES=1 ;;
     --dry-run | -n) DRY_RUN=1 ;;
     -h | --help) usage; exit 0 ;;
+    --version | -V) echo "gcp-rescale $VERSION"; exit 0 ;;
     -*) die "unknown flag: $1 (see: gcp-rescale --help)" ;;
     *) ARGS+=("$1") ;;
   esac
