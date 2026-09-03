@@ -1,0 +1,21 @@
+[
+  {"d": "E2 Instance Core running in Netherlands", "spot": false, "r": ["europe-west4"], "p": 0.025},
+  {"d": "E2 Instance Ram running in Netherlands", "spot": false, "r": ["europe-west4"], "p": 0.0034},
+  {"d": "G2 Instance Core running in Netherlands", "spot": false, "r": ["europe-west4"], "p": 0.026},
+  {"d": "G2 Instance Ram running in Netherlands", "spot": false, "r": ["europe-west4"], "p": 0.0035},
+  {"d": "Nvidia L4 GPU running in Netherlands", "spot": false, "r": ["europe-west4"], "p": 0.2},
+  {"d": "G2 Instance Core attached to Spot Preemptible VMs running in Netherlands", "spot": true, "r": ["europe-west4"], "p": 0.01},
+  {"d": "G2 Instance Ram attached to Spot Preemptible VMs running in Netherlands", "spot": true, "r": ["europe-west4"], "p": 0.0014},
+  {"d": "Nvidia L4 GPU attached to Spot Preemptible VMs running in Netherlands", "spot": true, "r": ["europe-west4"], "p": 0.08},
+  {"d": "A2 Instance Core running in Netherlands", "spot": false, "r": ["europe-west4"], "p": 0.031},
+  {"d": "A2 Instance Ram running in Netherlands", "spot": false, "r": ["europe-west4"], "p": 0.0042},
+  {"d": "Nvidia Tesla A100 GPU running in Netherlands", "spot": false, "r": ["europe-west4"], "p": 2.9},
+  {"d": "Nvidia Tesla A100 80GB GPU running in Netherlands", "spot": false, "r": ["europe-west4"], "p": 4.5},
+  {"d": "A3Ultra Instance Core running in Netherlands", "spot": false, "r": ["europe-west4"], "p": 0.04},
+  {"d": "A3Ultra Instance Ram running in Netherlands", "spot": false, "r": ["europe-west4"], "p": 0.005},
+  {"d": "H200 141GB GPU running in Netherlands", "spot": false, "r": ["europe-west4"], "p": 10.0},
+  {"d": "Storage PD Capacity in Netherlands", "spot": false, "r": ["europe-west4"], "p": 0.044},
+  {"d": "Balanced PD Capacity in Netherlands", "spot": false, "r": ["europe-west4"], "p": 0.11},
+  {"d": "SSD backed PD Capacity in Netherlands", "spot": false, "r": ["europe-west4"], "p": 0.187},
+  {"d": "Hyperdisk Balanced Capacity in Netherlands", "spot": false, "r": ["europe-west4"], "p": 0.084}
+]

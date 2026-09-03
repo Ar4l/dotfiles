@@ -1,0 +1,26 @@
+#!/bin/bash
+# tests/run — execute every case under /bin/bash (bash 3.2 on macOS, on
+# purpose) and aggregate. Each case file is also individually runnable.
+set -u
+cd "$(dirname "$0")" || exit 1
+
+total_pass=0 total_fail=0 crashed=0
+
+for f in cases/*.sh; do
+  line=$(/bin/bash "$f")
+  rc=$?
+  echo "$line"
+  p=$(printf '%s\n' "$line" | tail -1 | awk -F'[ ,]+' '/ passed/ { print $2 }')
+  m=$(printf '%s\n' "$line" | tail -1 | awk -F'[ ,]+' '/ failed/ { print $4 }')
+  if [ -z "$p" ] || [ -z "$m" ]; then
+    echo "$f: crashed (rc=$rc, no summary)" >&2
+    crashed=1
+    continue
+  fi
+  total_pass=$((total_pass + p))
+  total_fail=$((total_fail + m))
+done
+
+echo "total: $total_pass passed, $total_fail failed"
+[ "$total_fail" -eq 0 ] && [ "$crashed" -eq 0 ] && exit 0
+exit 1

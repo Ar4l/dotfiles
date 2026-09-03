@@ -1,0 +1,126 @@
+#!/bin/bash
+# shellcheck disable=SC2015,SC2016,SC2034,SC2088
+#   SC2015: `[ … ] && ok || bad` is the assertion idiom here — ok/bad never fail
+#   SC2016: $-expressions in single quotes expand on the remote side, on purpose
+#   SC2088: the quoted tildes are message text, not paths
+# tests/live — opt-in end-to-end test against real GCP (~$1, ~15 min).
+#
+# What the offline suite cannot prove: that GCP *accepts* what we send. Creates
+# a throwaway VM, walks one GPU rung (l4 --spot; x2/x4/x8 differ only by the
+# preset table, which the offline suite covers) plus both storage paths, with
+# canary files on both disks, then tears everything down in an EXIT trap.
+# Never touches aral-rem-dev; asserts so before and after.
+#
+#   GCP_RESCALE_LIVE=1 tests/live
+set -uo pipefail
+
+[ "${GCP_RESCALE_LIVE:-}" = 1 ] ||
+  { echo "refusing: set GCP_RESCALE_LIVE=1 to run the live suite (~\$1, ~15 min of real GCP)"; exit 2; }
+
+ZONE=europe-west4-a PROJECT=jetbrains-grazie
+VM="gcp-rescale-ci-$$" DATA="gcp-rescale-ci-$$-data"
+CLI=$(cd "$(dirname "$0")/.." && pwd)/bin/gcp-rescale
+SSH_USER=${GCP_RESCALE_LIVE_USER:-$USER}
+PUBKEY="$HOME/.ssh/id_ed25519.pub"
+[ -r "$PUBKEY" ] || { echo "need $PUBKEY to bootstrap ssh"; exit 2; }
+
+case "$VM" in *aral-rem-dev*) echo "refusing to touch aral-rem-dev"; exit 2 ;; esac
+
+PASS=0 FAIL=0 IPS=""
+ok()  { echo "ok: $*"; PASS=$((PASS + 1)); }
+bad() { echo "FAIL: $*" >&2; FAIL=$((FAIL + 1)); }
+
+gci() { gcloud compute instances "$@" --zone="$ZONE" --project="$PROJECT"; }
+ip_of() { gci describe "$VM" --format="value(networkInterfaces[0].accessConfigs[0].natIP)"; }
+sshv() { ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$SSH_USER@$IP" -- "$@"; }
+wait_ssh() { local i; for i in $(seq 60); do sshv true 2>/dev/null && return 0; sleep 5; done; return 1; }
+
+# the default target and the real ssh config must come through untouched
+guard_before_rd=$(gci describe aral-rem-dev --format=json 2>/dev/null | shasum | cut -d' ' -f1)
+guard_before_cfg=$(shasum "$HOME/.ssh/config" | cut -d' ' -f1)
+
+cleanup() {
+  set +e
+  echo "--- teardown"
+  "$CLI" use default >/dev/null 2>&1
+  gci delete "$VM" --quiet 2>/dev/null
+  gcloud compute disks delete "$DATA" --zone="$ZONE" --project="$PROJECT" --quiet 2>/dev/null
+  local ip
+  for ip in $IPS; do ssh-keygen -R "$ip" >/dev/null 2>&1; done
+}
+trap cleanup EXIT
+
+echo "--- provision $VM (e2-medium, ubuntu 24.04, 10G boot + 10G data)"
+gcloud compute disks create "$DATA" --size=10GB --type=pd-balanced \
+  --zone="$ZONE" --project="$PROJECT" || exit 1
+gci create "$VM" \
+  --machine-type=e2-medium \
+  --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
+  --boot-disk-size=10GB --boot-disk-type=pd-balanced \
+  --disk="name=$DATA,device-name=$DATA,mode=rw,auto-delete=no" \
+  --metadata-from-file ssh-keys=<(printf '%s:%s' "$SSH_USER" "$(cat "$PUBKEY")") || exit 1
+
+IP=$(ip_of); IPS="$IPS $IP"
+wait_ssh || { bad "fresh VM never answered ssh"; exit 1; }
+
+# data disk: fs + mount + fstab BY UUID — without the fstab entry the mount
+# does not survive the stop/start cycle every GPU rung performs
+sshv "sudo mkfs.ext4 -q /dev/disk/by-id/google-$DATA &&
+      sudo mkdir -p /mnt/data &&
+      sudo mount /dev/disk/by-id/google-$DATA /mnt/data &&
+      echo \"UUID=\$(sudo blkid -s UUID -o value /dev/disk/by-id/google-$DATA) /mnt/data ext4 defaults 0 2\" | sudo tee -a /etc/fstab >/dev/null &&
+      sudo chmod 1777 /mnt/data" || { bad "data disk setup"; exit 1; }
+
+# 100MB canaries with recorded checksums on BOTH disks
+CAN_DATA=$(sshv 'dd if=/dev/urandom of=/mnt/data/canary bs=1M count=100 2>/dev/null; sha256sum /mnt/data/canary | cut -d" " -f1')
+CAN_BOOT=$(sshv 'dd if=/dev/urandom of=$HOME/canary bs=1M count=100 2>/dev/null; sha256sum $HOME/canary | cut -d" " -f1')
+[ -n "$CAN_DATA" ] && [ -n "$CAN_BOOT" ] && ok "canaries written" || { bad "canary setup"; exit 1; }
+
+"$CLI" use "$VM" "$ZONE" "$PROJECT" "$SSH_USER" || { bad "use $VM"; exit 1; }
+
+echo "--- gpu scale l4 --spot"
+out=$("$CLI" gpu scale l4 --spot --yes 2>&1); rc=$?
+printf '%s\n' "$out"
+if [ "$rc" -ne 0 ]; then
+  case "$out" in
+    *ZONE_RESOURCE_POOL_EXHAUSTED* | *"resources available"*)
+      echo "SKIP: L4 spot capacity exhausted in $ZONE — not a tool failure"; exit 0 ;;
+    *) bad "gpu scale l4 --spot (rc=$rc)"; exit 1 ;;
+  esac
+fi
+IP=$(ip_of); IPS="$IPS $IP"
+[ "$(sshv 'nvidia-smi -L | grep -c GPU')" = 1 ] && ok "1 GPU visible via nvidia-smi" || bad "nvidia-smi after l4"
+[ "$(sshv 'sha256sum /mnt/data/canary | cut -d" " -f1')" = "$CAN_DATA" ] && ok "data canary intact" || bad "data canary after l4"
+[ "$(sshv 'sha256sum $HOME/canary | cut -d" " -f1')" = "$CAN_BOOT" ] && ok "boot canary intact" || bad "boot canary after l4"
+sshv 'mountpoint -q /mnt/data' && ok "data disk still mounted" || bad "data disk not mounted after l4"
+
+echo "--- storage scale 15G (online)"
+"$CLI" storage scale 15G --disk "$DATA" --yes || bad "storage scale 15G"
+df_g=$(sshv 'df -BG --output=size /mnt/data | tail -1 | tr -dc 0-9')
+[ "${df_g:-0}" -ge 14 ] && ok "filesystem grew online (df: ${df_g}G)" || bad "df shows ${df_g:-?}G after 15G grow"
+
+echo "--- storage scale 20G (VM stopped: deferred grow)"
+gci stop "$VM" --quiet || bad "stop for offline resize"
+out=$("$CLI" storage scale 20G --disk "$DATA" --yes 2>&1) || bad "storage scale 20G offline"
+printf '%s\n' "$out"
+case "$out" in *"grow the filesystem after the next start"*) ok "deferred-grow message" ;; *) bad "deferred-grow message missing" ;; esac
+
+echo "--- gpu scale cpu (back to e2-standard-8)"
+"$CLI" gpu scale cpu --yes || { bad "gpu scale cpu"; exit 1; }
+IP=$(ip_of); IPS="$IPS $IP"
+read -r mt prov maint <<<"$(gci describe "$VM" --format="value(machineType.basename(),scheduling.provisioningModel,scheduling.onHostMaintenance)")"
+[ "$mt" = e2-standard-8 ] && ok "machine type e2-standard-8" || bad "machine type: $mt"
+[ "$prov" = STANDARD ] && [ "$maint" = MIGRATE ] && ok "STANDARD/MIGRATE restored" || bad "scheduling: $prov/$maint"
+sshv 'command -v nvidia-smi >/dev/null && nvidia-smi -L 2>/dev/null | grep -q GPU' && bad "NVIDIA devices still present on cpu" || ok "zero NVIDIA devices"
+[ "$(sshv 'sha256sum /mnt/data/canary | cut -d" " -f1')" = "$CAN_DATA" ] && ok "data canary intact after cpu" || bad "data canary after cpu"
+[ "$(sshv 'sha256sum $HOME/canary | cut -d" " -f1')" = "$CAN_BOOT" ] && ok "boot canary intact after cpu" || bad "boot canary after cpu"
+
+"$CLI" use default
+
+guard_after_rd=$(gci describe aral-rem-dev --format=json 2>/dev/null | shasum | cut -d' ' -f1)
+guard_after_cfg=$(shasum "$HOME/.ssh/config" | cut -d' ' -f1)
+[ "$guard_before_rd" = "$guard_after_rd" ] && ok "aral-rem-dev untouched" || bad "aral-rem-dev describe changed!"
+[ "$guard_before_cfg" = "$guard_after_cfg" ] && ok "~/.ssh/config untouched" || bad "~/.ssh/config changed!"
+
+echo "live: $PASS passed, $FAIL failed"
+[ "$FAIL" -eq 0 ]
