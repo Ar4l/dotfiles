@@ -1,0 +1,65 @@
+name: gcp-rescale CI
+
+on:
+  push:
+    paths:
+      - "tools/gcp-rescale/**"
+      - "bin/gcp-rescale"
+      - "Makefile"
+      - ".github/workflows/gcp-rescale-ci.yml"
+      - ".github/workflows/gcp-rescale-release.yml"
+  pull_request:
+    paths:
+      - "tools/gcp-rescale/**"
+      - "bin/gcp-rescale"
+      - "Makefile"
+      - ".github/workflows/gcp-rescale-ci.yml"
+      - ".github/workflows/gcp-rescale-release.yml"
+
+# Third-party (and GitHub) actions are pinned to immutable commit SHAs so a
+# compromised upstream tag can't inject code into the checks or the artifacts.
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: shellcheck + bash -n
+        run: |
+          files="tools/gcp-rescale/bin/gcp-rescale tools/gcp-rescale/tests/run \
+                 tools/gcp-rescale/tests/lib.sh tools/gcp-rescale/tests/live \
+                 tools/gcp-rescale/tests/shims/gcloud tools/gcp-rescale/tests/shims/ssh \
+                 tools/gcp-rescale/tests/shims/ssh-keygen tools/gcp-rescale/tests/cases/*.sh"
+          shellcheck $files
+          for f in $files; do bash -n "$f"; done
+      - name: bin/gcp-rescale symlink resolves
+        run: test -x bin/gcp-rescale && bin/gcp-rescale --version
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      # /bin/bash explicitly: on macOS that is bash 3.2, which is the coverage
+      # this runner exists to provide (a bare `bash` may resolve elsewhere)
+      - run: /bin/bash tools/gcp-rescale/tests/run
+
+  # the only job that exercises the installed artifact rather than the checkout
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10
+      - name: build and smoke-test the wheel
+        run: |
+          cp LICENSE.md tools/gcp-rescale/LICENSE.md
+          cd tools/gcp-rescale
+          uv build
+          uvx --from dist/*.whl gcp-rescale --version
+          uvx --from dist/*.whl gcp-rescale --help >/dev/null
