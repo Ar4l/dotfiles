@@ -262,14 +262,17 @@ else
   # even though the rest of the casks are mac-only
   command -v codex &> /dev/null || brew install --cask codex || failed+=(codex)
 
-  # paseo (agent orchestrator; paseo.sh) via its first-party nix flake:
-  # npm -g is unpinned + runs postinstall scripts; releases ship no headless
-  # tarball. Determinate installer creates /nix (sudo once), enables flakes.
+  # paseo (agent orchestrator; paseo.sh) via its first-party nix flake.
+  # Temporarily pin v0.8.0 with the Nix terminal fix from getpaseo/paseo#3853
+  # and the corrected dependency hash from upstream main. Return to the
+  # upstream flake after the fix ships. Releases provide no headless tarball.
+  # Determinate installer creates /nix (sudo once), enables flakes.
   command -v nix &> /dev/null || [ -x /nix/var/nix/profiles/default/bin/nix ] ||
   curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix |
     sh -s -- install --no-confirm
   source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh 2> /dev/null
-  command -v paseo &> /dev/null || nix profile add github:getpaseo/paseo || failed+=(paseo)
+  command -v paseo &> /dev/null ||
+    nix profile add github:Ar4l/paseo/8c767227d03dc7d81e8f2f6f42b330637de7d1ae || failed+=(paseo)
 
   # daemon runs as a systemd user unit (stowed); linger keeps it up after logout;
   # restart so reruns pick up tracked unit changes (same pattern as keyring.sh)
