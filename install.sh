@@ -263,16 +263,25 @@ else
   command -v codex &> /dev/null || brew install --cask codex || failed+=(codex)
 
   # paseo (agent orchestrator; paseo.sh) via its first-party nix flake.
-  # Temporarily pin v0.8.0 with the Nix terminal fix from getpaseo/paseo#3853
-  # and the corrected dependency hash from upstream main. Return to the
-  # upstream flake after the fix ships. Releases provide no headless tarball.
-  # Determinate installer creates /nix (sudo once), enables flakes.
+  # Pinned to v0.9.1 plus the Nix terminal fix from getpaseo/paseo#3853 and the
+  # corrected dependency hash from upstream main (release tags ship a stale one).
+  # Return to the upstream flake after the fix ships. Releases provide no
+  # headless tarball. Determinate installer creates /nix (sudo once), enables flakes.
+  paseo_version=0.9.1
+  paseo_flake=github:Ar4l/paseo/b29417b35f50294307a24dff0a2efc369f5d7af6
   command -v nix &> /dev/null || [ -x /nix/var/nix/profiles/default/bin/nix ] ||
   curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix |
     sh -s -- install --no-confirm
   source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh 2> /dev/null
-  command -v paseo &> /dev/null ||
-    nix profile add github:Ar4l/paseo/8c767227d03dc7d81e8f2f6f42b330637de7d1ae || failed+=(paseo)
+  # A version bump swaps the profile entry: nix profile upgrade can't follow a
+  # commit-pinned flake ref. The running daemon keeps its old store path until
+  # paseo.service restarts below.
+  [ "$(paseo --version 2> /dev/null)" = "$paseo_version" ] || {
+    nix profile remove --regex '^paseo' 2> /dev/null   # no-op on first install
+    nix profile add "$paseo_flake"
+  } || failed+=(paseo)
+  # 0.9 dropped `daemon start` launch flags; the web UI is a persisted config key
+  paseo daemon config set features.webUi.enabled true > /dev/null || failed+=(paseo.config)
 
   # daemon runs as a systemd user unit (stowed); linger keeps it up after logout;
   # restart so reruns pick up tracked unit changes (same pattern as keyring.sh)
