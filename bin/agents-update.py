@@ -1,0 +1,205 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# ///
+"""Update claude, codex, central and paseo on this Mac and on rem-dev.
+
+  uv run bin/agents-update.py                  # update all; prompts before paseo restarts
+  uv run bin/agents-update.py --check          # report versions only
+  uv run bin/agents-update.py --approve-paseo  # no TTY: the human already said yes
+
+claude/codex/central swaps leave running agents alone and never prompt. A paseo
+restart kills that host's Paseo terminals and interrupts running turns, so it
+always asks. rem-dev follows the Mac's paseo version so client and daemon match.
+rem-dev builds paseo from the fork branch patched/v<ver>-nix: the release tag plus
+the node-pty fix from getpaseo/paseo#3853 (while unmerged) and a recomputed
+nix/npm-deps.hash (release tags ship a stale one).
+"""
+import argparse, json, re, subprocess, sys, time, urllib.request
+from pathlib import Path
+
+REMOTE = "rem-dev"
+REMOTE_PATH = "export PATH=$HOME/.local/bin:$HOME/.nix-profile/bin:/home/linuxbrew/.linuxbrew/bin:$PATH;"
+DOTFILES = Path(__file__).resolve().parent.parent
+UPSTREAM, FORK, FIX_PR, FIX_COMMIT = "getpaseo/paseo", "Ar4l/paseo", 3853, "e917277f"
+UNPATCHED_GLOB = "`node_modules/node-pty/prebuilds/${process.platform}-${process.arch}/**`"
+SMOKE_PORT = 6799
+TOOLS = {  # name: (mac update, rem-dev update)
+    "claude": ("brew upgrade --cask claude-code@latest", "claude update"),
+    "codex": ("brew upgrade --cask codex", "brew upgrade --cask codex"),
+    "central": ("central update --install", "central update --install"),
+}
+
+
+def sh(cmd, host=None, check=True, env=""):
+    if host:
+        cmd = ["ssh", "-o", "BatchMode=yes", host, REMOTE_PATH + cmd]
+    else:
+        cmd = env + cmd
+    r = subprocess.run(cmd, shell=host is None, capture_output=True, text=True)
+    if check and r.returncode:
+        sys.exit(f"FAILED ({host or 'mac'}): {cmd}\n{r.stdout}{r.stderr}")
+    return r.stdout.strip()
+
+
+def version(tool, host=None):
+    m = re.search(r"\d+\.\d+\.\d+", sh(f"{tool} --version 2>&1", host, check=False))
+    return m.group() if m else "-"
+
+
+def running_agents(host=None):
+    out = sh("paseo ls --json 2>/dev/null", host, check=False)
+    return sum(a.get("status") != "idle" for a in json.loads(out or "[]"))
+
+
+def confirm(question, approve):
+    if approve:
+        print(f"{question} -> approved via --approve-paseo")
+        return True
+    try:
+        tty = open("/dev/tty", "r+")
+    except OSError:
+        print(f"{question}\n  No TTY: rerun interactively, or with --approve-paseo once a human has said yes.")
+        return False
+    tty.write(f"{question} [y/N] "), tty.flush()
+    return tty.readline().strip().lower() == "y"
+
+
+def gh(args):
+    return sh(f"gh {args}")
+
+
+def report():
+    rows = [(t, version(t), version(t, REMOTE)) for t in [*TOOLS, "paseo"]]
+    print(f"{'tool':8} {'mac':10} {REMOTE}")
+    for r in rows:
+        print(f"{r[0]:8} {r[1]:10} {r[2]}")
+    return dict((r[0], r[1:]) for r in rows)
+
+
+def update_tools(before):
+    sh("brew update")
+    for tool, (mac, remote) in TOOLS.items():
+        sh(mac, env="HOMEBREW_NO_AUTO_UPDATE=1 ")
+        sh(remote, REMOTE)
+        print(f"{tool:8} mac {before[tool][0]} -> {version(tool)}   {REMOTE} {before[tool][1]} -> {version(tool, REMOTE)}")
+    if before["claude"][0] != version("claude"):
+        print("note: claude changed on the Mac; restart the tmux server from kitty if Downloads/Desktop give EPERM")
+
+
+def update_paseo_mac(approve):
+    if not sh("brew outdated --cask paseo", env="HOMEBREW_NO_AUTO_UPDATE=1 "):
+        return
+    if confirm(f"Upgrade paseo on the Mac? Restarts the local daemon ({running_agents()} agents running).", approve):
+        sh("brew upgrade --cask paseo", env="HOMEBREW_NO_AUTO_UPDATE=1 ")
+        print(f"paseo mac -> {version('paseo')}")
+
+
+def latest_release():
+    with urllib.request.urlopen(f"https://api.github.com/repos/{UPSTREAM}/releases/latest") as r:
+        return json.load(r)["tag_name"]
+
+
+def resolve_flake(tag):
+    """Return (flake ref, built-new-branch). Builds patched/<tag>-nix on rem-dev when missing."""
+    branch = f"patched/{tag}-nix"
+    sha = sh(f"gh api repos/{FORK}/branches/{branch} --jq .commit.sha 2>/dev/null", check=False)
+    if sha:
+        return f"github:{FORK}/{sha}", False
+    src = gh(f"api repos/{UPSTREAM}/contents/scripts/trace-daemon.mjs?ref={tag} --jq .content | base64 -d")
+    needs_fix = UNPATCHED_GLOB in src
+    print(f"building {branch} on {REMOTE} (node-pty fix {'needed' if needs_fix else 'already upstream'})")
+    fix = f"git fetch -q https://github.com/{UPSTREAM} pull/{FIX_PR}/head && git cherry-pick {FIX_COMMIT} &&" if needs_fix else ""
+    out = sh(f"""set -e; d=$(mktemp -d); git clone -q --filter=blob:none --branch {tag} https://github.com/{UPSTREAM} $d; cd $d
+        {fix} ./scripts/update-nix.sh 2>&1 | grep -E 'Hash|Updated'
+        git add -A; git diff --cached --quiet || git commit -qm 'fix(nix): correct dependency hash for {tag}'
+        git push -q git@github.com:{FORK}.git HEAD:refs/heads/{branch}; git rev-parse HEAD""", REMOTE)
+    print(out)
+    if not needs_fix and "already up to date" in out:
+        print(f"upstream {tag} is clean: pin github:{UPSTREAM}/{tag} directly and delete the patched-branch code in this script")
+        return f"github:{UPSTREAM}/{tag}", False
+    return f"github:{FORK}/{out.splitlines()[-1]}", True
+
+
+def build_and_smoke(flake, target):
+    """nix build to /tmp/paseo-next on rem-dev and run upstream's smoke on a spare port."""
+    out = sh(f"""set -eo pipefail; nix build {flake} -o /tmp/paseo-next 2>&1 | tail -3
+        P=/tmp/paseo-next/bin/paseo; export PASEO_HOME=$(mktemp -d) PASEO_LISTEN=127.0.0.1:{SMOKE_PORT}
+        PASEO_WEB_UI_ENABLED=true /tmp/paseo-next/bin/paseo-server --no-relay >$PASEO_HOME/wrapper.log 2>&1 & pid=$!
+        trap 'kill $pid 2>/dev/null; rm -rf $PASEO_HOME' EXIT
+        for i in $(seq 30); do $P daemon status --json 2>/dev/null | grep -q '"connectedDaemon": *"reachable"' && break; sleep 1; done
+        $P daemon status --json | grep -E '"(daemonVersion|connectedDaemon)"'
+        curl -fsS http://127.0.0.1:{SMOKE_PORT}/ | head -c 1 >/dev/null && echo 'web UI ok'
+        id=$($P terminal create --cwd $PASEO_HOME --json | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+        $P terminal kill $id >/dev/null && echo "terminal ok ($id)" """, REMOTE)
+    print(out)
+    if f'"{target}"' not in out or "terminal ok" not in out:
+        sys.exit("smoke test failed")
+
+
+def pin(target, flake):
+    """Record the pin in install.sh, push, and stage config + unit on rem-dev."""
+    f = DOTFILES / "install.sh"
+    s = re.sub(r"(# Pinned to )v[\d.]+", rf"\g<1>v{target}", f.read_text())
+    s = re.sub(r"paseo_version=.*", f"paseo_version={target}", s)
+    s = re.sub(r"paseo_flake=.*", f"paseo_flake={flake}", s)
+    f.write_text(s)
+    if sh(f"git -C {DOTFILES} status --short install.sh"):
+        sh(f"git -C {DOTFILES} commit -qm 'paseo: pin patched v{target} Nix release' install.sh && git -C {DOTFILES} push -q origin HEAD:main")
+        print(f"install.sh pinned to {flake}, pushed to main")
+    sh(f"""set -e; git -C ~/dotfiles pull -q --ff-only; make -C ~/dotfiles restow >/dev/null
+        /tmp/paseo-next/bin/paseo daemon config set features.webUi.enabled true >/dev/null
+        systemctl --user daemon-reload""", REMOTE)
+
+
+def swap_and_verify(flake, target):
+    t0 = time.time()
+    sh(f"nix profile remove --regex '^paseo' 2>/dev/null; nix profile add {flake} && systemctl --user restart paseo.service", REMOTE)
+    out = sh(f"""for i in $(seq 60); do paseo daemon status --json 2>/dev/null | grep -q '"connectedDaemon": *"reachable"' && break; sleep 1; done
+        paseo daemon status --json | grep -E '"(daemonVersion|cliVersion|connectedDaemon)"'
+        id=$(paseo terminal create --cwd ~ --json | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+        paseo terminal kill $id >/dev/null && echo "terminal ok"; echo "agents: $(paseo ls --json | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')" """, REMOTE)
+    print(out, f"\nrestart to reachable: {time.time() - t0:.0f}s")
+    if f'"{target}"' not in out or "terminal ok" not in out:
+        sys.exit(f"{REMOTE} paseo did not come back healthy; check: ssh {REMOTE} journalctl --user -u paseo.service -n 50")
+
+
+def update_paseo_remote(approve):
+    target, remote = version("paseo"), version("paseo", REMOTE)
+    if remote == target:
+        return False
+    tag = f"v{target}"
+    flake, built = resolve_flake(tag)
+    build_and_smoke(flake, target)
+    latest = latest_release()
+    if latest != tag and not confirm(f"{latest} was released; Mac is on {tag}. Continue pinning {REMOTE} to {tag} (n: upgrade the Mac first and rerun)?", approve):
+        return built
+    pin(target, flake)
+    if not confirm(f"Restart paseo on {REMOTE} {remote} -> {target}? Kills its Paseo terminals; {running_agents(REMOTE)} agents running.", approve):
+        return built
+    swap_and_verify(flake, target)
+    if built:
+        gh(f"""pr comment {FIX_PR} -R {UPSTREAM} --body "Validated {tag} on Linux x86_64 with this fix cherry-picked onto the tag ({flake}): nix build, daemon reachable, web UI served, terminal create/kill, deployed as the daemon on a dev VM." """)
+    return built
+
+
+def check_fix_pr():
+    pr = json.loads(gh(f"pr view {FIX_PR} -R {UPSTREAM} --json state,mergedAt"))
+    if pr["state"] == "MERGED":
+        print(f"PR {FIX_PR} merged: drop the cherry-pick in resolve_flake() and the #{FIX_PR} note in install.sh")
+    elif pr["state"] == "CLOSED":
+        print(f"PR {FIX_PR} closed without merge: check whether a competing fix landed (e.g. getpaseo/paseo#4954) and update resolve_flake()")
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--check", action="store_true", help="report versions only")
+    ap.add_argument("--approve-paseo", action="store_true", help="skip paseo prompts (human already approved)")
+    a = ap.parse_args()
+    before = report()
+    if a.check:
+        sys.exit()
+    update_tools(before)
+    update_paseo_mac(a.approve_paseo)
+    update_paseo_remote(a.approve_paseo)
+    check_fix_pr()
