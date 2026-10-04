@@ -21,7 +21,7 @@ from pathlib import Path
 REMOTE = "rem-dev"
 REMOTE_PATH = "export PATH=$HOME/.local/bin:$HOME/.nix-profile/bin:/home/linuxbrew/.linuxbrew/bin:$PATH;"
 DOTFILES = Path(__file__).resolve().parent.parent
-UPSTREAM, FORK, FIX_PR, FIX_COMMIT = "getpaseo/paseo", "Ar4l/paseo", 3853, "e917277f"
+UPSTREAM, FORK, FIX_PR = "getpaseo/paseo", "Ar4l/paseo", 3853
 UNPATCHED_GLOB = "`node_modules/node-pty/prebuilds/${process.platform}-${process.arch}/**`"
 SMOKE_PORT = 6799
 TOOLS = {  # name: (mac update, rem-dev update)
@@ -37,9 +37,9 @@ def sh(cmd, host=None, check=True, env=""):
     else:
         cmd = env + cmd
     r = subprocess.run(cmd, shell=host is None, capture_output=True, text=True)
-    if check and r.returncode:
+    if r.returncode and check:
         sys.exit(f"FAILED ({host or 'mac'}): {cmd}\n{r.stdout}{r.stderr}")
-    return r.stdout.strip()
+    return r.stdout.strip() if r.returncode == 0 else ""
 
 
 def version(tool, host=None):
@@ -109,9 +109,10 @@ def resolve_flake(tag):
     src = gh(f"api repos/{UPSTREAM}/contents/scripts/trace-daemon.mjs?ref={tag} --jq .content | base64 -d")
     needs_fix = UNPATCHED_GLOB in src
     print(f"building {branch} on {REMOTE} (node-pty fix {'needed' if needs_fix else 'already upstream'})")
-    fix = f"git fetch -q https://github.com/{UPSTREAM} pull/{FIX_PR}/head && git cherry-pick {FIX_COMMIT} &&" if needs_fix else ""
-    out = sh(f"""set -e; d=$(mktemp -d); git clone -q --filter=blob:none --branch {tag} https://github.com/{UPSTREAM} $d; cd $d
-        {fix} ./scripts/update-nix.sh 2>&1 | grep -E 'Hash|Updated'
+    fix = f"git fetch -q https://github.com/{UPSTREAM} pull/{FIX_PR}/head\n git cherry-pick $(git merge-base HEAD FETCH_HEAD)..FETCH_HEAD" if needs_fix else ""
+    out = sh(f"""set -eo pipefail; d=$(mktemp -d); git clone -q --filter=blob:none --branch {tag} https://github.com/{UPSTREAM} $d; cd $d
+        {fix}
+        ./scripts/update-nix.sh 2>&1 | grep -E 'Hash|Updated'
         git add -A; git diff --cached --quiet || git commit -qm 'fix(nix): correct dependency hash for {tag}'
         git push -q git@github.com:{FORK}.git HEAD:refs/heads/{branch}; git rev-parse HEAD""", REMOTE)
     print(out)
@@ -138,7 +139,7 @@ def build_and_smoke(flake, target):
 
 
 def pin(target, flake):
-    """Record the pin in install.sh, push, and stage config + unit on rem-dev."""
+    """Record the pin in install.sh, push, and stage config + unit on rem-dev (unit is a stow symlink)."""
     f = DOTFILES / "install.sh"
     s = re.sub(r"(# Pinned to )v[\d.]+", rf"\g<1>v{target}", f.read_text())
     s = re.sub(r"paseo_version=.*", f"paseo_version={target}", s)
@@ -147,7 +148,7 @@ def pin(target, flake):
     if sh(f"git -C {DOTFILES} status --short install.sh"):
         sh(f"git -C {DOTFILES} commit -qm 'paseo: pin patched v{target} Nix release' install.sh && git -C {DOTFILES} push -q origin HEAD:main")
         print(f"install.sh pinned to {flake}, pushed to main")
-    sh(f"""set -e; git -C ~/dotfiles pull -q --ff-only; make -C ~/dotfiles restow >/dev/null
+    sh(f"""set -e; git -C ~/dotfiles pull -q --ff-only
         /tmp/paseo-next/bin/paseo daemon config set features.webUi.enabled true >/dev/null
         systemctl --user daemon-reload""", REMOTE)
 
