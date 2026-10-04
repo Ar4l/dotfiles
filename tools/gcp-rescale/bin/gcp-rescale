@@ -1,0 +1,927 @@
+#!/usr/bin/env bash
+# gcp-rescale — one-command GPU and disk scaling for a GCP dev VM.
+#
+#   gcp-rescale gpu scale <preset> [--spot]           resize between CPU/GPU shapes
+#   gcp-rescale storage scale <size> [--disk NAME]    grow a persistent disk online
+#   gcp-rescale status | gpu list | storage list | ip | use
+#
+# GCP requires the VM to be STOPPED to change machine type, so processes can't
+# survive a resize. State comes back via tmux-resurrect/continuum (wired in
+# .tmux.conf): panes/cwd/scrollback always restore; only listed programs
+# relaunch, with claude panes resuming their conversation via claude --continue
+# (strategies/claude_continue.sh). Everything else is automated behind a single
+# consent prompt, which can never be skipped for the default instance.
+set -euo pipefail
+
+readonly VERSION="0.1.0"
+
+DEFAULT_INSTANCE="aral-rem-dev"
+DEF_ZONE="europe-west4-a" DEF_PROJECT="jetbrains-grazie" DEF_USER="aral"
+SSH_ALIAS="rem-dev"
+SSH_CONFIG="${GCP_RESCALE_SSH_CONFIG:-$HOME/.ssh/config}" # override exists only for tests
+
+# Teammates point the tool at their own VM by overriding the five vars above in
+# this config, once. Everything else is discovered from the VM itself.
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/gcp-rescale/config"
+# shellcheck disable=SC1090
+[ -f "$CONF" ] && . "$CONF"
+
+# Target state lives in the CLI itself: `gcp-rescale use` writes it, every
+# command banners it when it isn't the default VM. No env vars to leak.
+STATE_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/gcp-rescale/target"
+INSTANCE=$DEFAULT_INSTANCE ZONE=$DEF_ZONE PROJECT=$DEF_PROJECT SSH_USER=$DEF_USER
+if [ -f "$STATE_FILE" ]; then
+  read -r INSTANCE ZONE PROJECT SSH_USER <"$STATE_FILE"
+fi
+REGION="${ZONE%-*}"
+
+DRY_RUN=0 ASSUME_YES=0 SPOT=0 REFRESH=0 DISK_ARG=""
+
+# Colors only when stdout is a terminal (and NO_COLOR is unset).
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  BOLD=$'\e[1m' DIM=$'\e[2m' RED=$'\e[31m' GRN=$'\e[32m' YLW=$'\e[33m' CYN=$'\e[36m' RST=$'\e[0m'
+else
+  BOLD='' DIM='' RED='' GRN='' YLW='' CYN='' RST=''
+fi
+
+# What tmux-resurrect actually relaunches: its default list plus the ssh/claude
+# entries from .tmux.conf. Mirrored here only so the consent prompt can say
+# which running commands will NOT restart automatically.
+RESTORE_PROGS=" vi vim nvim emacs man less more tail top htop irssi weechat mutt ssh claude "
+SHELLS=" sh bash zsh fish tmux "
+
+PRESETS=(cpu l4 l4x2 l4x4 l4x8 a100 a100x2 a100x4 a100x8 a100x16 a100-80 a100-80x2 h200)
+
+# family/vcpus/ram feed live pricing (a preset's $/hr = vCPUs*core-SKU +
+# GiB*ram-SKU + GPUs*gpu-SKU); ~cost is the fallback when the catalog is
+# unreachable, last verified against live prices 2026-07-19.
+preset() { # -> "machine_type quota_metric gpu_count family vcpus ram_gb ~cost/hr description..."
+  case "$1" in
+    cpu)        echo "e2-standard-8  -                     0  e2  8   32   0.30  8 vCPU, no GPU" ;;
+    l4)         echo "g2-standard-8  NVIDIA_L4_GPUS        1  g2  8   32   0.90  1x L4 24GB" ;;
+    l4x2)       echo "g2-standard-24 NVIDIA_L4_GPUS        2  g2  24  96   2.10  2x L4 24GB" ;;
+    l4x4)       echo "g2-standard-48 NVIDIA_L4_GPUS        4  g2  48  192  4.21  4x L4 24GB" ;;
+    l4x8)       echo "g2-standard-96 NVIDIA_L4_GPUS        8  g2  96  384  8.41  8x L4 24GB" ;;
+    a100)       echo "a2-highgpu-1g  NVIDIA_A100_GPUS      1  a2  12  85   3.75  1x A100 40GB" ;;
+    a100x2)     echo "a2-highgpu-2g  NVIDIA_A100_GPUS      2  a2  24  170  7.50  2x A100 40GB" ;;
+    a100x4)     echo "a2-highgpu-4g  NVIDIA_A100_GPUS      4  a2  48  340  15.00 4x A100 40GB" ;;
+    a100x8)     echo "a2-highgpu-8g  NVIDIA_A100_GPUS      8  a2  96  680  29.98 8x A100 40GB" ;;
+    a100x16)    echo "a2-megagpu-16g NVIDIA_A100_GPUS      16 a2  96  1360 56.63 16x A100 40GB" ;;
+    a100-80)    echo "a2-ultragpu-1g NVIDIA_A100_80GB_GPUS 1  a2u 12  170  5.54  1x A100 80GB" ;;
+    a100-80x2)  echo "a2-ultragpu-2g NVIDIA_A100_80GB_GPUS 2  a2u 24  340  11.07 2x A100 80GB" ;;
+    h200)       echo "a3-ultragpu-8g NVIDIA_H200_GPUS      8  a3u 224 2952 n/a   8x H200 141GB" ;;
+  esac
+}
+
+usage() {
+  cat <<EOF
+${BOLD}usage: gcp-rescale <command> [flags]${RST}
+
+  ${CYN}gpu scale <preset> [--spot]${RST}
+                           resize the VM: one consent prompt, then fully
+                           automatic (save tmux state, stop, resize, start,
+                           sync ~/.ssh/config, restore sessions, GPU driver)
+  ${CYN}gpu list [region]${RST}        presets with live \$/hr (on-demand + spot) and quota
+                           headroom; region defaults to $REGION
+  ${CYN}storage scale <size> [--disk NAME]${RST}
+                           grow a persistent disk online — no VM stop, sessions
+                           untouched. GCP disks can never shrink. Default disk:
+                           the data disk if the VM has one, else the boot disk
+  ${CYN}storage list [region]${RST}    attached disks with \$/mo, plus disk-type prices
+  ${CYN}status${RST}                   current shape, disks, provisioning, IP, ssh sync
+  ${CYN}ip${RST}                       re-point ~/.ssh/config Host $SSH_ALIAS at the live IP
+  ${CYN}use [inst [zone [project [user]]]]${RST}
+                           persist a different target VM (for test clones);
+                           'use' alone shows the target, 'use default' resets
+
+flags:
+  ${CYN}--spot${RST}       use Spot provisioning (see SPOT/HR in 'gpu list'; may be
+               preempted — preemption is a clean stop, so tmux state survives it)
+  ${CYN}--disk NAME${RST}  which disk 'storage scale' grows (default: the data disk)
+  ${CYN}--refresh${RST}    refetch live prices even if the 7-day cache is still fresh
+  ${CYN}--yes${RST}        skip the consent prompt — honored only for 'use'-targeted test
+               instances, never for $DEFAULT_INSTANCE
+  ${CYN}--dry-run${RST}    print every state-changing command instead of running it
+
+team setup: override DEFAULT_INSTANCE/DEF_ZONE/DEF_PROJECT/DEF_USER/SSH_ALIAS in
+${XDG_CONFIG_HOME:-\$HOME/.config}/gcp-rescale/config — the rest is discovered.
+EOF
+}
+
+die()  { echo "${RED}gcp-rescale: $*${RST}" >&2; exit 1; }
+warn() { echo "${YLW}gcp-rescale: $*${RST}" >&2; }
+plan() { echo "${CYN}+ $*${RST}"; } # a step that --dry-run prints instead of running
+
+run() { # mutating command: printed, not executed, under --dry-run
+  if [ "$DRY_RUN" = 1 ]; then plan "$@"; else "$@"; fi
+}
+
+mutate() { # gcloud instance mutation: mutate <verb> [args...]
+  local verb=$1; shift
+  run gcloud compute instances "$verb" "$INSTANCE" "$@" --zone="$ZONE" --project="$PROJECT"
+}
+
+remote() { # remote <ip> <command...> — always by IP so a stale ssh config never bites
+  local ip=$1; shift
+  ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+      "$SSH_USER@$ip" -- "$@"
+}
+
+# One describe per invocation; empty natIP is printed as "-" because tabs are
+# IFS whitespace and an empty field would shift the read. The first output line
+# is the VM summary; the rest inventory every attached disk (local SSDs have no
+# Disk resource, so their deviceName doubles as the name).
+load_vm() {
+  local out line
+  out=$(gcloud compute instances describe "$INSTANCE" --zone="$ZONE" --project="$PROJECT" \
+           --format=json | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+boot = [x for x in d["disks"] if x.get("boot")][0]
+acc = (d["networkInterfaces"][0].get("accessConfigs") or [{}])[0]
+print("\t".join([
+    d["status"],
+    d["machineType"].rsplit("/", 1)[-1],
+    d["scheduling"].get("provisioningModel", "STANDARD"),
+    d["scheduling"].get("onHostMaintenance", "MIGRATE"),
+    acc.get("natIP") or "-",
+    boot["source"].rsplit("/", 1)[-1],
+    str(boot["diskSizeGb"]),
+]))
+for x in d["disks"]:
+    scratch = 1 if x.get("type") == "SCRATCH" else 0
+    name = x["deviceName"] if scratch else x["source"].rsplit("/", 1)[-1]
+    regional = 1 if "/regions/" in x.get("source", "") else 0
+    print(name, x["deviceName"], x["diskSizeGb"], 1 if x.get("boot") else 0, scratch, regional)')
+  line=${out%%$'\n'*}
+  IFS=$'\t' read -r VM_STATUS VM_TYPE VM_PROV VM_MAINT VM_IP VM_BOOT_DISK VM_BOOT_GB <<<"$line"
+  if [ "$VM_IP" = "-" ]; then VM_IP=""; fi
+  VM_DISKS=${out#*$'\n'} # "name deviceName sizeGb boot scratch regional" per line
+  VM_SCRATCH_COUNT=$(awk '$5 == 1 { n++ } END { print n + 0 }' <<<"$VM_DISKS")
+}
+
+disk_types() { # -> "name pd_type" for the attached disks (pd type isn't in instances describe;
+  # filtering by name instead of zone also catches regional disks). Needs load_vm first.
+  local names; names=$(awk '$5 == 0 { printf "%s ", $1 }' <<<"$VM_DISKS")
+  gcloud compute disks list --project="$PROJECT" --filter="name=($names)" \
+    --format="value(name,type.basename())"
+}
+
+quota() { # quota <region_json> <metric> -> "limit usage" (absent metric = 0)
+  printf '%s' "$1" | python3 -c '
+import json, sys
+qs = {q["metric"]: q for q in json.load(sys.stdin)["quotas"]}
+q = qs.get(sys.argv[1])
+print("%g %g" % (q["limit"], q["usage"]) if q else "0 0")' "$2"
+}
+
+CACHE_FILE="${XDG_CACHE_HOME:-$HOME/.cache}/gcp-rescale/skus.json"
+
+disk_fallback() { # $1 = pd type -> $/GiB/mo; ew4, last verified against live prices 2026-07-24
+  case "$1" in
+    pd-standard) echo 0.044 ;; pd-balanced) echo 0.11 ;;
+    pd-ssd) echo 0.187 ;; hyperdisk-balanced) echo 0.084 ;; *) echo "" ;;
+  esac
+}
+
+# Live prices come from the Cloud Billing Catalog API. It has no server-side
+# filtering, so one paged dump of all ~32k Compute Engine SKUs (~15s) is pruned
+# to the few dozen we price against — every region at once, since each SKU
+# lists its regions — and cached for 7 days (Google revises at most ~monthly).
+live_prices() { # $1 = gpu|disk, $2 = region; gpu -> "<preset> <od> <spot>" lines,
+  # disk -> "<pd_type> <$/GiB/mo>" lines; nonzero exit = use hardcoded fallback
+  local mode=$1 region=$2 tok="" spec="" p _ gpus fam vcpu ram
+  if [ "$REFRESH" = 1 ] || [ -z "$(find "$CACHE_FILE" -mtime -7 2>/dev/null)" ]; then
+    tok=$(gcloud auth print-access-token 2>/dev/null) || return 1
+    warn "fetching live prices from the billing catalog (~15s, cached 7 days)…"
+    mkdir -p "$(dirname "$CACHE_FILE")"
+  fi
+  if [ "$mode" = gpu ]; then
+    spec=$(for p in "${PRESETS[@]}"; do
+      read -r _ _ gpus fam vcpu ram _ <<<"$(preset "$p")"
+      printf '%s %s %s %s %s\n' "$p" "$fam" "$vcpu" "$ram" "$gpus"
+    done)
+  fi
+  python3 - "$mode" "$region" "$CACHE_FILE" "$tok" "$spec" <<'EOF'
+import json, sys, urllib.request
+
+mode, region, cache, tok, spec = sys.argv[1:6]
+KEEP = ("E2 Instance Core", "E2 Instance Ram", "G2 Instance Core", "G2 Instance Ram",
+        "Nvidia L4 GPU", "A2 Instance Core", "A2 Instance Ram", "Nvidia Tesla A100",
+        "A3Ultra Instance Core", "A3Ultra Instance Ram", "H200 141GB GPU",
+        "PD Capacity", "Hyperdisk Balanced Capacity")
+# "Reserved …" and "… Calendar Mode" SKUs are typed OnDemand, so usageType
+# alone can't exclude them; GPU spot SKUs say "attached to Spot Preemptible
+# VMs" mid-description, so spotness is a substring test, not a prefix. The
+# storage exclusions (Regional/Asynchronous/Confidential) are variants of the
+# plain capacity SKUs that would otherwise match first.
+DROP = ("DWS", "Reserved", "Sole Tenancy", "Custom", "Calendar", "Commitment",
+        "Regional", "Asynchronous", "Confidential")
+FAMILY = {  # family -> (core, ram, gpu) SKU description patterns
+    "e2":  ("E2 Instance Core", "E2 Instance Ram", None),
+    "g2":  ("G2 Instance Core", "G2 Instance Ram", "Nvidia L4 GPU"),
+    "a2":  ("A2 Instance Core", "A2 Instance Ram", "Nvidia Tesla A100 GPU"),
+    "a2u": ("A2 Instance Core", "A2 Instance Ram", "Nvidia Tesla A100 80GB GPU"),
+    "a3u": ("A3Ultra Instance Core", "A3Ultra Instance Ram", "H200 141GB GPU"),
+}
+
+if tok:  # cache is stale — refetch, but keep serving the stale copy on failure
+    try:
+        url = ("https://cloudbilling.googleapis.com/v1/services/6F81-5844-456A/skus"
+               "?pageSize=5000&currencyCode=USD")
+        skus, page = [], ""
+        while True:
+            req = urllib.request.Request(url + ("&pageToken=" + page if page else ""),
+                                         headers={"Authorization": "Bearer " + tok})
+            d = json.load(urllib.request.urlopen(req, timeout=60))
+            skus += d.get("skus", [])
+            page = d.get("nextPageToken", "")
+            if not page:
+                break
+        pruned = []
+        for s in skus:
+            desc = s["description"]
+            if (s["category"]["usageType"] in ("OnDemand", "Preemptible")
+                    and not any(w in desc for w in DROP)
+                    and any(w in desc for w in KEEP)):
+                r = s["pricingInfo"][0]["pricingExpression"]["tieredRates"][-1]["unitPrice"]
+                pruned.append({"d": desc, "spot": "Spot Preemptible" in desc,
+                               "r": s.get("serviceRegions", []),
+                               "p": int(r["units"]) + r["nanos"] / 1e9})
+        json.dump(pruned, open(cache, "w"))
+    except Exception as e:
+        print("gcp-rescale: catalog fetch failed (%s)" % e, file=sys.stderr)
+
+try:
+    here = [s for s in json.load(open(cache)) if region in s["r"]]
+except Exception:
+    sys.exit(1)
+
+def rate(pat, spot):
+    for s in here:
+        if s["spot"] == spot and pat in s["d"]:
+            return s["p"]
+    return None
+
+if mode == "disk":  # capacity SKUs have no spot variants
+    for t, pat in (("pd-standard", "Storage PD Capacity"),
+                   ("pd-balanced", "Balanced PD Capacity"),
+                   ("pd-ssd", "SSD backed PD Capacity"),
+                   ("hyperdisk-balanced", "Hyperdisk Balanced Capacity")):
+        p = rate(pat, False)
+        print(t, "n/a" if p is None else "%.3f" % p)
+    sys.exit(0)
+
+for line in spec.splitlines():
+    name, fam, vcpu, ram, gpus = line.split()
+    pats = FAMILY[fam]
+    out = [name]
+    for spot in (False, True):
+        c, r = rate(pats[0], spot), rate(pats[1], spot)
+        g = rate(pats[2], spot) if int(gpus) else 0
+        out.append("n/a" if None in (c, r, g)
+                   else "%.2f" % (int(vcpu) * c + int(ram) * r + int(gpus) * g))
+    print(" ".join(out))
+EOF
+}
+
+config_hostname() { # HostName currently in the ssh config for our alias
+  awk -v host="$SSH_ALIAS" '
+    tolower($1) == "host" { in_block = ($2 == host) }
+    in_block && $1 == "HostName" { print $2; exit }' "$SSH_CONFIG" 2>/dev/null
+}
+
+sync_ssh_config() { # $1 = new ip; sole writer of the ssh config, guard inside
+  local ip=$1
+  if [ "$INSTANCE" != "$DEFAULT_INSTANCE" ]; then
+    echo "  ssh config untouched (instance override active)"
+    return 0
+  fi
+  if [ "$DRY_RUN" = 1 ]; then plan "update $SSH_CONFIG: Host $SSH_ALIAS -> HostName $ip"; return 0; fi
+  if ! grep -q "^Host ${SSH_ALIAS}\$" "$SSH_CONFIG" 2>/dev/null; then
+    warn "no 'Host $SSH_ALIAS' block in $SSH_CONFIG — add:"
+    printf 'Host %s\n  HostName %s\n  User %s\n  Port 22\n' "$SSH_ALIAS" "$ip" "$SSH_USER" >&2
+    return 0
+  fi
+  awk -v ip="$ip" -v host="$SSH_ALIAS" '
+    tolower($1) == "host" { in_block = ($2 == host) }
+    in_block && $1 == "HostName" { $0 = "  HostName " ip }
+    { print }' "$SSH_CONFIG" >"$SSH_CONFIG.tmp" && mv "$SSH_CONFIG.tmp" "$SSH_CONFIG"
+  echo "  $SSH_CONFIG: Host $SSH_ALIAS -> $ip"
+}
+
+forget_host() { # drop a stale known_hosts entry; skipped under a test config override
+  [ "$SSH_CONFIG" = "$HOME/.ssh/config" ] || return 0
+  run ssh-keygen -R "$1" >/dev/null 2>&1 || true
+}
+
+poll_ip() {
+  local deadline=$((SECONDS + 60)) ip
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    ip=$(gcloud compute instances describe "$INSTANCE" --zone="$ZONE" --project="$PROJECT" \
+           --format="value(networkInterfaces[0].accessConfigs[0].natIP)")
+    if [ -n "$ip" ]; then echo "$ip"; return 0; fi
+    sleep 3
+  done
+  return 1
+}
+
+wait_for_ssh() {
+  local ip=$1 deadline=$((SECONDS + 180))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    remote "$ip" true 2>/dev/null && return 0
+    sleep 5
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------- subcommands
+
+matching_preset() { # reverse lookup: machine type -> preset name
+  local p type _
+  for p in "${PRESETS[@]}"; do
+    read -r type _ <<<"$(preset "$p")"
+    if [ "$type" = "$1" ]; then echo "$p"; return 0; fi
+  done
+  echo "-"
+}
+
+cmd_status() {
+  load_vm
+  local p disks sync="${YLW}out of sync${RST}" scol=$YLW
+  p=$(matching_preset "$VM_TYPE")
+  [ "$VM_PROV" = "SPOT" ] && p="$p (spot)"
+  [ "$(config_hostname)" = "${VM_IP:-none}" ] && sync="${GRN}in sync${RST}"
+  [ "$VM_STATUS" = "RUNNING" ] && scol=$GRN
+  disks=$(awk '{
+      role = ($4 == 1 ? "boot" : ($5 == 1 ? "local-ssd" : "data"))
+      s = s (s ? " + " : "") role " " $3 "GB"
+      if (role == "data") s = s " (" $1 ")"
+      if (role == "local-ssd") s = s " (ephemeral)"
+    } END { print s }' <<<"$VM_DISKS")
+  cat <<EOF
+${BOLD}$INSTANCE${RST} ($ZONE, $PROJECT)
+  status:        $scol$VM_STATUS$RST
+  machine type:  $VM_TYPE  (preset: ${BOLD}$p${RST})
+  provisioning:  $VM_PROV, maintenance $VM_MAINT
+  disks:         $disks
+  external IP:   ${VM_IP:-none}  (ssh config: $sync)
+EOF
+}
+
+# One row per GPU family; the xN sizes collapse into SIZES (preset = row name
+# + size, e.g. scale l4x4) and QUOTA says how big the region lets you go.
+BASES=(cpu l4 a100 a100-80 h200)
+
+cmd_gpu_list() { # cmd_gpu_list [region] — other regions are price scouting only
+  local region=${1:-$REGION} live=1 prices="" rjson b p type metric gpus vg _ cost desc
+  local sizes counts q lim use od sp
+  rjson=$(gcloud compute regions describe "$region" --project="$PROJECT" --format=json)
+  prices=$(live_prices gpu "$region") ||
+    { live=0; warn "live prices unavailable — showing hardcoded approximations"; }
+  echo "$BOLD$(printf '%-11s %-15s %-14s %-12s %8s %8s   %s' PRESET "MACHINE TYPE" GPUS SIZES '$/HR' 'SPOT/HR' QUOTA)$RST"
+  for b in "${BASES[@]}"; do
+    read -r type metric gpus _ _ _ cost desc <<<"$(preset "$b")"
+    sizes="" counts=$gpus
+    for p in "${PRESETS[@]}"; do # the base's xN variants, e.g. l4 -> l4x2 l4x4 l4x8
+      case "$p" in "$b"x[0-9]*) ;; *) continue ;; esac
+      read -r _ _ vg _ <<<"$(preset "$p")"
+      sizes="$sizes x$vg" counts="$counts $vg"
+    done
+    sizes=${sizes# } sizes=${sizes:--}
+    od=$cost sp="n/a"
+    if [ "$live" = 1 ]; then
+      read -r od sp <<<"$(awk -v p="$b" '$1 == p { print $2, $3 }' <<<"$prices")"
+    fi
+    [ "$gpus" -eq 0 ] && sp="-" # cpu is always STANDARD; scale refuses --spot for it
+    if [ "$b" = "h200" ]; then
+      q="blocked (no quota + needs gVNIC; see: gcp-rescale gpu scale h200)"
+    elif [ "$gpus" -gt 0 ]; then
+      read -r lim use <<<"$(quota "$rjson" "$metric")"
+      q=$(awk -v l="$lim" -v u="$use" -v counts="$counts" 'BEGIN {
+            h = l - u; n = split(counts, a, " ")
+            if (h < a[1]) { print (l == 0 ? "NO QUOTA" : "needs +" a[1] - h); exit }
+            best = a[1]
+            for (i = 2; i <= n; i++) if (a[i] <= h && a[i] > best) best = a[i]
+            print "up to x" best
+          }')
+    else
+      q="-"
+    fi
+    case "$q" in # last column, so the escape codes can't skew the padding
+      "up to"*)             q="$GRN$q$RST" ;;
+      "NO QUOTA" | needs\ *) q="$RED$q$RST" ;;
+      blocked*)             q="$YLW$q$RST" ;;
+    esac
+    printf '%-11s %-15s %-14s %-12s %8s %8s   %s\n' "$b" "$type" "$desc" "$sizes" "$od" "$sp" "$q"
+  done
+  echo
+  printf '%s' "$DIM"
+  echo "  sizes: append to the preset (gpu scale l4x4, a100x8); \$/hr scales roughly linearly."
+  if [ "$live" = 1 ]; then
+    echo "  live $region on-demand/spot prices in USD (billing catalog, cached $(date -r "$CACHE_FILE" +%Y-%m-%d 2>/dev/null || echo recently);"
+    echo "  refetch: gcp-rescale gpu list --refresh). n/a = no such SKU in $region (reservation/DWS-only)."
+  else
+    echo "  prices are hardcoded approximations for europe-west4 on-demand (live fetch failed)."
+  fi
+  [ "$region" = "$REGION" ] ||
+    echo "  price scouting only — gcp-rescale acts on $INSTANCE in $ZONE (disks are zonal)."
+  cat <<EOF
+  excluded on purpose: T4/V100/P100 (older, less VRAM, not machine-type-bundled);
+  RTX PRO 6000 (no quota); H100/B200/GB200 (other zones); GB300 (not in $REGION).
+EOF
+  printf '%s' "$RST"
+}
+
+cmd_storage_list() { # cmd_storage_list [region] — other regions are price scouting only
+  local region=${1:-$REGION} live=1 dprices tpairs probe=""
+  local name dev size boot scratch role type price cost mnt used flag line t p n
+  [ -z "${1:-}" ] ||
+    gcloud compute regions describe "$region" --project="$PROJECT" --format="value(name)" >/dev/null
+  load_vm
+  tpairs=$(disk_types)
+  dprices=$(live_prices disk "$region") ||
+    { live=0; warn "live prices unavailable — showing hardcoded approximations"; }
+  if [ "$live" = 0 ]; then
+    dprices=$(for t in pd-standard pd-balanced pd-ssd hyperdisk-balanced; do
+      echo "$t $(disk_fallback "$t")"
+    done)
+  fi
+  # Mount/usage need one read-only ssh probe; skipped when the VM is down or
+  # under the test override (so tests never touch a real VM over ssh).
+  if [ "$VM_STATUS" = RUNNING ] && [ -n "$VM_IP" ] && [ -z "${GCP_RESCALE_NO_PROBE:-}" ]; then
+    # shellcheck disable=SC2016  # expands on the remote side, on purpose
+    probe=$(remote "$VM_IP" 'for l in /dev/disk/by-id/google-*; do d=$(readlink -f "$l") || continue;
+      lsblk -rno MOUNTPOINT,FSUSE% "$d" | awk -v n="${l##*/google-}" "\$1 != \"\" {print n, \$0; exit}"; done' \
+      2>/dev/null) || probe=""
+  fi
+  echo "$BOLD$(printf '%-21s %-9s %7s %-19s %9s  %-12s %5s' DISK ROLE SIZE TYPE '$/MO' MOUNT USED)$RST"
+  while read -r name dev size boot scratch regional; do
+    [ -n "$name" ] || continue
+    role=data type="" cost="?"
+    [ "$boot" = 1 ] && role=boot
+    if [ "$scratch" = 1 ]; then
+      role=local-ssd type=local-ssd cost="-"
+    else
+      type=$(awk -v n="$name" '$1 == n { print $2; exit }' <<<"$tpairs")
+      price=$(awk -v t="${type:-?}" '$1 == t { print $2; exit }' <<<"$dprices")
+      # regional disks replicate across two zones and bill at exactly 2x the
+      # zonal capacity rate (verified against the Regional * PD Capacity SKUs)
+      [ "$regional" = 1 ] && type="${type:-?} (regional)"
+      case "$price" in "" | n/a) ;; *) cost=$(awk -v s="$size" -v p="$price" -v r="$((regional + 1))" \
+        'BEGIN { printf "%.2f", s * p * r }') ;; esac
+    fi
+    read -r mnt used <<<"$(awk -v d="$dev" '$1 == d { print $2, $3; exit }' <<<"$probe")"
+    flag=""
+    [ "$scratch" = 1 ] && flag="  ${YLW}ephemeral — data lost on stop; blocks gpu scale${RST}"
+    printf '%-21s %-9s %6sG %-19s %9s  %-12s %5s%s\n' \
+      "$name" "$role" "$size" "${type:-?}" "$cost" "${mnt:--}" "${used:--}" "$flag"
+  done <<<"$VM_DISKS"
+  echo
+  echo "$BOLD$(printf '%-19s %10s   %s' 'DISK TYPE' '$/GIB/MO' NOTES)$RST"
+  while read -r t p; do
+    case "$t" in
+      pd-standard)        n="cheap archival" ;;
+      pd-balanced)        n="the default" ;;
+      pd-ssd)             n="fast" ;;
+      hyperdisk-balanced) n="newest; provisioned IOPS/throughput billed on top" ;;
+      *)                  n="" ;;
+    esac
+    printf '%-19s %10s   %s\n' "$t" "$p" "$n"
+  done <<<"$dprices"
+  echo
+  printf '%s' "$DIM"
+  echo "  grow: gcp-rescale storage scale 512G [--disk NAME] — online, no VM stop, sessions"
+  echo "  untouched. GCP disks can never shrink, so start small and grow when needed."
+  if [ "$live" = 1 ]; then
+    echo "  live $region prices in USD/GiB/month (billing catalog, cached $(date -r "$CACHE_FILE" +%Y-%m-%d 2>/dev/null || echo recently);"
+    echo "  refetch: gcp-rescale storage list --refresh)."
+  else
+    echo "  prices are hardcoded approximations for europe-west4 (live fetch failed)."
+  fi
+  [ "$region" = "$REGION" ] ||
+    echo "  price scouting only — gcp-rescale acts on $INSTANCE in $ZONE (disks are zonal)."
+  printf '%s' "$RST"
+}
+
+grow_fs_script() { # in-guest online grow for the disk with deviceName $1
+  cat <<EOF
+set -e
+dev=\$(readlink -f /dev/disk/by-id/google-$1)
+line=\$(lsblk -rno KNAME,FSTYPE,MOUNTPOINT "\$dev" | awk 'NF >= 3 { print; exit }')
+[ -n "\$line" ] || { echo "no mounted filesystem on \$dev"; exit 1; }
+kname=\$(echo "\$line" | cut -d" " -f1)
+fstype=\$(echo "\$line" | cut -d" " -f2)
+mnt=\$(echo "\$line" | cut -d" " -f3)
+if [ "/dev/\$kname" != "\$dev" ]; then
+  sudo growpart "\$dev" "\$(cat /sys/class/block/\$kname/partition)"
+fi
+case "\$fstype" in
+  ext4) sudo resize2fs "/dev/\$kname" ;;
+  xfs)  sudo xfs_growfs "\$mnt" ;;
+  *)    echo "unhandled fstype \$fstype — grow manually"; exit 1 ;;
+esac
+df -h "\$mnt"
+EOF
+}
+
+cmd_storage_scale() { # cmd_storage_scale <size>; --disk picks the disk, default: the data disk
+  local raw=${1:-} s mult=1 new tline name dev cur boot scratch data_count
+  local type price delta total
+  [ -n "$raw" ] || die "usage: gcp-rescale storage scale <size> [--disk NAME]  (e.g. storage scale 512G)"
+  s=$(printf '%s' "$raw" | tr '[:lower:]' '[:upper:]'); s=${s%B}
+  case "$s" in *T) mult=1024; s=${s%T} ;; *G) s=${s%G} ;; esac
+  case "$s" in '' | *[!0-9]*) die "cannot parse size '$raw' — use e.g. 512, 512G, or 1T" ;; esac
+  new=$((s * mult))
+
+  load_vm
+  if [ -n "$DISK_ARG" ]; then
+    tline=$(awk -v n="$DISK_ARG" '$1 == n { print; exit }' <<<"$VM_DISKS")
+    [ -n "$tline" ] || die "no disk '$DISK_ARG' attached to $INSTANCE (see: gcp-rescale storage list)"
+  else
+    data_count=$(awk '$4 == 0 && $5 == 0 { n++ } END { print n + 0 }' <<<"$VM_DISKS")
+    if [ "$data_count" -gt 1 ]; then
+      die "multiple data disks attached — pass --disk NAME (see: gcp-rescale storage list)"
+    elif [ "$data_count" -eq 1 ]; then
+      tline=$(awk '$4 == 0 && $5 == 0 { print; exit }' <<<"$VM_DISKS")
+    else
+      tline=$(awk '$4 == 1 { print; exit }' <<<"$VM_DISKS")
+    fi
+  fi
+  read -r name dev cur boot scratch regional <<<"$tline"
+  [ "$scratch" = 0 ] || die "$name is a local SSD — ephemeral, fixed-size scratch; not resizable"
+  [ "$regional" = 0 ] || die "$name is a regional disk — this tool only resizes zonal disks. By hand:
+  gcloud compute disks resize $name --region=$REGION --size=<N>GB --project=$PROJECT"
+  [ "$new" != "$cur" ] || { echo "$name is already ${cur}GB — nothing to do"; return 0; }
+  [ "$new" -gt "$cur" ] || die "GCP disks can only grow (${cur}GB -> ${new}GB shrinks). To shrink:
+create a smaller disk, rsync the data across, swap the fstab entry, delete the
+old disk — manual on purpose; this tool won't automate destructive migration."
+
+  type=$(disk_types | awk -v n="$name" '$1 == n { print $2; exit }')
+  price=$({ live_prices disk "$REGION" || true; } | awk -v t="${type:-?}" '$1 == t { print $2; exit }')
+  case "$price" in "" | n/a) price=$(disk_fallback "${type:-?}") ;; esac
+  delta="?" total="?"
+  if [ -n "$price" ]; then
+    read -r delta total <<<"$(awk -v c="$cur" -v n="$new" -v p="$price" \
+      'BEGIN { printf "%.2f %.2f", (n - c) * p, n * p }')"
+  fi
+
+  # The single consent prompt: full situation, everything that is about to happen.
+  echo
+  echo "${BOLD}$name: ${cur}GB -> ${new}GB (${type:-unknown type}, +\$$delta/mo -> \$$total/mo total)${RST}"
+  if [ "$VM_STATUS" = RUNNING ]; then
+    echo "Online resize — the VM keeps running; tmux sessions are untouched."
+    echo "Will do:      gcloud disks resize -> grow the filesystem in-guest over ssh"
+  elif [ "$boot" = 1 ]; then
+    echo "The VM is $VM_STATUS — resize now; the boot filesystem self-grows on next start."
+    echo "Will do:      gcloud disks resize"
+  else
+    echo "The VM is $VM_STATUS — resize now; grow the filesystem after the next start."
+    echo "Will do:      gcloud disks resize -> print the in-guest grow command for later"
+  fi
+  consent
+
+  run gcloud compute disks resize "$name" --size="${new}GB" --zone="$ZONE" --project="$PROJECT" --quiet
+  if [ "$DRY_RUN" = 1 ]; then
+    if [ "$VM_STATUS" = RUNNING ]; then
+      plan "ssh: growpart (if partitioned) + resize2fs/xfs_growfs on google-$dev, online"
+    elif [ "$boot" != 1 ]; then
+      plan "(print the in-guest grow command to run after the next start)"
+    fi
+    return 0
+  fi
+  if [ "$VM_STATUS" != RUNNING ]; then
+    [ "$boot" = 1 ] ||
+      echo "  after the VM starts, grow the filesystem with: ssh in, then:
+    sudo resize2fs \$(readlink -f /dev/disk/by-id/google-$dev)   # growpart first if partitioned"
+    echo "${GRN}done: $name = ${new}GB${RST}"
+    return 0
+  fi
+  if remote "$VM_IP" "$(grow_fs_script "$dev")"; then
+    echo "${GRN}done: $name = ${new}GB, filesystem grown${RST}"
+  else
+    warn "disk is ${new}GB but the in-guest grow failed — finish by hand: ssh in, then:
+  sudo resize2fs \$(readlink -f /dev/disk/by-id/google-$dev)   # growpart first if partitioned"
+  fi
+}
+
+cmd_ip() {
+  load_vm
+  [ -n "$VM_IP" ] || die "$INSTANCE has no external IP (status: $VM_STATUS)"
+  local old; old=$(config_hostname)
+  [ -n "$old" ] && [ "$old" != "$VM_IP" ] && forget_host "$old"
+  sync_ssh_config "$VM_IP"
+}
+
+cmd_use() {
+  local inst=${1:-}
+  if [ -z "$inst" ]; then
+    echo "target: $INSTANCE ($ZONE, $PROJECT, ssh as $SSH_USER)"
+    [ "$INSTANCE" = "$DEFAULT_INSTANCE" ] || echo "reset with: gcp-rescale use default"
+    return 0
+  fi
+  if [ "$inst" = "default" ] || { [ "$inst" = "$DEFAULT_INSTANCE" ] && [ $# -eq 1 ]; }; then
+    rm -f "$STATE_FILE"
+    echo "target reset: $DEFAULT_INSTANCE ($DEF_ZONE, $DEF_PROJECT)"
+    return 0
+  fi
+  mkdir -p "$(dirname "$STATE_FILE")"
+  printf '%s %s %s %s\n' "$inst" "${2:-$DEF_ZONE}" "${3:-$DEF_PROJECT}" "${4:-$DEF_USER}" >"$STATE_FILE"
+  echo "target: $inst (${2:-$DEF_ZONE}, ${3:-$DEF_PROJECT}, ssh as ${4:-$DEF_USER})"
+}
+
+# ------------------------------------------------------------------- scale
+
+h200_help() {
+  cat <<EOF
+h200 (a3-ultragpu-8g) cannot be applied to this instance yet:
+  - zero NVIDIA_H200_GPUS quota in $REGION — request it at
+    https://console.cloud.google.com/iam-admin/quotas?project=$PROJECT
+  - the a3 family requires a gVNIC NIC; this instance has VirtIO, which is
+    immutable — the VM would have to be recreated (out of scope for this tool)
+EOF
+}
+
+# Consent inventory: split live pane commands into "will resume" vs "will NOT
+# restart automatically" using RESTORE_PROGS; idle shells are trivially fine.
+print_inventory() {
+  local raw sessions resume=() norestart=() loc cmd path
+  raw=$(remote "$VM_IP" \
+    'tmux list-panes -a -F "#{session_name}:#{window_index}.#{pane_index}|#{pane_current_command}|#{pane_current_path}"' \
+    2>/dev/null) || { echo "Running now:  could not reach tmux over ssh (or none running)"; return 0; }
+  sessions=$(remote "$VM_IP" 'tmux list-sessions 2>/dev/null | wc -l' 2>/dev/null || echo "?")
+  while IFS='|' read -r loc cmd path; do
+    [ -n "$cmd" ] || continue
+    case "$SHELLS" in *" $cmd "*) continue ;; esac
+    path=${path/#$"/home/$SSH_USER"/\~}
+    case "$RESTORE_PROGS" in
+      *" $cmd "*) resume+=("$loc $cmd ($path)") ;;
+      *)          norestart+=("$loc $cmd ($path)") ;;
+    esac
+  done <<<"$raw"
+  echo "Running now:  $(echo "$sessions" | tr -d ' ') tmux session(s), $(wc -l <<<"$raw" | tr -d ' ') pane(s)"
+  if [ ${#resume[@]} -gt 0 ]; then
+    for loc in "${resume[@]}"; do echo "${GRN}Will resume:${RST}  $loc"; done
+  fi
+  if [ ${#norestart[@]} -gt 0 ]; then
+    for loc in "${norestart[@]}"; do echo "${YLW}Will NOT restart automatically:${RST}  $loc"; done
+  fi
+  return 0
+}
+
+consent() {
+  if [ "$DRY_RUN" = 1 ]; then echo "(dry-run: consent skipped, nothing will be executed)"; return 0; fi
+  if [ "$ASSUME_YES" = 1 ] && [ "$INSTANCE" != "$DEFAULT_INSTANCE" ]; then return 0; fi
+  { exec 3</dev/tty; } 2>/dev/null || die "interactive consent is required to touch $INSTANCE (--yes only works for instance overrides)"
+  local a; read -r -p "${BOLD}Proceed? [y/N]${RST} " a <&3 || a=""
+  case "$a" in y | Y | yes) ;; *) die "aborted — nothing changed" ;; esac
+}
+
+save_tmux_state() {
+  if ! remote "$VM_IP" 'tmux has-session' 2>/dev/null; then
+    echo "  no tmux server running — nothing to save"
+    return 0
+  fi
+  if ! remote "$VM_IP" 'test -x ~/.tmux/plugins/tmux-resurrect/scripts/save.sh' 2>/dev/null; then
+    warn "tmux is running but tmux-resurrect is not installed — panes will NOT be restored"
+    return 0
+  fi
+  # shellcheck disable=SC2088  # the tilde expands on the remote side
+  remote "$VM_IP" '~/.tmux/plugins/tmux-resurrect/scripts/save.sh quiet' ||
+    die "tmux-resurrect save FAILED — aborting with the VM still running.
+Investigate on the VM (continuum autosaves every minute if you decide to proceed by hand)."
+  echo "  ${GRN}tmux state saved${RST}"
+}
+
+# Machine type and scheduling must change in ONE instances.update call: GCP
+# rejects maintenance=TERMINATE on a non-preemptible e2, and rejects a GPU
+# machine type while maintenance is still MIGRATE — so sequential
+# set-scheduling / set-machine-type calls deadlock in both orders (verified
+# live 2026-08-31). guestAccelerators and disk interface are dropped from the
+# patched export: both are implied by the machine type, and a stale entry from
+# the old shape (nvidia-l4 on an e2, NVME on an e2) is rejected by the new one.
+apply_shape() { # apply_shape <machine_type> <STANDARD|SPOT> <MIGRATE|TERMINATE>
+  local type=$1 prov=$2 maint=$3 dir f rc=0
+  if [ "$DRY_RUN" = 1 ]; then
+    plan "gcloud compute instances update-from-file $INSTANCE (atomic: machine-type=$type, $prov, maintenance=$maint)"
+    return 0
+  fi
+  dir=$(mktemp -d) f=$dir/instance.yaml
+  gcloud compute instances export "$INSTANCE" --zone="$ZONE" --project="$PROJECT" \
+    --destination="$f" 2>/dev/null || { rm -rf "$dir"; return 1; }
+  "${GCP_RESCALE_PYTHON:-python3}" - "$f" "$type" "$prov" "$maint" <<'EOF' || { rm -rf "$dir"; return 1; }
+import re, sys
+path, mtype, prov, maint = sys.argv[1:5]
+y = open(path).read()
+y = re.sub(r"(?m)^(machineType: .*/machineTypes/).*$", r"\g<1>" + mtype, y)
+y = re.sub(r"(?m)^guestAccelerators:\n(?:[ \t-].*\n)*", "", y)
+y = re.sub(r"(?m)^[ \t]+interface: \S+\n", "", y)
+sched = ["scheduling:",
+         "  automaticRestart: %s" % ("false" if prov == "SPOT" else "true"),
+         "  onHostMaintenance: %s" % maint,
+         "  preemptible: %s" % ("true" if prov == "SPOT" else "false"),
+         "  provisioningModel: %s" % prov]
+if prov == "SPOT":
+    sched.insert(2, "  instanceTerminationAction: STOP")
+y = re.sub(r"(?m)^scheduling:\n(?:[ \t-].*\n)*", "\n".join(sched) + "\n", y)
+open(path, "w").write(y)
+EOF
+  gcloud compute instances update-from-file "$INSTANCE" --source="$f" \
+    --zone="$ZONE" --project="$PROJECT" --most-disruptive-allowed-action=RESTART \
+    >/dev/null || rc=1
+  rm -rf "$dir"
+  return $rc
+}
+
+rollback() { # $1 = failed step; put the VM back on its original shape
+  warn "$1 failed — rolling back to $VM_TYPE ($VM_PROV)"
+  if ! apply_shape "$VM_TYPE" "$VM_PROV" "$VM_MAINT"; then
+    warn "rollback failed too. The VM is STOPPED. Recover manually with:"
+    warn "  gcloud compute instances set-machine-type $INSTANCE --machine-type=$VM_TYPE --zone=$ZONE --project=$PROJECT"
+    warn "  gcloud compute instances start $INSTANCE --zone=$ZONE --project=$PROJECT"
+    exit 1
+  fi
+  if [ "$VM_STATUS" = "RUNNING" ]; then
+    mutate start --quiet || {
+      warn "rollback start failed; start it manually:"
+      warn "  gcloud compute instances start $INSTANCE --zone=$ZONE --project=$PROJECT"
+      exit 1
+    }
+    post_start 0 "$VM_TYPE (rolled back)"
+  else
+    echo "  VM left stopped (it was stopped before)"
+  fi
+  exit 1
+}
+
+ensure_gpu_driver() { # $1 = ip; install NVIDIA driver if missing (Ubuntu)
+  local ip=$1
+  if remote "$ip" 'command -v nvidia-smi >/dev/null && nvidia-smi >/dev/null 2>&1'; then
+    return 0
+  fi
+  echo "  installing NVIDIA driver (takes a few minutes)…"
+  # ubuntu-drivers --gpgpu picks the headless server driver, which does NOT
+  # ship nvidia-smi — install the nvidia-utils matching the LOADED kernel
+  # module (/proc/driver/nvidia/version), since ubuntu-drivers can leave two
+  # driver flavors on disk and the newest package is not always the loaded one.
+  # shellcheck disable=SC2016  # $( ) and $v expand on the remote side
+  if run remote "$ip" 'sudo apt-get -qq update && sudo apt-get -qq install -y ubuntu-drivers-common && sudo ubuntu-drivers install --gpgpu && sudo modprobe nvidia && v=$(sed -n "s/.*Kernel Module[^0-9]*\([0-9][0-9]*\)\..*/\1/p" /proc/driver/nvidia/version | head -1) && sudo apt-get -qq install -y nvidia-utils-$v-server'; then
+    remote "$ip" 'nvidia-smi >/dev/null 2>&1' && return 0
+    echo "  driver installed but not usable yet (module/library mismatch) — rebooting once"
+  else
+    echo "  driver installed but not loaded — rebooting once"
+  fi
+  mutate reset --quiet || return 1
+  wait_for_ssh "$ip"
+}
+
+post_start() { # post_start <gpu_count> <label>
+  local gpus=$1 label=$2 new_ip
+  if [ "$DRY_RUN" = 1 ]; then
+    plan "(poll for the new external IP)"
+    plan "ssh-keygen -R <old-ip>  &&  update $SSH_CONFIG: Host $SSH_ALIAS -> <new-ip>"
+    plan "(wait for sshd, up to 180s)"
+    [ "$gpus" -gt 0 ] && plan "ssh: install NVIDIA driver if nvidia-smi is missing (on failure re-run: gcp-rescale gpu scale <preset>)"
+    plan "ssh: tmux new-session -d   # tmux-continuum auto-restores all sessions"
+    return 0
+  fi
+  new_ip=$(poll_ip) || { warn "VM started but no external IP appeared within 60s — run 'gcp-rescale ip' later"; return 0; }
+  [ -n "$VM_IP" ] && [ "$new_ip" != "$VM_IP" ] && forget_host "$VM_IP"
+  sync_ssh_config "$new_ip"
+  if ! wait_for_ssh "$new_ip"; then
+    warn "resize done and VM running at $new_ip, but sshd didn't answer within 180s — session restore skipped; try: ssh $SSH_ALIAS"
+    return 0
+  fi
+  if [ "$gpus" -gt 0 ]; then
+    ensure_gpu_driver "$new_ip" ||
+      warn "GPU driver install failed — re-run: gcp-rescale gpu scale <preset>"
+  fi
+  remote "$new_ip" 'tmux ls >/dev/null 2>&1 || tmux new-session -d' 2>/dev/null ||
+    warn "could not kick tmux restore — run 'tmux' after ssh'ing in"
+  [ "$gpus" -gt 0 ] && { remote "$new_ip" 'nvidia-smi -L' 2>/dev/null || true; }
+  echo "${GRN}done: $INSTANCE = $label, IP $new_ip — ssh $SSH_ALIAS ready, tmux sessions restoring${RST}"
+}
+
+cmd_gpu_scale() {
+  local pname=${1:-}
+  [ -n "$pname" ] || die "usage: gcp-rescale gpu scale <preset>  (see: gcp-rescale gpu list)"
+  case "$pname" in
+    h100 | b200 | gb200 | gb300)
+      die "$pname is not available in $ZONE (h100: europe-west4-b/c; b200/gb200: -b; gb300: not in $REGION).
+This tool only does in-place same-zone resizes — moving zones means migrating disks/recreating the VM." ;;
+  esac
+  local row; row=$(preset "$pname")
+  [ -n "$row" ] || die "unknown preset '$pname' (valid: ${PRESETS[*]})"
+  local target metric gpus cost desc
+  read -r target metric gpus _ _ _ cost desc <<<"$row"
+  [ "$pname" = "h200" ] && die "$(h200_help)"
+  [ "$SPOT" = 1 ] && [ "$gpus" -eq 0 ] && die "--spot only makes sense for GPU presets (cpu is always STANDARD)"
+
+  local prov="STANDARD" maint="MIGRATE"
+  [ "$SPOT" = 1 ] && prov="SPOT"
+  [ "$gpus" -gt 0 ] && maint="TERMINATE"
+
+  load_vm
+  if [ "$VM_TYPE" = "$target" ] && [ "$VM_PROV" = "$prov" ]; then
+    echo "$INSTANCE is already $pname ($target, $prov) — nothing to do"
+    return 0
+  fi
+  [ "${VM_SCRATCH_COUNT:-0}" -eq 0 ] ||
+    die "this VM has $VM_SCRATCH_COUNT local SSD(s) attached — GCP blocks machine-type
+changes with local SSDs, and their data would be lost. Rescale is not possible here."
+  case "$VM_STATUS" in
+    RUNNING | TERMINATED) ;;
+    *) die "$INSTANCE is $VM_STATUS — wait for it to settle and retry" ;;
+  esac
+  gcloud compute machine-types describe "$target" --zone="$ZONE" --project="$PROJECT" \
+    --format="value(name)" >/dev/null || die "machine type $target is not offered in $ZONE"
+  if [ "$gpus" -gt 0 ]; then
+    local m=$metric lim use
+    [ "$SPOT" = 1 ] && m="PREEMPTIBLE_$metric"
+    read -r lim use <<<"$(quota "$(gcloud compute regions describe "$REGION" --project="$PROJECT" --format=json)" "$m")"
+    awk -v l="$lim" -v u="$use" -v n="$gpus" 'BEGIN { exit !(l - u >= n) }' ||
+      die "insufficient $m quota in $REGION (limit $lim, in use $use, need $gpus).
+Request more at https://console.cloud.google.com/iam-admin/quotas?project=$PROJECT"
+  fi
+
+  # The single consent prompt: full situation, everything that is about to happen.
+  echo
+  local spot_note=""; [ "$prov" = "SPOT" ] && spot_note=" (spot)"
+  echo "${BOLD}$INSTANCE: $VM_TYPE -> $target ($desc), ~\$$cost/hr$spot_note${RST}"
+  if [ "$VM_STATUS" = "RUNNING" ] && [ "$DRY_RUN" = 0 ]; then
+    print_inventory
+  elif [ "$VM_STATUS" = "TERMINATED" ]; then
+    echo "Running now:  nothing — the VM is stopped"
+  else
+    echo "Running now:  (dry-run: ssh inventory skipped)"
+  fi
+  local disk_step=""
+  [ "$gpus" -gt 0 ] && [ "${VM_BOOT_GB%GB}" -lt 50 ] && disk_step=" -> grow boot disk ${VM_BOOT_GB}->50GB (one-time)"
+  local drv_step=""; [ "$gpus" -gt 0 ] && drv_step=" -> install NVIDIA driver if missing"
+  echo "Will do:      save tmux state -> stop VM$disk_step -> resize -> start"
+  echo "              -> new IP into ssh config -> restore tmux sessions$drv_step"
+  echo "${GRN}Will resume:${RST}  claude panes (claude --continue) + resurrect's program list; layout/cwd/scrollback everywhere."
+  echo "${YLW}Lost either way:${RST} in-flight claude turns; programs not listed above restart as idle panes."
+  consent
+
+  if [ "$VM_STATUS" = "RUNNING" ]; then
+    if [ "$DRY_RUN" = 1 ]; then
+      plan "ssh $SSH_USER@$VM_IP '~/.tmux/plugins/tmux-resurrect/scripts/save.sh quiet'"
+    else
+      save_tmux_state
+    fi
+    mutate stop --quiet
+  fi
+  if [ -n "$disk_step" ]; then
+    run gcloud compute disks resize "$VM_BOOT_DISK" --size=50GB --zone="$ZONE" --project="$PROJECT" --quiet ||
+      rollback "boot disk resize"
+  fi
+  apply_shape "$target" "$prov" "$maint" || rollback "resize"
+  mutate start --quiet || rollback "start"
+  post_start "$gpus" "$pname ($target, $prov)"
+}
+
+# ------------------------------------------------------------------ dispatch
+
+# sourced by the test suite to unit-test pure helpers; executed normally otherwise
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
+
+ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --spot) SPOT=1 ;;
+    --disk) [ $# -ge 2 ] || die "--disk needs a value (see: gcp-rescale storage list)"
+            DISK_ARG=$2; shift ;;
+    --refresh) REFRESH=1 ;;
+    --yes | -y) ASSUME_YES=1 ;;
+    --dry-run | -n) DRY_RUN=1 ;;
+    -h | --help) usage; exit 0 ;;
+    --version | -V) echo "gcp-rescale $VERSION"; exit 0 ;;
+    -*) die "unknown flag: $1 (see: gcp-rescale --help)" ;;
+    *) ARGS+=("$1") ;;
+  esac
+  shift
+done
+
+if [ "$INSTANCE" != "$DEFAULT_INSTANCE" ] && [ "${ARGS[0]:-}" != "use" ]; then
+  echo "${YLW}[target: $INSTANCE ($ZONE, $PROJECT)]${RST}" >&2
+fi
+
+case "${ARGS[0]:-}" in
+  status) cmd_status ;;
+  ip)     cmd_ip ;;
+  use)    cmd_use "${ARGS[@]:1}" ;;
+  gpu)
+    case "${ARGS[1]:-}" in
+      list)  cmd_gpu_list "${ARGS[2]:-}" ;;
+      scale) cmd_gpu_scale "${ARGS[2]:-}" ;;
+      *) usage; exit 1 ;;
+    esac ;;
+  storage)
+    case "${ARGS[1]:-}" in
+      list)  cmd_storage_list "${ARGS[2]:-}" ;;
+      scale) cmd_storage_scale "${ARGS[2]:-}" ;;
+      *) usage; exit 1 ;;
+    esac ;;
+  *) usage; exit 1 ;;
+esac

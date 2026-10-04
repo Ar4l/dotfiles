@@ -1,0 +1,53 @@
+#!/bin/bash
+# fake ssh — logs argv (the in-guest scripts arrive as arguments) and answers
+# per FAKE_SSH. Must return fast so wait_for_ssh succeeds on its first try.
+set -u
+echo "ssh $*" >>"${SSH_LOG:?}"
+
+mode=${FAKE_SSH:-ok}
+[ "$mode" = unreachable ] && exit 255
+
+# the remote command is everything after the `--` separator
+cmd="" seen=0
+for a in "$@"; do
+  if [ "$seen" = 1 ]; then
+    cmd="$cmd $a"
+  elif [ "$a" = "--" ]; then
+    seen=1
+  fi
+done
+cmd=${cmd# }
+
+case "$cmd" in
+  *"command -v nvidia-smi"*) # is a driver already present?
+    case "$mode" in nvidia-missing | nvidia-mismatch | driver-install-fails) exit 1 ;; esac ;;
+  *apt-get*) # the ubuntu-drivers + nvidia-utils install chain
+    [ "$mode" = driver-install-fails ] && exit 1 ;;
+  "nvidia-smi >"*) # post-install verify
+    [ "$mode" = nvidia-mismatch ] && exit 1 ;;
+  *"nvidia-smi -L"*)
+    echo "GPU 0: NVIDIA L4 (UUID: GPU-fake-0000)" ;;
+  *"tmux has-session"*)
+    [ "$mode" = no-tmux ] && exit 1 ;;
+  *"test -x ~/.tmux/plugins"*)
+    [ "$mode" = tmux-no-resurrect ] && exit 1 ;;
+  *"save.sh quiet"*)
+    [ "$mode" = save-fails ] && exit 1 ;;
+  *list-panes*)
+    if [ "$mode" = panes ]; then
+      printf '%s\n' 'main:0.0|claude|/home/aral/proj' 'main:0.1|vim|/home/aral/notes' \
+                    'main:1.0|python|/home/aral' 'main:1.1|zsh|/home/aral'
+    else
+      echo 'main:0.0|zsh|/home/aral'
+    fi ;;
+  *list-sessions*)
+    echo 1 ;;
+  *"tmux ls"*) # the post-start restore kick
+    [ "$mode" = tmux-kick-fails ] && exit 1 ;;
+  *FSUSE*) # the storage-list mount/usage probe, keyed by deviceName
+    printf '%s\n' 'persistent-disk-0 / 55%' 'qa-data /mnt/data 37%' ;;
+  *growpart*) # the in-guest filesystem grow script
+    if [ "$mode" = grow-fails ]; then echo "growpart: failed" >&2; exit 1; fi
+    echo "/dev/fake 20G 5G 15G 25% /mnt/data" ;;
+esac
+exit 0

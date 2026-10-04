@@ -1,0 +1,109 @@
+#!/bin/bash
+# fake gcloud — offline stand-in, driven by FAKE_VM / FAKE_REGION / FAKE_FAIL
+# (see tests/lib.sh). Logs every argv to $SHIM_LOG; `update-from-file` copies
+# its --source into $CAPTURE, which is what makes Bug 1 offline-regressable.
+set -u
+args="$*"
+echo "gcloud $args" >>"${SHIM_LOG:?}"
+
+# FAKE_FAIL: comma-separated substring[:N] entries (patterns like "instances
+# start" contain spaces). Bare substring fails EVERY matching call; substring:N
+# fails only the first N (counter in the sandbox, reset by each `run` —
+# rollback re-issues update-from-file, and :1 must let that second call through).
+while IFS= read -r entry; do
+  [ -n "$entry" ] || continue
+  pat=${entry%%:*}
+  case "$args" in
+    *"$pat"*)
+      if [ "$entry" = "$pat" ]; then exit 1; fi
+      n=${entry##*:}
+      cf="${SB:?}/failcount.$(printf '%s' "$pat" | tr -c 'a-zA-Z0-9' '_')"
+      c=$(cat "$cf" 2>/dev/null || echo 0)
+      c=$((c + 1))
+      printf '%s' "$c" >"$cf"
+      [ "$c" -le "$n" ] && exit 1
+      ;;
+  esac
+done <<FAKEFAIL
+$(printf '%s' "${FAKE_FAIL:-}" | tr ',' '\n')
+FAKEFAIL
+
+# ---- attached-disk JSON snippets, composed per FAKE_VM below
+Z="https://www.googleapis.com/compute/v1/projects/jetbrains-grazie/zones/europe-west4-a"
+R="https://www.googleapis.com/compute/v1/projects/jetbrains-grazie/regions/europe-west4"
+BOOT50='{"boot": true, "deviceName": "persistent-disk-0", "diskSizeGb": "50", "source": "'$Z'/disks/qa-vm", "type": "PERSISTENT"}'
+BOOT10='{"boot": true, "deviceName": "persistent-disk-0", "diskSizeGb": "10", "source": "'$Z'/disks/qa-vm", "type": "PERSISTENT"}'
+DATA='{"boot": false, "deviceName": "qa-data", "diskSizeGb": "10", "source": "'$Z'/disks/qa-data", "type": "PERSISTENT"}'
+DATA2='{"boot": false, "deviceName": "qa-data2", "diskSizeGb": "20", "source": "'$Z'/disks/qa-data2", "type": "PERSISTENT"}'
+REGIONAL='{"boot": false, "deviceName": "qa-data-r", "diskSizeGb": "10", "source": "'$R'/disks/qa-data-r", "type": "PERSISTENT"}'
+SCRATCH='{"boot": false, "deviceName": "local-ssd-0", "diskSizeGb": "375", "type": "SCRATCH"}'
+
+emit_vm() { # emit_vm <status> <type> <prov> <maint> <ip|-> <disks_json>
+  local acc=""
+  [ "$5" != "-" ] && acc='{"natIP": "'$5'"}'
+  cat <<EOF
+{"status": "$1",
+ "machineType": "$Z/machineTypes/$2",
+ "scheduling": {"provisioningModel": "$3", "onHostMaintenance": "$4"},
+ "networkInterfaces": [{"accessConfigs": [$acc]}],
+ "disks": [$6]}
+EOF
+}
+
+vm_json() {
+  case "${FAKE_VM:-cpu}" in
+    cpu)        emit_vm RUNNING e2-standard-8 STANDARD MIGRATE 203.0.113.7 "$BOOT50, $DATA" ;;
+    cpu-small)  emit_vm RUNNING e2-standard-8 STANDARD MIGRATE 203.0.113.7 "$BOOT10, $DATA" ;;
+    l4)         emit_vm RUNNING g2-standard-8 STANDARD TERMINATE 203.0.113.7 "$BOOT50, $DATA" ;;
+    l4-spot)    emit_vm RUNNING g2-standard-8 SPOT TERMINATE 203.0.113.7 "$BOOT50, $DATA" ;;
+    scratch)    emit_vm RUNNING e2-standard-8 STANDARD MIGRATE 203.0.113.7 "$BOOT50, $DATA, $SCRATCH" ;;
+    regional)   emit_vm RUNNING e2-standard-8 STANDARD MIGRATE 203.0.113.7 "$BOOT50, $REGIONAL" ;;
+    two-data)   emit_vm RUNNING e2-standard-8 STANDARD MIGRATE 203.0.113.7 "$BOOT50, $DATA, $DATA2" ;;
+    boot-only)  emit_vm RUNNING e2-standard-8 STANDARD MIGRATE 203.0.113.7 "$BOOT50" ;;
+    stopping)   emit_vm STOPPING e2-standard-8 STANDARD MIGRATE 203.0.113.7 "$BOOT50, $DATA" ;;
+    terminated) emit_vm TERMINATED g2-standard-8 STANDARD TERMINATE - "$BOOT50, $DATA" ;;
+    noip)       emit_vm RUNNING e2-standard-8 STANDARD MIGRATE - "$BOOT50, $DATA" ;;
+    *)          echo "gcloud shim: unknown FAKE_VM '$FAKE_VM'" >&2; exit 1 ;;
+  esac
+}
+
+region_json() {
+  q() { printf '{"metric": "%s", "limit": %s, "usage": %s}' "$1" "$2" "$3"; }
+  case "${FAKE_REGION:-ok}" in
+    ok)      echo '{"quotas": ['"$(q NVIDIA_L4_GPUS 32 2)"', '"$(q PREEMPTIBLE_NVIDIA_L4_GPUS 32 0)"', '"$(q NVIDIA_A100_GPUS 16 0)"', '"$(q NVIDIA_A100_80GB_GPUS 8 0)"', '"$(q NVIDIA_H200_GPUS 0 0)"']}' ;;
+    noquota) echo '{"quotas": ['"$(q NVIDIA_L4_GPUS 0 0)"', '"$(q NVIDIA_A100_GPUS 0 0)"', '"$(q NVIDIA_A100_80GB_GPUS 0 0)"']}' ;;
+    tight)   echo '{"quotas": ['"$(q NVIDIA_L4_GPUS 4 4)"', '"$(q NVIDIA_A100_GPUS 0 0)"', '"$(q NVIDIA_A100_80GB_GPUS 0 0)"']}' ;;
+    *)       exit 1 ;; # bogus
+  esac
+}
+
+disks_list() { # "name type" per non-scratch disk of the current FAKE_VM
+  echo "qa-vm pd-balanced"
+  case "${FAKE_VM:-cpu}" in
+    boot-only) ;;
+    regional)  echo "qa-data-r pd-balanced" ;;
+    two-data)  echo "qa-data pd-balanced"; echo "qa-data2 pd-balanced" ;;
+    *)         echo "qa-data pd-balanced" ;;
+  esac
+}
+
+case "$args" in
+  *"auth print-access-token"*) exit 1 ;; # never let live_prices reach the network
+  *"instances describe"*natIP*) echo "198.51.100.99" ;; # poll_ip: first try wins
+  *"instances describe"*--format=json*) vm_json ;;
+  *"instances export"*)
+    for a in "$@"; do
+      case "$a" in --destination=*) cp "${FIXTURES:?}/export.yaml" "${a#--destination=}" ;; esac
+    done ;;
+  *"update-from-file"*)
+    for a in "$@"; do
+      case "$a" in --source=*) cat "${a#--source=}" >>"${CAPTURE:?}" ;; esac
+    done ;;
+  *"regions describe"*"value(name)"*) [ "${FAKE_REGION:-ok}" = bogus ] && exit 1; echo "europe-west4" ;;
+  *"regions describe"*) region_json ;;
+  *"machine-types describe"*) echo "machine-type" ;;
+  *"disks list"*) disks_list ;;
+  *"instances stop"* | *"instances start"* | *"instances reset"* | *"disks resize"*) ;;
+  *) ;; # anything else: log and succeed
+esac
+exit 0
