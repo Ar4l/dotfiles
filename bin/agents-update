@@ -2,18 +2,32 @@
 # /// script
 # requires-python = ">=3.12"
 # ///
-"""Update claude, codex, central and paseo on this Mac and on rem-dev.
+"""Update claude, codex, central and paseo on this Mac and on rem-dev. Steps, in order:
 
-  uv run bin/agents-update.py                  # update all; prompts before paseo restarts
-  uv run bin/agents-update.py --check          # report versions only
-  uv run bin/agents-update.py --approve-paseo  # no TTY: the human already said yes
+ 1. Print installed versions on both hosts.                      (--check stops here)
+ 2. Mac:     brew upgrade --cask claude-code@latest codex; central update --install
+    rem-dev: claude update; brew upgrade --cask codex; central update --install
+    These leave running agents alone, so no prompt.
+ 3. Mac paseo: if `brew outdated --cask paseo` -> PROMPT -> brew upgrade --cask paseo
+    (restarts the local daemon). The Mac's paseo version is the target for rem-dev.
+ 4. rem-dev paseo, only if its version != target:
+    a. Fork branch Ar4l/paseo patched/v<target>-nix; create on rem-dev if missing:
+       clone the tag, cherry-pick getpaseo/paseo#3853 (node-pty fix; skipped once the
+       tag has it), scripts/update-nix.sh (tags ship a stale npm-deps hash), push.
+    b. nix build it to /tmp/paseo-next on rem-dev; smoke on port 6799: daemon
+       reachable with that version, web UI served, terminal create + kill.
+    c. If upstream released a newer version meanwhile -> PROMPT: continue or stop.
+    d. Rewrite paseo_version/paseo_flake in install.sh, commit, push to main;
+       rem-dev: git pull dotfiles (unit is a stow symlink), set
+       features.webUi.enabled with the new binary, systemctl --user daemon-reload.
+    e. PROMPT (shows running agents) -> nix profile remove/add, restart paseo.service.
+       Kills rem-dev's Paseo terminals and interrupts running turns; idle agents resume.
+    f. Verify: version, terminal create + kill, agent count; print downtime.
+       Then comment the validation on PR 3853.
+ 5. If PR 3853 is merged/closed, print what to delete from this script.
 
-claude/codex/central swaps leave running agents alone and never prompt. A paseo
-restart kills that host's Paseo terminals and interrupts running turns, so it
-always asks. rem-dev follows the Mac's paseo version so client and daemon match.
-rem-dev builds paseo from the fork branch patched/v<ver>-nix: the release tag plus
-the node-pty fix from getpaseo/paseo#3853 (while unmerged) and a recomputed
-nix/npm-deps.hash (release tags ship a stale one).
+PROMPTs read /dev/tty; without one the script stops there. --approve-paseo answers
+yes to all of them and is only for when a human already approved out of band.
 """
 import argparse, json, re, subprocess, sys, time, urllib.request
 from pathlib import Path
