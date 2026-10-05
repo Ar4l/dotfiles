@@ -10,6 +10,8 @@
     These leave running agents alone, so no prompt.
  3. Mac paseo: if `brew outdated --cask paseo` -> PROMPT -> brew upgrade --cask paseo
     (restarts the local daemon). The Mac's paseo version is the target for rem-dev.
+    Before any paseo PROMPT: 3-5 bullets of what's new for you, from the GitHub release
+    notes between the versions, summarised by `claude -p` (raw notes if that fails).
  4. rem-dev paseo, only if its version != target:
     a. Fork branch Ar4l/paseo patched/v<target>-nix; create on rem-dev if missing:
        clone the tag, cherry-pick getpaseo/paseo#3853 (node-pty fix; skipped once the
@@ -29,7 +31,7 @@
 PROMPTs read /dev/tty; without one the script stops there. --approve-paseo answers
 yes to all of them and is only for when a human already approved out of band.
 """
-import argparse, json, re, subprocess, sys, time, urllib.request
+import argparse, json, os, re, subprocess, sys, time, urllib.request
 from pathlib import Path
 
 REMOTE = "rem-dev"
@@ -102,8 +104,10 @@ def update_tools(before):
 
 
 def update_paseo_mac(approve):
-    if not sh("brew outdated --cask paseo", env="HOMEBREW_NO_AUTO_UPDATE=1 "):
+    outdated = sh("brew outdated --cask paseo --verbose", env="HOMEBREW_NO_AUTO_UPDATE=1 ")  # "paseo (0.10.2) != 0.10.3"
+    if not outdated:
         return
+    changelog(version("paseo"), outdated.split()[-1])
     if confirm(f"Upgrade paseo on the Mac? Restarts the local daemon ({running_agents()} agents running).", approve):
         sh("brew upgrade --cask paseo", env="HOMEBREW_NO_AUTO_UPDATE=1 ")
         print(f"paseo mac -> {version('paseo')}")
@@ -112,6 +116,22 @@ def update_paseo_mac(approve):
 def latest_release():
     with urllib.request.urlopen(f"https://api.github.com/repos/{UPSTREAM}/releases/latest") as r:
         return json.load(r)["tag_name"]
+
+
+def changelog(old, new):
+    """Print 3-5 user-relevant new features from the stable releases in (old, new]."""
+    v = lambda s: tuple(int(x) for x in s.split("."))
+    with urllib.request.urlopen(f"https://api.github.com/repos/{UPSTREAM}/releases?per_page=100") as r:
+        rels = [x for x in json.load(r) if "-" not in x["tag_name"] and v(old) < v(x["tag_name"][1:]) <= v(new)]
+    notes = "\n\n".join(x["body"] for x in sorted(rels, key=lambda x: v(x["tag_name"][1:])))
+    if not notes:
+        return
+    prompt = (f"Paseo release notes {old} -> {new} follow. List the new features that matter to this user: runs the "
+              "paseo daemon headless on a Linux VM (Nix, systemd) with the Mac desktop app and CLI as clients; drives Claude "
+              "Code and Codex agents in git worktrees; uses terminals, MCP tools, schedules. Skip bug fixes, mobile, Windows, "
+              "and UI polish. Output 3 bullets (at most 5), each one line starting with '- ', concrete, no marketing; nothing else.\n\n" + notes)
+    out = subprocess.run(["claude", "-p", "--model", "sonnet"], input=prompt, capture_output=True, text=True, env={**os.environ, "CLAUDECODE": ""})
+    print(f"\npaseo {old} -> {new}, what's new for you:\n{out.stdout.strip() or notes[:3000]}\n")
 
 
 def resolve_flake(tag):
@@ -184,6 +204,8 @@ def update_paseo_remote(approve):
     if remote == target:
         return False
     tag = f"v{target}"
+    if remote != "-":
+        changelog(remote, target)
     flake, built = resolve_flake(tag)
     build_and_smoke(flake, target)
     latest = latest_release()
