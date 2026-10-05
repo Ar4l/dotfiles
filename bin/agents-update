@@ -169,7 +169,7 @@ def pin(target, flake):
 
 def swap_and_verify(flake, target):
     t0 = time.time()
-    sh(f"nix profile remove --regex '^paseo' 2>/dev/null; nix profile add {flake} && systemctl --user restart paseo.service", REMOTE)
+    sh(f"nix profile remove paseo 2>/dev/null; nix profile add {flake} && systemctl --user restart paseo.service", REMOTE)
     out = sh(f"""for i in $(seq 60); do paseo daemon status --json 2>/dev/null | grep -q '"connectedDaemon": *"reachable"' && break; sleep 1; done
         paseo daemon status --json | grep -E '"(daemonVersion|cliVersion|connectedDaemon)"'
         id=$(paseo terminal create --cwd ~ --json | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')

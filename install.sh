@@ -277,7 +277,7 @@ else
   # commit-pinned flake ref. The running daemon keeps its old store path until
   # paseo.service restarts below.
   [ "$(paseo --version 2> /dev/null)" = "$paseo_version" ] || {
-    nix profile remove --regex '^paseo' 2> /dev/null   # no-op on first install
+    nix profile remove paseo 2> /dev/null   # no-op on first install; --regex misses it
     nix profile add "$paseo_flake"
   } || failed+=(paseo)
   # 0.9 dropped `daemon start` launch flags; the web UI is a persisted config key
