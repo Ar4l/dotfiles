@@ -1,0 +1,6 @@
+interface:
+  display_name: "Summarise"
+  short_description: "Concise English summary of what matters"
+  default_prompt: "Use $summarise to summarise what matters so far."
+policy:
+  allow_implicit_invocation: false
