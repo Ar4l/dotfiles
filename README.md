@@ -32,6 +32,12 @@ Note, installing these dotfiles depends on the following:
 - `xz-utils` extracting files
 - `git` for installing homebrew
 
+#### Updating agent tooling
+`agents-update` (in `bin/`, on PATH) updates claude, codex, central and paseo on
+this machine and on rem-dev. Non-breaking tools update silently; paseo restarts
+always ask first, after showing what's new. `agents-update --help` lists every
+step; `agents-update --check` only prints versions.
+
 #### TODO: MacOS New Install
 - [x] `kitty` for terminal with GUI capabilities (todo: issues with color scheme & maintaining border colours)
 - [x] `rectangle` for window management (todo: obsolete after Sonoma)
