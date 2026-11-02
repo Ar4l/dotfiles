@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gcp-rescale"
+version = "0.1.0"
+description = "One-command GPU and disk scaling for a GCP dev VM"
+readme = "README.md"
+requires-python = ">=3.9"
+# LICENSE.md is copied in from the repo root by the release workflow (and by
+# `make -C tools/gcp-rescale dist` locally); it is not committed here twice.
+license-files = ["LICENSE.md"]
+classifiers = ["Operating System :: POSIX", "Operating System :: MacOS"]
+
+[project.scripts]
+gcp-rescale = "gcp_rescale:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gcp_rescale"]
+
+# Ship the bash script inside the importable package so the console script can
+# find it, while keeping it at its natural bin/ path in the repo.
+[tool.hatch.build.targets.wheel.force-include]
+"bin/gcp-rescale" = "gcp_rescale/gcp-rescale"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "bin", "tests", "README.md"]

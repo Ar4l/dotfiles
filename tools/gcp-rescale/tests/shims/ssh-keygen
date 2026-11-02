@@ -1,0 +1,4 @@
+#!/bin/bash
+# fake ssh-keygen — log only; the one caller is forget_host's `ssh-keygen -R`
+echo "ssh-keygen $*" >>"${SSH_LOG:?}"
+exit 0

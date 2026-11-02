@@ -16,6 +16,9 @@ simulate:
 install:
 	./install.sh
 
+test:
+	./tools/gcp-rescale/tests/run
+
 # headless-unlockable gnome-keyring for CLIs that store tokens (central etc.);
 # separate from `all` because it needs sudo once
 keyring:
@@ -23,4 +26,4 @@ keyring:
 
 all: install restow
 
-.PHONY: stow restow delete simulate install keyring all
+.PHONY: stow restow delete simulate install keyring test all

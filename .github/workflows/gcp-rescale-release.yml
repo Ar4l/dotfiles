@@ -1,0 +1,57 @@
+name: gcp-rescale release
+
+# Tag gcp-rescale-v* to publish: re-run the offline suite, build, smoke-test
+# the built artifact, cut a GitHub Release, publish to PyPI (Trusted
+# Publishing / OIDC — no token stored anywhere). Tags are namespaced because
+# this repo holds other tools. Run tests/live before tagging; CI can't reach GCP.
+on:
+  push:
+    tags: ["gcp-rescale-v*"]
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # PyPI Trusted Publishing (OIDC) — no token, no secret
+
+# Third-party (and GitHub) actions are pinned to immutable commit SHAs so a
+# compromised upstream tag can't inject code into the released artifacts.
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: versions must equal the tag
+        run: |
+          v="${GITHUB_REF_NAME#gcp-rescale-v}"
+          grep -q "^readonly VERSION=\"$v\"$" tools/gcp-rescale/bin/gcp-rescale ||
+            { echo "::error::script VERSION != $v"; exit 1; }
+          grep -q "^version = \"$v\"$" tools/gcp-rescale/pyproject.toml ||
+            { echo "::error::pyproject version != $v"; exit 1; }
+
+      - name: offline suite # never publish an untested tag
+        run: /bin/bash tools/gcp-rescale/tests/run
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10
+
+      - name: build (with the repo LICENSE in the sdist/wheel metadata)
+        run: |
+          cp LICENSE.md tools/gcp-rescale/LICENSE.md
+          cd tools/gcp-rescale && uv build
+
+      - name: smoke-test the artifact, not the checkout
+        run: |
+          v="${GITHUB_REF_NAME#gcp-rescale-v}"
+          out=$(uvx --from tools/gcp-rescale/dist/*.whl gcp-rescale --version)
+          [ "$out" = "gcp-rescale $v" ] || { echo "::error::smoke test printed '$out'"; exit 1; }
+          uvx --from tools/gcp-rescale/dist/*.whl gcp-rescale --help >/dev/null
+
+      # the GitHub Release comes BEFORE the PyPI publish on purpose: until the
+      # one-time PyPI trusted-publisher setup exists, publish fails — a tag
+      # should still produce a tested, downloadable release
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: tools/gcp-rescale/dist/*
+
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: tools/gcp-rescale/dist

@@ -1,0 +1,77 @@
+# Mirrors `gcloud compute instances export` of the g2-standard-8 QA instance
+# from the 2026-08-31 live campaign, sanitized for the public repo: metadata
+# (ssh keys!), serviceAccounts, natIP, and fingerprints/ids are stripped or
+# faked; the shape-relevant blocks (machineType, guestAccelerators, disk
+# interface lines, scheduling) are structurally verbatim. The source type is
+# deliberately g2-standard-8 — NOT any test's target type — so the machineType
+# substitution assertion can never be vacuous.
+canIpForward: false
+confidentialInstanceConfig:
+  enableConfidentialCompute: false
+cpuPlatform: Intel Cascade Lake
+creationTimestamp: '2026-08-31T04:12:33.111-07:00'
+deletionProtection: false
+disks:
+- autoDelete: true
+  boot: true
+  deviceName: persistent-disk-0
+  diskSizeGb: '50'
+  guestOsFeatures:
+  - type: UEFI_COMPATIBLE
+  - type: VIRTIO_SCSI_MULTIQUEUE
+  - type: GVNIC
+  index: 0
+  interface: NVME
+  kind: compute#attachedDisk
+  licenses:
+  - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-2404-lts-amd64
+  mode: READ_WRITE
+  source: https://www.googleapis.com/compute/v1/projects/jetbrains-grazie/zones/europe-west4-a/disks/qa-vm
+  type: PERSISTENT
+- autoDelete: false
+  boot: false
+  deviceName: qa-data
+  diskSizeGb: '10'
+  index: 1
+  interface: NVME
+  kind: compute#attachedDisk
+  mode: READ_WRITE
+  source: https://www.googleapis.com/compute/v1/projects/jetbrains-grazie/zones/europe-west4-a/disks/qa-data
+  type: PERSISTENT
+displayDevice:
+  enableDisplay: false
+guestAccelerators:
+- acceleratorCount: 1
+  acceleratorType: https://www.googleapis.com/compute/v1/projects/jetbrains-grazie/zones/europe-west4-a/acceleratorTypes/nvidia-l4
+keyRevocationActionType: NONE
+labelFingerprint: 42WmSpB8rSM=
+lastStartTimestamp: '2026-08-31T04:13:01.456-07:00'
+machineType: https://www.googleapis.com/compute/v1/projects/jetbrains-grazie/zones/europe-west4-a/machineTypes/g2-standard-8
+name: qa-vm
+networkInterfaces:
+- fingerprint: 7SByVGVndm8=
+  kind: compute#networkInterface
+  name: nic0
+  network: https://www.googleapis.com/compute/v1/projects/jetbrains-grazie/global/networks/default
+  networkIP: 10.164.0.12
+  nicType: VIRTIO_NET
+  stackType: IPV4_ONLY
+  subnetwork: https://www.googleapis.com/compute/v1/projects/jetbrains-grazie/regions/europe-west4/subnetworks/default
+reservationAffinity:
+  consumeReservationType: ANY_RESERVATION
+scheduling:
+  automaticRestart: true
+  onHostMaintenance: TERMINATE
+  preemptible: false
+  provisioningModel: STANDARD
+shieldedInstanceConfig:
+  enableIntegrityMonitoring: true
+  enableSecureBoot: false
+  enableVtpm: true
+shieldedInstanceIntegrityPolicy:
+  updateAutoLearnPolicy: true
+startRestricted: false
+status: RUNNING
+tags:
+  fingerprint: 476LxNo9c2M=
+zone: https://www.googleapis.com/compute/v1/projects/jetbrains-grazie/zones/europe-west4-a

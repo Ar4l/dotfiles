@@ -20,6 +20,11 @@ files/.config/k9s/config.yaml
 # pyrate scratch captures (raw API requests; contain session tokens)
 bin/pyrate/temp/
 
+# gcp-rescale build artifacts; LICENSE.md is copied in from the repo root at
+# build time (uv build / the release workflow) so the sdist carries the notice
+tools/gcp-rescale/dist/
+tools/gcp-rescale/LICENSE.md
+
 # ~/.gitignore_global ignores .claude/ — right for the runtime state Claude
 # writes through the stow fold, but it also hides new files here; re-include
 # only the skills symlinks (canonical skills live in files/.agents/skills/)
