@@ -117,6 +117,7 @@ casks=(
   vscodium                # vscode without the telemetry
   warp                    # terminal
   yeti                    # menubar app
+  zen                     # browser (Firefox-based, replaces Arc)
 )
 
 # Formulae that only build on macOS
