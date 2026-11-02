@@ -14,7 +14,7 @@
 set -euo pipefail
 
 DEFAULT_INSTANCE="aral-rem-dev"
-DEF_ZONE="europe-west4-a" DEF_PROJECT="jetbrains-grazie" DEF_USER="aral"
+DEF_ZONE="europe-west1-b" DEF_PROJECT="jetbrains-grazie" DEF_USER="aral"
 SSH_ALIAS="rem-dev"
 SSH_CONFIG="${GCP_RESCALE_SSH_CONFIG:-$HOME/.ssh/config}" # override exists only for tests
 
