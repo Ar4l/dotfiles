@@ -21,4 +21,4 @@ Rules for text a human reads. Apply every rule; when two conflict, precision and
 - Keep noun chains to two nouns and each subject next to its verb: "measure how long state transitions take".
 - Try to ground every claim: a file, id, URL, or measurement, otherwise indicate that it is not well-grounded.
 - Bullets only for parallel items, ≤160 chars; meet the cap by cutting a fact or splitting the bullet. Arguments stay as prose.
-- Sentences carry their meaning alone: no em-dashes, no "not X but Y", no label-colon-bullet unless it is an index entry, no preamble, no "note that", no closing offer.
+- Write full sentences that each stand alone, and stop when the point is made.
