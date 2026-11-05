@@ -50,8 +50,14 @@ LATEST = {  # name: GitHub repo whose latest release is the reference version; c
 }
 
 
+COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+def paint(code, text):
+    return f"\033[{code}m{text}\033[0m" if COLOR else text
+dim, bold, green, yellow, red = (lambda t, c=c: paint(c, t) for c in ("2", "1", "32", "33", "31"))
+
+
 def log(msg):
-    print(time.strftime("%H:%M:%S"), msg, flush=True)
+    print(dim(time.strftime("%H:%M:%S") + " " + msg), flush=True)
 
 
 def sh(cmd, host=None, check=True, env=""):
@@ -61,7 +67,7 @@ def sh(cmd, host=None, check=True, env=""):
         cmd = env + cmd
     r = subprocess.run(cmd, shell=host is None, capture_output=True, text=True)
     if r.returncode and check:
-        sys.exit(f"FAILED ({host or 'mac'}): {cmd}\n{r.stdout}{r.stderr}")
+        sys.exit(red(f"FAILED ({host or 'mac'}): {cmd}\n{r.stdout}{r.stderr}"))
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
@@ -88,7 +94,7 @@ def confirm(question, approve):
     except OSError:
         print(f"{question}\n  No TTY: rerun interactively, or with --approve-paseo once a human has said yes.")
         return False
-    tout.write(f"\n{question} [y/N] "), tout.flush()
+    tout.write(f"\n{bold(yellow(question))} [y/N] "), tout.flush()
     return tin.readline().strip().lower() == "y"
 
 
@@ -105,9 +111,10 @@ def latest(tool):
 def report():
     log(f"checking versions on mac, {REMOTE}, and upstream")
     rows = [(t, version(t), version(t, REMOTE), latest(t)) for t in [*TOOLS, "paseo"]]
-    print(f"{'tool':8} {'mac':10} {REMOTE:10} latest")
-    for r in rows:
-        print(f"{r[0]:8} {r[1]:10} {r[2]:10} {r[3]}")
+    print(bold(f"{'tool':8} {'mac':10} {REMOTE:10} latest"))
+    for tool, mac, remote, new in rows:
+        cell = lambda v: (green if v == new else red if v == "-" else yellow)(f"{v:10}")  # green: current, yellow: behind, red: missing
+        print(f"{tool:8} {cell(mac)} {cell(remote)} {new}")
     return dict((r[0], r[1:3]) for r in rows)
 
 
@@ -118,7 +125,8 @@ def update_tools(before):
         log(f"{tool}: mac `{mac}`, {REMOTE} `{remote}`")
         sh(mac, env="HOMEBREW_NO_AUTO_UPDATE=1 ")
         sh(remote, REMOTE)
-        print(f"{tool:8} mac {before[tool][0]} -> {version(tool)}   {REMOTE} {before[tool][1]} -> {version(tool, REMOTE)}")
+        arrow = lambda old, now: f"{old} -> {green(now)}" if old != now else dim(f"{now} unchanged")
+        print(f"{tool:8} mac {arrow(before[tool][0], version(tool))}   {REMOTE} {arrow(before[tool][1], version(tool, REMOTE))}")
     if before["claude"][0] != version("claude"):
         print("note: claude changed on the Mac; restart the tmux server from kitty if Downloads/Desktop give EPERM")
 
@@ -154,7 +162,7 @@ def changelog(old, new):
               "Code and Codex agents in git worktrees; uses terminals, MCP tools, schedules. Skip bug fixes, mobile, Windows, "
               "and UI polish. Output 3 bullets (at most 5), each one line starting with '- ', concrete, no marketing; nothing else.\n\n" + notes)
     out = subprocess.run(["claude", "-p", "--model", "sonnet"], input=prompt, capture_output=True, text=True, env={**os.environ, "CLAUDECODE": ""})
-    print(f"\npaseo {old} -> {new}, what's new for you:\n{out.stdout.strip() or notes[:3000]}\n")
+    print(bold(f"\npaseo {old} -> {new}, what's new for you:") + "\n{out.stdout.strip() or notes[:3000]}\n")
 
 
 def resolve_flake(tag):
@@ -271,4 +279,4 @@ if __name__ == "__main__":
     update_paseo_mac(a.approve_paseo)
     update_paseo_remote(a.approve_paseo)
     check_fix_pr()
-    log("done")
+    log(green("done"))
