@@ -47,6 +47,10 @@ TOOLS = {  # name: (mac update, rem-dev update)
 }
 
 
+def log(msg):
+    print(time.strftime("%H:%M:%S"), msg, flush=True)
+
+
 def sh(cmd, host=None, check=True, env=""):
     if host:
         cmd = ["ssh", "-o", "BatchMode=yes", host, REMOTE_PATH + cmd]
@@ -72,13 +76,13 @@ def confirm(question, approve):
     if approve:
         print(f"{question} -> approved via --approve-paseo")
         return True
-    try:
-        tty = open("/dev/tty", "r+")
+    try:  # separate handles: "r+" on a tty raises UnsupportedOperation on macOS
+        tin, tout = open("/dev/tty"), open("/dev/tty", "w")
     except OSError:
         print(f"{question}\n  No TTY: rerun interactively, or with --approve-paseo once a human has said yes.")
         return False
-    tty.write(f"{question} [y/N] "), tty.flush()
-    return tty.readline().strip().lower() == "y"
+    tout.write(f"\n{question} [y/N] "), tout.flush()
+    return tin.readline().strip().lower() == "y"
 
 
 def gh(args):
@@ -86,6 +90,7 @@ def gh(args):
 
 
 def report():
+    log(f"checking versions on mac and {REMOTE}")
     rows = [(t, version(t), version(t, REMOTE)) for t in [*TOOLS, "paseo"]]
     print(f"{'tool':8} {'mac':10} {REMOTE}")
     for r in rows:
@@ -94,8 +99,10 @@ def report():
 
 
 def update_tools(before):
+    log("brew update")
     sh("brew update")
     for tool, (mac, remote) in TOOLS.items():
+        log(f"{tool}: mac `{mac}`, {REMOTE} `{remote}`")
         sh(mac, env="HOMEBREW_NO_AUTO_UPDATE=1 ")
         sh(remote, REMOTE)
         print(f"{tool:8} mac {before[tool][0]} -> {version(tool)}   {REMOTE} {before[tool][1]} -> {version(tool, REMOTE)}")
@@ -104,16 +111,19 @@ def update_tools(before):
 
 
 def update_paseo_mac(approve):
+    log("checking the paseo cask")
     outdated = sh("brew outdated --cask paseo --verbose", env="HOMEBREW_NO_AUTO_UPDATE=1 ")  # "paseo (0.10.2) != 0.10.3"
     if not outdated:
         return
     changelog(version("paseo"), outdated.split()[-1])
     if confirm(f"Upgrade paseo on the Mac? Restarts the local daemon ({running_agents()} agents running).", approve):
+        log("brew upgrade --cask paseo")
         sh("brew upgrade --cask paseo", env="HOMEBREW_NO_AUTO_UPDATE=1 ")
         print(f"paseo mac -> {version('paseo')}")
 
 
 def latest_release():
+    log("checking the latest upstream release")
     return gh(f"api repos/{UPSTREAM}/releases/latest --jq .tag_name")  # authenticated: anonymous calls hit the 60/h limit
 
 
@@ -125,6 +135,7 @@ def changelog(old, new):
     notes = "\n\n".join(x["body"] for x in sorted(rels, key=lambda x: v(x["tag_name"][1:])))
     if not notes:
         return
+    log(f"summarising paseo release notes {old} -> {new} with `claude -p --model sonnet`")
     prompt = (f"Paseo release notes {old} -> {new} follow. List the new features that matter to this user: runs the "
               "paseo daemon headless on a Linux VM (Nix, systemd) with the Mac desktop app and CLI as clients; drives Claude "
               "Code and Codex agents in git worktrees; uses terminals, MCP tools, schedules. Skip bug fixes, mobile, Windows, "
@@ -136,12 +147,13 @@ def changelog(old, new):
 def resolve_flake(tag):
     """Return (flake ref, built-new-branch). Builds patched/<tag>-nix on rem-dev when missing."""
     branch = f"patched/{tag}-nix"
+    log(f"looking up {FORK} {branch}")
     sha = sh(f"gh api repos/{FORK}/branches/{branch} --jq .commit.sha 2>/dev/null", check=False)
     if sha:
         return f"github:{FORK}/{sha}", False
     src = gh(f"api repos/{UPSTREAM}/contents/scripts/trace-daemon.mjs?ref={tag} --jq .content | base64 -d")
     needs_fix = UNPATCHED_GLOB in src
-    print(f"building {branch} on {REMOTE} (node-pty fix {'needed' if needs_fix else 'already upstream'})")
+    log(f"creating {branch} on {REMOTE}: clone {tag}, {'cherry-pick #%d, ' % FIX_PR if needs_fix else ''}recompute nix hash (~1 min), push")
     fix = f"git fetch -q https://github.com/{UPSTREAM} pull/{FIX_PR}/head\n git cherry-pick $(git merge-base HEAD FETCH_HEAD)..FETCH_HEAD" if needs_fix else ""
     out = sh(f"""set -eo pipefail; d=$(mktemp -d); git clone -q --filter=blob:none --branch {tag} https://github.com/{UPSTREAM} $d; cd $d
         {fix}
@@ -152,11 +164,12 @@ def resolve_flake(tag):
     if not needs_fix and "already up to date" in out:
         print(f"upstream {tag} is clean: pin github:{UPSTREAM}/{tag} directly and delete the patched-branch code in this script")
         return f"github:{UPSTREAM}/{tag}", False
-    return f"github:{FORK}/{out.splitlines()[-1]}", True
+    return f"github:{FORK}/{out.splitlines()[-1]}", needs_fix
 
 
 def build_and_smoke(flake, target):
     """nix build to /tmp/paseo-next on rem-dev and run upstream's smoke on a spare port."""
+    log(f"{REMOTE}: nix build {flake} -> /tmp/paseo-next (minutes when uncached), then smoke on :{SMOKE_PORT}")
     out = sh(f"""set -eo pipefail; nix build {flake} -o /tmp/paseo-next 2>&1 | tail -3
         P=/tmp/paseo-next/bin/paseo; export PASEO_HOME=$(mktemp -d) PASEO_LISTEN=127.0.0.1:{SMOKE_PORT}
         PASEO_WEB_UI_ENABLED=true /tmp/paseo-next/bin/paseo-server --no-relay >$PASEO_HOME/wrapper.log 2>&1 & pid=$!
@@ -173,6 +186,7 @@ def build_and_smoke(flake, target):
 
 def pin(target, flake):
     """Record the pin in install.sh, push, and stage config + unit on rem-dev (unit is a stow symlink)."""
+    log("pinning install.sh and pushing to main")
     f = DOTFILES / "install.sh"
     s = re.sub(r"(# Pinned to )v[\d.]+", rf"\g<1>v{target}", f.read_text())
     s = re.sub(r"paseo_version=.*", f"paseo_version={target}", s)
@@ -181,14 +195,17 @@ def pin(target, flake):
     if sh(f"git -C {DOTFILES} status --short install.sh"):
         sh(f"git -C {DOTFILES} commit -qm 'paseo: pin patched v{target} Nix release' install.sh && git -C {DOTFILES} push -q origin HEAD:main")
         print(f"install.sh pinned to {flake}, pushed to main")
+    log(f"{REMOTE}: pull dotfiles, set features.webUi.enabled, systemctl daemon-reload")
     sh(f"""set -e; git -C ~/dotfiles pull -q --ff-only
         /tmp/paseo-next/bin/paseo daemon config set features.webUi.enabled true >/dev/null
         systemctl --user daemon-reload""", REMOTE)
 
 
 def swap_and_verify(flake, target):
+    log(f"{REMOTE}: nix profile remove paseo; nix profile add {flake}; systemctl --user restart paseo.service")
     t0 = time.time()
     sh(f"nix profile remove paseo 2>/dev/null; nix profile add {flake} && systemctl --user restart paseo.service", REMOTE)
+    log(f"{REMOTE}: waiting for the daemon, then terminal create/kill")
     out = sh(f"""for i in $(seq 60); do paseo daemon status --json 2>/dev/null | grep -q '"connectedDaemon": *"reachable"' && break; sleep 1; done
         paseo daemon status --json | grep -E '"(daemonVersion|cliVersion|connectedDaemon)"'
         id=$(paseo terminal create --cwd ~ --json | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
@@ -215,11 +232,13 @@ def update_paseo_remote(approve):
         return built
     swap_and_verify(flake, target)
     if built:
+        log(f"commenting validation on PR {FIX_PR}")
         gh(f"""pr comment {FIX_PR} -R {UPSTREAM} --body "Validated {tag} on Linux x86_64 with this fix cherry-picked onto the tag ({flake}): nix build, daemon reachable, web UI served, terminal create/kill, deployed as the daemon on a dev VM." """)
     return built
 
 
 def check_fix_pr():
+    log(f"checking upstream PR {FIX_PR}")
     pr = json.loads(gh(f"pr view {FIX_PR} -R {UPSTREAM} --json state,mergedAt"))
     if pr["state"] == "MERGED":
         print(f"PR {FIX_PR} merged: drop the cherry-pick in resolve_flake() and the #{FIX_PR} note in install.sh")
@@ -239,3 +258,4 @@ if __name__ == "__main__":
     update_paseo_mac(a.approve_paseo)
     update_paseo_remote(a.approve_paseo)
     check_fix_pr()
+    log("done")
