@@ -14,7 +14,7 @@
     notes between the versions, summarised by `claude -p` (raw notes if that fails).
  4. rem-dev paseo, only if its version != target:
     a. Fork branch Ar4l/paseo patched/v<target>-nix; create on rem-dev if missing:
-       clone the tag, cherry-pick getpaseo/paseo#3853 (node-pty fix; skipped once the
+       clone the tag, cherry-pick getpaseo/paseo#3853 (node-pty fix; upstream since v0.15.1 via #5523, so skipped once the
        tag has it), scripts/update-nix.sh (tags ship a stale npm-deps hash), push.
     b. nix build it to /tmp/paseo-next on rem-dev; smoke on port 6799: daemon
        reachable with that version, web UI served, terminal create + kill.
@@ -31,7 +31,7 @@
 PROMPTs read /dev/tty; without one the script stops there. --approve-paseo answers
 yes to all of them and is only for when a human already approved out of band.
 """
-import argparse, json, os, re, subprocess, sys, time, urllib.request
+import argparse, json, os, re, subprocess, sys, time
 from pathlib import Path
 
 REMOTE = "rem-dev"
@@ -114,15 +114,14 @@ def update_paseo_mac(approve):
 
 
 def latest_release():
-    with urllib.request.urlopen(f"https://api.github.com/repos/{UPSTREAM}/releases/latest") as r:
-        return json.load(r)["tag_name"]
+    return gh(f"api repos/{UPSTREAM}/releases/latest --jq .tag_name")  # authenticated: anonymous calls hit the 60/h limit
 
 
 def changelog(old, new):
     """Print 3-5 user-relevant new features from the stable releases in (old, new]."""
     v = lambda s: tuple(int(x) for x in s.split("."))
-    with urllib.request.urlopen(f"https://api.github.com/repos/{UPSTREAM}/releases?per_page=100") as r:
-        rels = [x for x in json.load(r) if "-" not in x["tag_name"] and v(old) < v(x["tag_name"][1:]) <= v(new)]
+    rels = [x for x in json.loads(gh(f"api 'repos/{UPSTREAM}/releases?per_page=100'"))
+            if "-" not in x["tag_name"] and v(old) < v(x["tag_name"][1:]) <= v(new)]
     notes = "\n\n".join(x["body"] for x in sorted(rels, key=lambda x: v(x["tag_name"][1:])))
     if not notes:
         return
@@ -225,7 +224,7 @@ def check_fix_pr():
     if pr["state"] == "MERGED":
         print(f"PR {FIX_PR} merged: drop the cherry-pick in resolve_flake() and the #{FIX_PR} note in install.sh")
     elif pr["state"] == "CLOSED":
-        print(f"PR {FIX_PR} closed without merge: check whether a competing fix landed (e.g. getpaseo/paseo#4954) and update resolve_flake()")
+        print(f"PR {FIX_PR} closed: the fix is upstream since v0.15.1 (#5523); drop the cherry-pick path in resolve_flake()")
 
 
 if __name__ == "__main__":
