@@ -10,8 +10,11 @@
     These leave running agents alone, so no prompt.
  3. Mac paseo: if `brew outdated --cask paseo` -> PROMPT -> brew upgrade --cask paseo
     (restarts the local daemon). The Mac's paseo version is the target for rem-dev.
-    Before any paseo PROMPT: 3-5 bullets of what's new for you, from the GitHub release
-    notes between the versions, summarised by `claude -p` (raw notes if that fails).
+    Before any paseo PROMPT: 3-5 bullets of what's new for you. Source: GitHub release
+    notes of every stable release after the installed and up to the target version
+    (betas skipped). `claude -p --model sonnet` keeps only features relevant to a
+    headless Linux daemon + Mac client driving Claude/Codex agents in worktrees, and
+    drops bug fixes, mobile, Windows and UI polish. Raw notes are printed if that fails.
  4. rem-dev paseo, only if its version != target:
     a. Fork branch Ar4l/paseo patched/v<target>-nix; create on rem-dev if missing:
        clone the tag, cherry-pick getpaseo/paseo#3853 (node-pty fix; upstream since v0.15.1 via #5523, so skipped once the
@@ -162,7 +165,11 @@ def changelog(old, new):
               "Code and Codex agents in git worktrees; uses terminals, MCP tools, schedules. Skip bug fixes, mobile, Windows, "
               "and UI polish. Output 3 bullets (at most 5), each one line starting with '- ', concrete, no marketing; nothing else.\n\n" + notes)
     out = subprocess.run(["claude", "-p", "--model", "sonnet"], input=prompt, capture_output=True, text=True, env={**os.environ, "CLAUDECODE": ""})
-    print(bold(f"\npaseo {old} -> {new}, what's new for you:") + "\n{out.stdout.strip() or notes[:3000]}\n")
+    n = len(rels)
+    print(bold(f"\npaseo {old} -> {new}, what's new for you:")
+          + dim(f"  ({n} stable release{'s'[:n ^ 1]}, betas skipped; sonnet picked what fits a headless Linux daemon + Mac"
+                " client driving Claude/Codex agents, dropping bug fixes, mobile, Windows and UI polish)")
+          + f"\n{out.stdout.strip() or notes[:3000]}\n")
 
 
 def resolve_flake(tag):
