@@ -65,7 +65,7 @@ def version(tool, host=None):
 
 def running_agents(host=None):
     out = sh("paseo ls --json 2>/dev/null", host, check=False)
-    return sum(a.get("status") != "idle" for a in json.loads(out or "[]"))
+    return sum(a.get("status") not in ("idle", "closed") for a in json.loads(out or "[]"))
 
 
 def confirm(question, approve):
