@@ -19,7 +19,8 @@
 export FEYNMAN_TELEMETRY=0
 
 
-# Linear issue tracker (mattpocock-skills wayfinder trial). Here, not in
+# Agent tokens, read from untracked key files. Here, not in
 # .zshrc, so non-interactive shells such as the Claude Code Bash tool get it.
 [ -r "$HOME/.config/linear/api_key" ] && export LINEAR_API_KEY="$(cat "$HOME/.config/linear/api_key")"
 export LINEAR_TEAM_ID=EVAL
+[ -r "$HOME/.config/pusk/token" ] && export PUSK_API_TOKEN="$(cat "$HOME/.config/pusk/token")"
