@@ -25,4 +25,6 @@ bin/pyrate/temp/
 # only the skills symlinks (canonical skills live in files/.agents/skills/)
 !files/.claude/
 files/.claude/*
+# no trailing slash: a dir-only pattern never matches a symlink, so the skills
+# link would drop silently; check with `git check-ignore -v files/.claude/skills`
 !files/.claude/skills

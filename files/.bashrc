@@ -62,3 +62,7 @@ source "$HOME/.bashrc.dumb"
 source "$HOME/.bashrc.xterm"
 
 export PUSK_API_TOKEN="$(cat ~/.config/pusk/token)"
+
+# Linear issue tracker (mattpocock-skills wayfinder trial)
+export LINEAR_API_KEY="$(cat ~/.config/linear/api_key 2>/dev/null)"
+export LINEAR_TEAM_ID=EVAL
