@@ -21,6 +21,5 @@ export FEYNMAN_TELEMETRY=0
 
 # Agent tokens, read from untracked key files. Here, not in
 # .zshrc, so non-interactive shells such as the Claude Code Bash tool get it.
-[ -r "$HOME/.config/linear/api_key" ] && export LINEAR_API_KEY="$(cat "$HOME/.config/linear/api_key")"
-export LINEAR_TEAM_ID=EVAL
+# linear-cli reads its key and team from ~/.config/linear/linear.toml instead.
 [ -r "$HOME/.config/pusk/token" ] && export PUSK_API_TOKEN="$(cat "$HOME/.config/pusk/token")"
