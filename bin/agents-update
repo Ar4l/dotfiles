@@ -34,7 +34,8 @@
  5. If PR 3853 is merged/closed, print what to delete from this script.
 
 PROMPTs read /dev/tty; without one the script stops there. --approve-paseo answers
-yes to all of them and is only for when a human already approved out of band.
+yes to all of them and is only for when a human already approved out of band; it
+then waits for rem-dev's running agents to finish their turns before restarting.
 
 Every step is idempotent: after any failure, rerun. Slow rem-dev steps (4a, 4b, 4e-f)
 run detached on rem-dev with their log streamed back, so a dropped SSH/IAP connection
@@ -133,6 +134,13 @@ def version(tool, host=None):
 def running_agents(host=None):
     out = sh("paseo ls --json 2>/dev/null", host, check=False)
     return sum(a.get("status") not in ("idle", "closed") for a in json.loads(out or "[]"))
+
+
+def wait_idle(host):
+    """Hold an unattended restart until no agent on host is mid-turn."""
+    while n := running_agents(host):
+        log(yellow(f"{n} agents mid-turn on {host}; restarting once they finish (Ctrl-C stops, nothing is swapped yet)"))
+        time.sleep(30)
 
 
 def confirm(question, approve):
@@ -240,7 +248,7 @@ def resolve_flake(tag):
         log(f"creating {branch} on {REMOTE}: clone {tag}, {'cherry-pick #%d, ' % FIX_PR if needs_fix else ''}recompute nix hash (~1 min), push")
         fix = f"git fetch -q https://github.com/{UPSTREAM} pull/{FIX_PR}/head; git cherry-pick $(git merge-base HEAD FETCH_HEAD)..FETCH_HEAD" if needs_fix else ""
         sha = remote_job("branch", f"""set -eo pipefail; d=$(mktemp -d); trap 'rm -rf $d' EXIT
-            git clone -q --filter=blob:none --branch {tag} https://github.com/{UPSTREAM} $d; cd $d
+            git -c advice.detachedHead=false clone -q --filter=blob:none --branch {tag} https://github.com/{UPSTREAM} $d; cd $d
             {fix}
             ./scripts/update-nix.sh 2>&1 | tail -3
             git add -A; git diff --cached --quiet || git commit -qm 'fix(nix): correct dependency hash for {tag}'
@@ -319,6 +327,8 @@ def update_paseo_remote(approve):
     pin(target, flake)
     if not confirm(f"Restart paseo on {REMOTE} {remote} -> {target}? Interrupts running turns: {running_agents(REMOTE)} agents running now.", approve):
         return built
+    if approve:  # nobody saw the running count, so do not cut turns short
+        wait_idle(REMOTE)
     swap_and_verify(flake, target)
     if built:
         log(f"commenting validation on PR {FIX_PR}")
