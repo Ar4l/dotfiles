@@ -95,7 +95,8 @@ reads its output. Its only effects are its commands.
      agent alone, whatever its last message says.
    - **merged**: its PR is `MERGED`. If `<dir>/EVAL-<t>.merged` is absent,
      create it and run `paseo send <id> --no-wait "PR #<p> is merged. Finish
-     EVAL-<t>: <the mode's row 'After its PR merges'>."`.
+     EVAL-<t>: <the mode's row 'After its PR merges'>. Then run the last
+     check in § Ticket brief of ~/.agents/skills/paseo-run-tickets/SKILL.md."`.
    - **waiting on the user**: its last message asks the user something. It
      opens with `BLOCKED`, ends with `awaiting your decision on`, or ends on
      a question. Leave it.
@@ -166,8 +167,9 @@ reads its output. Its only effects are its commands.
 
      The report needs its own workspace: Paseo archives the tick's workspace
      when the tick ends, together with any agent started in it.
-   - Leave the ticket workspaces in place. They are the run's history in the
-     Paseo sidebar.
+   - Leave the remaining ticket workspaces in place. A ticket agent archives
+     its own workspace after its last check (§ Ticket brief), so a workspace
+     still listed holds something for the user.
 
 ## Ticket brief
 
@@ -194,4 +196,12 @@ answer.
 Anything that leaves this repository needs the user first: before you push
 to another repository or open a PR, issue or comment there, stop with the
 BLOCKED message and give its exact title and text.
+
+Last check, once your ticket is closed and its PR, if any, is merged:
+- the worktree holds no uncommitted or unpushed work;
+- re-read this session: every question, promise and follow-up is settled or
+  recorded on a ticket.
+If anything is open, end with the BLOCKED message that names it. If nothing
+is open, write one closing line, then archive your own workspace:
+paseo workspace archive "$(paseo workspace ls --json | jq -r --arg c "$PASEO_AGENT_CWD" '.[] | select(.cwd==$c) | .workspaceId')"
 ```
