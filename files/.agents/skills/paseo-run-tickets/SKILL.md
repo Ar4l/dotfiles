@@ -18,10 +18,8 @@ The ticket EVAL-<n> sets the mode:
 | EVAL-<n> carries | label `wayfinder:map` | title `<subject> Spec: ...` |
 | Its tickets | decision tickets | build tickets |
 | Ticket prompt | `Read <skills>/wayfinder/SKILL.md and follow it: map EVAL-<n>, ticket EVAL-<t>.` | `Read <skills>/implement/SKILL.md and follow it: ticket EVAL-<t>.` |
-| After its PR merges | § Wayfinding operations, Session end | § When a skill implements a ticket, step 6 |
 
-Both sections are in `docs/agents/issue-tracker.md`. `<skills>` is the newest
-installed copy of the mattpocock-skills plugin:
+`<skills>` is the newest installed copy of the mattpocock-skills plugin:
 `ls -d ~/.claude/plugins/cache/claude-plugins-official/mattpocock-skills/*/skills/engineering | sort -V | tail -1`.
 The prompt names the file because Paseo wraps a prompt sent by an agent in a
 `<paseo-system>` tag, so a leading `/implement` does not run as a command.
@@ -82,26 +80,18 @@ reads its output. Its only effects are its commands.
 
 1. Read the state:
    - `tools/ticket-tracker frontier --map EVAL-<n>` lists the tickets that
-     are ready. Keep its warnings: step 4 reads them.
+     are ready. Keep its warnings: step 3 reads them.
    - `paseo ls -g --label run=EVAL-<n> --json` lists the ticket agents.
      Without `-g` it lists only agents whose cwd is this directory.
    - `linear issue view EVAL-<n> --json --no-comments | jq -r
      '.children.nodes[] | "\(.identifier) \(.state.name)"'` gives each
      ticket's state.
 
-   The tick manages only agents carrying the `run` label. A ticket the user
-   started by hand is claimed, so it is off the frontier: leave it alone.
-2. Tell an agent once when its PR has merged. For each idle ticket agent
-   whose ticket is still open, read its PR from `gh pr list --state all
-   --search "EVAL-<t> in:title" --json number,state,title`, keeping titles
-   that hold `(EVAL-<t>)`. If the PR is `MERGED` and
-   `~/scratch/paseo-run-tickets-<n>/EVAL-<t>.merged` is absent, create that
-   file and run `paseo send <id> --no-wait "PR #<p> is merged. Finish
-   EVAL-<t>: <the mode's row 'After its PR merges'>. Then run the last check
-   in § Ticket brief of ~/.agents/skills/paseo-run-tickets/SKILL.md."`.
-   Send an agent nothing else: an idle agent is waiting on the user or on its
-   own background check.
-3. Start agents for frontier tickets that have no agent yet. Check with
+   The tick sends no message to a running ticket agent: the user tells an
+   agent when to merge, and the agent closes its own ticket. A ticket the
+   user started by hand is claimed, so it is off the frontier: leave it
+   alone.
+2. Start agents for frontier tickets that have no agent yet. Check with
    `paseo ls -g --label ticket=EVAL-<t> --json`, because a ticket counts as
    unclaimed on the frontier until its agent runs `claim`. Keep at most 9
    agents running.
@@ -123,15 +113,15 @@ reads its output. Its only effects are its commands.
    - `--base <base>`: Paseo fetches an `origin/` base before branching.
      Without the flag it branches from the local integration branch, which
      can be hundreds of commits behind.
-4. Map mode, when the frontier warnings name the fog sweep: every decision
+3. Map mode, when the frontier warnings name the fog sweep: every decision
    ticket is closed and the map's Not yet specified section still has
    bullets. The user picks the outcome of each bullet, so one agent drafts
    them and asks. Unless `paseo ls -g --label ticket=EVAL-<n> --json` lists
-   one, start it as in step 3, with slug `eval-<n>-fog`, title `EVAL-<n> Fog
+   one, start it as in step 2, with slug `eval-<n>-fog`, title `EVAL-<n> Fog
    sweep`, label `ticket=EVAL-<n>`, and the brief's first line `Read
    <skills>/wayfinder/SKILL.md and follow it: map EVAL-<n>, sort the Not yet
    specified bullets (the fog sweep).`
-5. Finish when every child of EVAL-<n> is Done, Canceled or Duplicate and the
+4. Finish when every child of EVAL-<n> is Done, Canceled or Duplicate and the
    mode's condition holds. Until then the schedule keeps running.
    - Map mode: the frontier no longer warns of the fog sweep.
    - Spec mode: no open map names EVAL-<n>. A map closes only after
@@ -148,7 +138,7 @@ reads its output. Its only effects are its commands.
      the name `EVAL-<n> run tickets`, then run `paseo schedule delete <id>`.
    - Spec mode: set the spec Done with `linear issue update EVAL-<n> -s Done`.
      A map stays open until the user approves after `/to-tickets`.
-   - Start one report agent as in step 3, with slug `eval-<n>-done`, no
+   - Start one report agent as in step 2, with slug `eval-<n>-done`, no
      `ticket` label, and a prompt that asks for one closing message:
      - spec mode, titled `EVAL-<n> Spec done`: each ticket with its PR, and
        any ticket that was Canceled.
@@ -183,6 +173,10 @@ BLOCKED EVAL-<t>: <the question, one line>
 
 Use at most 10 lines per question. Include only what changes the user's
 answer.
+
+No one watches your PR for you. Once it is open and its checks pass, use the
+BLOCKED message to ask the user to merge it or to tell you to merge. When
+they answer, read the PR's state with `gh pr view`, then finish the ticket.
 
 Anything that leaves this repository needs the user first: before you push
 to another repository or open a PR, issue or comment there, stop with the
