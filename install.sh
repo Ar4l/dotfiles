@@ -264,13 +264,13 @@ else
   command -v codex &> /dev/null || brew install --cask codex || failed+=(codex)
 
   # paseo (agent orchestrator; paseo.sh) via its first-party nix flake.
-  # Pinned to v0.15.1 on a fork branch that only recomputes the dependency hash
+  # Pinned to v0.15.3 on a fork branch that only recomputes the dependency hash
   # (release tags ship a stale one; the node-pty terminal fix, once from
   # getpaseo/paseo#3853, is upstream since v0.15.1). Maintained by bin/agents-update.
   # Pin the upstream tag directly once a release ships a correct hash. Releases provide no
   # headless tarball. Determinate installer creates /nix (sudo once), enables flakes.
-  paseo_version=0.15.1
-  paseo_flake=github:Ar4l/paseo/37f9140ac3d087d4482c386d98a4bcfac059b907
+  paseo_version=0.15.3
+  paseo_flake=github:getpaseo/paseo/d91ae138cb931447635e94296023414a58bedcc5
   command -v nix &> /dev/null || [ -x /nix/var/nix/profiles/default/bin/nix ] ||
   curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix |
     sh -s -- install --no-confirm
