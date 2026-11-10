@@ -84,25 +84,25 @@ reads its output. Its only effects are its commands.
 
    The tick manages only agents carrying the `run` label. A ticket the user
    started by hand is claimed, so it is off the frontier: leave it alone.
-2. Classify each ticket agent whose ticket is still open. Its last message is
-   `paseo logs <id> --filter text --tail 1`. Take the first state that
-   matches, because one message can open with `BLOCKED` and close with
-   `awaiting merge`:
-   - **running**: its status is `running`.
-   - **merged**: the last line reads `awaiting merge of PR #<p>`, and
-     `gh pr view <p> --json state -q .state` prints `MERGED`; or the frontier
-     warnings say the ticket's PR is merged. Resume it with
-     `paseo send <id> --no-wait "PR #<p> is merged. Finish EVAL-<t>: <the
-     mode's row 'After its PR merges'>."`.
-   - **awaiting merge**: the same last line, with the PR still open. The user
-     merges it.
-   - **waiting on the user**: `paseo inspect <id> --json` shows
-     `PendingPermissions`, the first line of its last message starts with
-     `BLOCKED`, or the last line starts with `awaiting your decision on`.
-   - **stalled**: idle in any other state. If
-     `~/scratch/paseo-run-tickets-<n>/EVAL-<t>.nudged` is absent, create it
-     and run `paseo send <id> --no-wait "Continue EVAL-<t>. If you need the
-     user, end with the BLOCKED message from your brief."`.
+2. Classify each ticket agent whose ticket is still open. Read two things:
+   its PR, from `gh pr list --state all --search "EVAL-<t> in:title" --json
+   number,state,title` (keep titles holding `(EVAL-<t>)`), and its last
+   message, from `paseo logs <id> --filter text --tail 1`. Take the first
+   state that matches. `<dir>` is `~/scratch/paseo-run-tickets-<n>`.
+   - **busy**: its status is `running`, or `paseo inspect <id> --json` shows
+     `PendingPermissions`. Leave it.
+   - **awaiting merge**: its PR is `OPEN`. The user merges it. Leave the
+     agent alone, whatever its last message says.
+   - **merged**: its PR is `MERGED`. If `<dir>/EVAL-<t>.merged` is absent,
+     create it and run `paseo send <id> --no-wait "PR #<p> is merged. Finish
+     EVAL-<t>: <the mode's row 'After its PR merges'>."`.
+   - **waiting on the user**: its last message asks the user something. It
+     opens with `BLOCKED`, ends with `awaiting your decision on`, or ends on
+     a question. Leave it.
+   - **stalled**: idle with no PR and no question. If
+     `<dir>/EVAL-<t>.nudged` is absent, create it and run `paseo send <id>
+     --no-wait "Continue EVAL-<t>. If you need the user, end with the BLOCKED
+     message from your brief."`.
 3. Start agents for frontier tickets that have no agent yet. Check with
    `paseo ls -g --label ticket=EVAL-<t> --json`, because a ticket counts as
    unclaimed on the frontier until its agent runs `claim`. Keep at most 9
