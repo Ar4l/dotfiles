@@ -25,6 +25,13 @@ installed copy of the mattpocock-skills plugin:
 The prompt names the file because Paseo wraps a prompt sent by an agent in a
 `<paseo-system>` tag, so a leading `/implement` does not run as a command.
 
+`<agent>` stands for the flags of the Paseo app's default agent profile, the
+first entry of `daemon.agentProfiles`:
+`jq -r '.daemon.agentProfiles[0] | "--provider \(.provider)/\(.model) --thinking \(.thinkingOptionId)"' ~/.paseo/config.json`.
+Every `paseo run` and `paseo schedule create` passes them. Without
+`--provider` Paseo exits with `Provider is required`, and a bare
+`--provider claude` takes the provider's first model.
+
 Run every command from `libs/mellum-eval-workspace/` of the run's worktree.
 `<n>` is the number of the map or spec, `<t>` of one of its tickets.
 
@@ -50,16 +57,14 @@ Run every command from `libs/mellum-eval-workspace/` of the run's worktree.
 
    ```bash
    paseo schedule create --name paseo-run-tickets-EVAL-<n> --every 20m \
-     --provider claude --mode auto --expires-in 7d --run-now \
+     <agent> --mode auto --expires-in 7d --run-now \
      --cwd ~/worktrees/eval-<n>/libs/mellum-eval-workspace \
      "Read ~/.agents/skills/paseo-run-tickets/SKILL.md and run its Tick for EVAL-<n> in <mode> mode with base <base> in project <projectId>."
    ```
 
    The schedule needs `--mode auto`. In the default mode, the scheduled agent
-   stops at its first Bash call to wait for an approval no one sees. Every
-   `paseo schedule create` and `paseo run` needs `--provider`; without it
-   Paseo exits with `Provider is required`. When auto mode refuses the
-   command, print it for the user to run and stop.
+   stops at its first Bash call to wait for an approval no one sees. When
+   auto mode refuses the command, print it for the user to run and stop.
 5. Reply with the project name, the mode, the schedule id and the time the
    schedule expires.
 
@@ -108,16 +113,14 @@ reads its output. Its only effects are its commands.
      --path ~/worktrees/eval-<n>/libs/mellum-eval-workspace \
      --worktree-slug eval-<t> --base <base> \
      --title "EVAL-<t> <ticket title>" --json | jq -r .workspaceId)
-   paseo run --workspace "$ws" --provider claude/claude-fable-5-2 --mode auto \
+   paseo run --workspace "$ws" <agent> --mode auto \
      --title "EVAL-<t> <ticket title>" \
      --label run=EVAL-<n> --label ticket=EVAL-<t> --no-wait \
      "$(cat ~/scratch/paseo-run-tickets-<n>/EVAL-<t>.md)"
    ```
 
    Write the brief from § Ticket brief to that file first. `paseo run` takes
-   the prompt only as an argument. Three flags keep the run correct:
-   - `--provider claude/claude-fable-5-2`: a bare `--provider claude` takes
-     the provider's first model, not the default of the Paseo app.
+   the prompt only as an argument. Two flags keep the run correct:
    - `--project <projectId>`: without it Paseo files the worktree under a
      second project that it creates at the git root.
    - `--base <base>`: Paseo fetches an `origin/` base before branching.
