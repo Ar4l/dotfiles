@@ -185,4 +185,8 @@ BLOCKED EVAL-<t>: <the question, one line>
 
 Use at most 10 lines per question. Include only what changes the user's
 answer.
+
+Anything that leaves this repository needs the user first: before you push
+to another repository or open a PR, issue or comment there, stop with the
+BLOCKED message and give its exact title and text.
 ```
