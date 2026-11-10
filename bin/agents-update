@@ -17,8 +17,10 @@
     drops bug fixes, mobile, Windows and UI polish. Raw notes are printed if that fails.
  4. rem-dev paseo, only if its version != target:
     a. Fork branch Ar4l/paseo patched/v<target>-nix; create on rem-dev if missing:
-       clone the tag, cherry-pick getpaseo/paseo#3853 (node-pty fix; upstream since v0.15.1 via #5523, so skipped once the
-       tag has it), scripts/update-nix.sh (tags ship a stale npm-deps hash), push.
+       clone the tag, cherry-pick getpaseo/paseo#3853 (node-pty fix; upstream since
+       v0.15.1 via #5523, so skipped once the tag has it), scripts/update-nix.sh (tags
+       have shipped a stale npm-deps hash), push. If that changed nothing (v0.15.3),
+       the upstream tag commit is pinned directly.
     b. nix build it to /tmp/paseo-next on rem-dev; smoke on port 6799: daemon
        reachable with that version, web UI served, terminal create + kill.
     c. If upstream released a newer version meanwhile -> PROMPT: continue or stop.
@@ -26,13 +28,17 @@
        rem-dev: git pull dotfiles (unit is a stow symlink), set
        features.webUi.enabled with the new binary, systemctl --user daemon-reload.
     e. PROMPT (shows running agents) -> nix profile remove/add, restart paseo.service.
-       Kills rem-dev's Paseo terminals and interrupts running turns; idle agents resume.
+       Interrupts running turns; idle agents resume. ~15 s down.
     f. Verify: version, terminal create + kill, agent count; print downtime.
        Then comment the validation on PR 3853.
  5. If PR 3853 is merged/closed, print what to delete from this script.
 
 PROMPTs read /dev/tty; without one the script stops there. --approve-paseo answers
 yes to all of them and is only for when a human already approved out of band.
+
+Every step is idempotent: after any failure, rerun. Slow rem-dev steps (4a, 4b, 4e-f)
+run detached on rem-dev with their log streamed back, so a dropped SSH/IAP connection
+only costs a reconnect; gh and ssh calls retry.
 """
 import argparse, json, os, re, subprocess, sys, time
 from pathlib import Path
@@ -43,6 +49,7 @@ DOTFILES = Path(__file__).resolve().parent.parent
 UPSTREAM, FORK, FIX_PR = "getpaseo/paseo", "Ar4l/paseo", 3853
 UNPATCHED_GLOB = "`node_modules/node-pty/prebuilds/${process.platform}-${process.arch}/**`"
 SMOKE_PORT = 6799
+SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=30", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4", REMOTE]
 TOOLS = {  # name: (mac update, rem-dev update)
     "claude": ("brew upgrade --cask claude-code@latest", "claude update"),
     "codex": ("brew upgrade --cask codex", "brew upgrade --cask codex"),
@@ -63,15 +70,55 @@ def log(msg):
     print(dim(time.strftime("%H:%M:%S") + " " + msg), flush=True)
 
 
-def sh(cmd, host=None, check=True, env=""):
-    if host:
-        cmd = ["ssh", "-o", "BatchMode=yes", host, REMOTE_PATH + cmd]
-    else:
-        cmd = env + cmd
-    r = subprocess.run(cmd, shell=host is None, capture_output=True, text=True)
+def sh(cmd, host=None, check=True, env="", stdin=None):
+    """Run a short command on the Mac or on rem-dev. Remote commands must be idempotent: a lost connection (ssh rc 255) is retried."""
+    argv = [*SSH, REMOTE_PATH + cmd] if host else env + cmd
+    for attempt in range(3):
+        r = subprocess.run(argv, shell=host is None, capture_output=True, text=True, input=stdin)
+        if not (host and r.returncode == 255):
+            break
+        log(yellow(f"ssh to {host} failed ({r.stderr.strip()[-120:] or 'connection lost'}), retry {attempt + 1}/2"))
+        time.sleep(5)
     if r.returncode and check:
-        sys.exit(red(f"FAILED ({host or 'mac'}): {cmd}\n{r.stdout}{r.stderr}"))
+        sys.exit(red(f"FAILED ({host or 'mac'}, exit {r.returncode}): {cmd}\n{r.stdout}{r.stderr}\nNothing is half-applied; rerun to continue."))
     return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def remote_job(name, script):
+    """Run a slow bash script detached on rem-dev and stream its log; return the log.
+
+    Not tied to the SSH session: IAP dropped the connection 10 minutes into a silent nix build once, which failed the
+    run with no output while the build carried on remotely. Here a drop only costs a reconnect. flock serialises
+    against a job orphaned by Ctrl-C, so two smoke daemons never share the port.
+    """
+    base = f"/tmp/agents-update-{name}-{int(time.time())}"
+    sh(f"cat > {base}.sh && : > {base}.log && flock -n /tmp/agents-update.lock true || echo 'waiting for a previous agents-update job on {REMOTE}' >> {base}.log; "
+       f"nohup setsid bash -c 'flock /tmp/agents-update.lock bash {base}.sh >> {base}.log 2>&1; echo $? > {base}.rc' >/dev/null 2>&1 </dev/null &", REMOTE, stdin=script)
+    out, seen, misses, t0, quiet = b"", 0, 0, time.time(), time.time()
+    while True:
+        time.sleep(3)
+        r = subprocess.run([*SSH, f"rc=$(cat {base}.rc 2>/dev/null); tail -c +{seen + 1} {base}.log; printf '\\036%s' \"$rc\""], capture_output=True)
+        chunk, sep, rc = r.stdout.rpartition(b"\x1e")
+        if r.returncode or not sep:
+            misses += 1
+            if misses == 1:
+                log(yellow(f"lost the connection to {REMOTE}; `{name}` keeps running there, reconnecting"))
+            if misses > 60:
+                sys.exit(red(f"{REMOTE} unreachable for minutes. `{name}` continues there (log: {base}.log); rerun once `ssh {REMOTE}` works."))
+            continue
+        misses = 0
+        if chunk:
+            sys.stdout.write(chunk.decode(errors="replace")), sys.stdout.flush()
+            out, seen, quiet = out + chunk, seen + len(chunk), time.time()
+        elif time.time() - quiet > 60:
+            log(f"{name}: still running on {REMOTE} ({(time.time() - t0) / 60:.0f} min)")
+            quiet = time.time()
+        if rc:
+            break
+    if rc != b"0":
+        sys.exit(red(f"FAILED ({REMOTE}): {name} exited {rc.decode()}; log kept at {base}.log. Nothing is swapped unless the log above says so; rerun to retry."))
+    sh(f"rm -f {base}.sh {base}.log {base}.rc", REMOTE, check=False)
+    return out.decode(errors="replace")
 
 
 def version_in(text):
@@ -101,8 +148,16 @@ def confirm(question, approve):
     return tin.readline().strip().lower() == "y"
 
 
-def gh(args):
-    return sh(f"gh {args}")
+def gh(args, missing_ok=False):
+    """gh on the Mac, retried: api.github.com drops connections now and then. missing_ok: return "" on HTTP 404."""
+    for attempt in range(3):
+        r = subprocess.run(f"gh {args}", shell=True, capture_output=True, text=True)
+        if r.returncode == 0:
+            return r.stdout.strip()
+        if missing_ok and "HTTP 404" in r.stderr:
+            return ""
+        time.sleep(3 * (attempt + 1))
+    sys.exit(red(f"FAILED (mac): gh {args}\n{r.stdout}{r.stderr}\nNothing is half-applied; rerun to continue."))
 
 
 def latest(tool):
@@ -173,43 +228,46 @@ def changelog(old, new):
 
 
 def resolve_flake(tag):
-    """Return (flake ref, built-new-branch). Builds patched/<tag>-nix on rem-dev when missing."""
+    """Return (flake ref, cherry-picked the fix). The tag itself when it builds as-is, else the fork branch."""
     branch = f"patched/{tag}-nix"
     log(f"looking up {FORK} {branch}")
-    sha = sh(f"gh api repos/{FORK}/branches/{branch} --jq .commit.sha 2>/dev/null", check=False)
-    if sha:
-        return f"github:{FORK}/{sha}", False
-    src = gh(f"api repos/{UPSTREAM}/contents/scripts/trace-daemon.mjs?ref={tag} --jq .content | base64 -d")
-    needs_fix = UNPATCHED_GLOB in src
-    log(f"creating {branch} on {REMOTE}: clone {tag}, {'cherry-pick #%d, ' % FIX_PR if needs_fix else ''}recompute nix hash (~1 min), push")
-    fix = f"git fetch -q https://github.com/{UPSTREAM} pull/{FIX_PR}/head\n git cherry-pick $(git merge-base HEAD FETCH_HEAD)..FETCH_HEAD" if needs_fix else ""
-    out = sh(f"""set -eo pipefail; d=$(mktemp -d); git clone -q --filter=blob:none --branch {tag} https://github.com/{UPSTREAM} $d; cd $d
-        {fix}
-        ./scripts/update-nix.sh 2>&1 | grep -E 'Hash|Updated'
-        git add -A; git diff --cached --quiet || git commit -qm 'fix(nix): correct dependency hash for {tag}'
-        git push -q git@github.com:{FORK}.git HEAD:refs/heads/{branch}; git rev-parse HEAD""", REMOTE)
-    print(out)
-    if not needs_fix and "already up to date" in out:
-        print(f"upstream {tag} is clean: pin github:{UPSTREAM}/{tag} directly and delete the patched-branch code in this script")
-        return f"github:{UPSTREAM}/{tag}", False
-    return f"github:{FORK}/{out.splitlines()[-1]}", needs_fix
+    tag_sha = gh(f"api repos/{UPSTREAM}/commits/{tag} --jq .sha")
+    sha = gh(f"api repos/{FORK}/branches/{branch} --jq .commit.sha", missing_ok=True)
+    needs_fix = False
+    if not sha:
+        src = gh(f"api repos/{UPSTREAM}/contents/scripts/trace-daemon.mjs?ref={tag} --jq .content | base64 -d")
+        needs_fix = UNPATCHED_GLOB in src
+        log(f"creating {branch} on {REMOTE}: clone {tag}, {'cherry-pick #%d, ' % FIX_PR if needs_fix else ''}recompute nix hash (~1 min), push")
+        fix = f"git fetch -q https://github.com/{UPSTREAM} pull/{FIX_PR}/head; git cherry-pick $(git merge-base HEAD FETCH_HEAD)..FETCH_HEAD" if needs_fix else ""
+        sha = remote_job("branch", f"""set -eo pipefail; d=$(mktemp -d); trap 'rm -rf $d' EXIT
+            git clone -q --filter=blob:none --branch {tag} https://github.com/{UPSTREAM} $d; cd $d
+            {fix}
+            ./scripts/update-nix.sh 2>&1 | tail -3
+            git add -A; git diff --cached --quiet || git commit -qm 'fix(nix): correct dependency hash for {tag}'
+            git push -q git@github.com:{FORK}.git HEAD:refs/heads/{branch}; git rev-parse HEAD
+            """).split()[-1]
+    if sha == tag_sha:  # nothing had to be committed on top of the tag
+        print(f"upstream {tag} builds as-is; once that holds for a few releases, drop the patched-branch code in this script")
+        return f"github:{UPSTREAM}/{sha}", False
+    return f"github:{FORK}/{sha}", needs_fix
 
 
 def build_and_smoke(flake, target):
     """nix build to /tmp/paseo-next on rem-dev and run upstream's smoke on a spare port."""
-    log(f"{REMOTE}: nix build {flake} -> /tmp/paseo-next (minutes when uncached), then smoke on :{SMOKE_PORT}")
-    out = sh(f"""set -eo pipefail; nix build {flake} -o /tmp/paseo-next 2>&1 | tail -3
+    log(f"{REMOTE}: nix build {flake} -> /tmp/paseo-next (~15 min when uncached, seconds otherwise), then smoke on :{SMOKE_PORT}")
+    out = remote_job("build", f"""set -eo pipefail; nix build {flake} -o /tmp/paseo-next
         P=/tmp/paseo-next/bin/paseo; export PASEO_HOME=$(mktemp -d) PASEO_LISTEN=127.0.0.1:{SMOKE_PORT}
         PASEO_WEB_UI_ENABLED=true /tmp/paseo-next/bin/paseo-server --no-relay >$PASEO_HOME/wrapper.log 2>&1 & pid=$!
-        trap 'kill $pid 2>/dev/null; rm -rf $PASEO_HOME' EXIT
-        for i in $(seq 30); do $P daemon status --json 2>/dev/null | grep -q '"connectedDaemon": *"reachable"' && break; sleep 1; done
+        trap 'rc=$?; [ $rc = 0 ] || tail -5 $PASEO_HOME/wrapper.log | cut -c1-300; kill $pid 2>/dev/null; wait $pid 2>/dev/null; rm -rf $PASEO_HOME' EXIT
+        for i in $(seq 30); do $P daemon status --json 2>/dev/null | grep '"connectedDaemon": *"reachable"' >/dev/null && break; sleep 1; done
         $P daemon status --json | grep -E '"(daemonVersion|connectedDaemon)"'
-        curl -fsS http://127.0.0.1:{SMOKE_PORT}/ | head -c 1 >/dev/null && echo 'web UI ok'
+        curl -fsS -o /dev/null http://127.0.0.1:{SMOKE_PORT}/; echo 'web UI ok'
         id=$($P terminal create --cwd $PASEO_HOME --json | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
-        $P terminal kill $id >/dev/null && echo "terminal ok ($id)" """, REMOTE)
-    print(out)
-    if f'"{target}"' not in out or "terminal ok" not in out:
-        sys.exit("smoke test failed")
+        $P terminal kill $id >/dev/null; echo "terminal ok ($id)"
+        """)
+    missing = [w for w in (f'"{target}"', '"reachable"', "web UI ok", "terminal ok") if w not in out]
+    if missing:
+        sys.exit(red(f"smoke test failed: no {', '.join(missing)} in the output above. Nothing is swapped."))
 
 
 def pin(target, flake):
@@ -221,7 +279,7 @@ def pin(target, flake):
     s = re.sub(r"paseo_flake=.*", f"paseo_flake={flake}", s)
     f.write_text(s)
     if sh(f"git -C {DOTFILES} status --short install.sh"):
-        sh(f"git -C {DOTFILES} commit -qm 'paseo: pin patched v{target} Nix release' install.sh && git -C {DOTFILES} push -q origin HEAD:main")
+        sh(f"git -C {DOTFILES} commit -qm 'paseo: pin v{target} Nix release' install.sh && git -C {DOTFILES} push -q origin HEAD:main")
         print(f"install.sh pinned to {flake}, pushed to main")
     log(f"{REMOTE}: pull dotfiles, set features.webUi.enabled, systemctl daemon-reload")
     sh(f"""set -e; git -C ~/dotfiles pull -q --ff-only
@@ -230,17 +288,20 @@ def pin(target, flake):
 
 
 def swap_and_verify(flake, target):
-    log(f"{REMOTE}: nix profile remove paseo; nix profile add {flake}; systemctl --user restart paseo.service")
-    t0 = time.time()
-    sh(f"nix profile remove paseo 2>/dev/null; nix profile add {flake} && systemctl --user restart paseo.service", REMOTE)
-    log(f"{REMOTE}: waiting for the daemon, then terminal create/kill")
-    out = sh(f"""for i in $(seq 60); do paseo daemon status --json 2>/dev/null | grep -q '"connectedDaemon": *"reachable"' && break; sleep 1; done
+    log(f"{REMOTE}: nix profile remove paseo; nix profile add {flake}; systemctl --user restart paseo.service; verify")
+    out = remote_job("swap", f"""set -eo pipefail
+        nix profile remove paseo 2>/dev/null || true
+        nix profile add {flake}
+        systemctl --user restart paseo.service; t0=$(date +%s)
+        for i in $(seq 60); do paseo daemon status --json 2>/dev/null | grep '"connectedDaemon": *"reachable"' >/dev/null && break; sleep 1; done
+        echo "restart to reachable: $(( $(date +%s) - t0 ))s"
         paseo daemon status --json | grep -E '"(daemonVersion|cliVersion|connectedDaemon)"'
         id=$(paseo terminal create --cwd ~ --json | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
-        paseo terminal kill $id >/dev/null && echo "terminal ok"; echo "agents: $(paseo ls --json | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')" """, REMOTE)
-    print(out, f"\nrestart to reachable: {time.time() - t0:.0f}s")
-    if f'"{target}"' not in out or "terminal ok" not in out:
-        sys.exit(f"{REMOTE} paseo did not come back healthy; check: ssh {REMOTE} journalctl --user -u paseo.service -n 50")
+        paseo terminal kill $id >/dev/null; echo "terminal ok"
+        echo "agents: $(paseo ls --json | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')"
+        """)
+    if f'"{target}"' not in out or '"reachable"' not in out or "terminal ok" not in out:
+        sys.exit(red(f"{REMOTE} paseo did not come back healthy; check: ssh {REMOTE} journalctl --user -u paseo.service -n 50"))
 
 
 def update_paseo_remote(approve):
@@ -256,7 +317,7 @@ def update_paseo_remote(approve):
     if latest != tag and not confirm(f"{latest} was released; Mac is on {tag}. Continue pinning {REMOTE} to {tag} (n: upgrade the Mac first and rerun)?", approve):
         return built
     pin(target, flake)
-    if not confirm(f"Restart paseo on {REMOTE} {remote} -> {target}? Kills its Paseo terminals; {running_agents(REMOTE)} agents running.", approve):
+    if not confirm(f"Restart paseo on {REMOTE} {remote} -> {target}? Interrupts running turns: {running_agents(REMOTE)} agents running now.", approve):
         return built
     swap_and_verify(flake, target)
     if built:
