@@ -186,7 +186,8 @@ def report():
 
 def update_tools(before):
     log("brew update")
-    sh("brew update")
+    if not any(subprocess.run("brew update", shell=True, capture_output=True).returncode == 0 or time.sleep(5) for _ in range(3)):
+        log(yellow("brew update failed 3 times (network); continuing with the cask versions brew already knows"))
     for tool, (mac, remote) in TOOLS.items():
         log(f"{tool}: mac `{mac}`, {REMOTE} `{remote}`")
         sh(mac, env="HOMEBREW_NO_AUTO_UPDATE=1 ")
