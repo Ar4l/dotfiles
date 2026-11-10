@@ -108,14 +108,16 @@ reads its output. Its only effects are its commands.
      --path ~/worktrees/eval-<n>/libs/mellum-eval-workspace \
      --worktree-slug eval-<t> --base <base> \
      --title "EVAL-<t> <ticket title>" --json | jq -r .workspaceId)
-   paseo run --workspace "$ws" --provider claude --mode auto \
+   paseo run --workspace "$ws" --provider claude/claude-fable-5-2 --mode auto \
      --title "EVAL-<t> <ticket title>" \
      --label run=EVAL-<n> --label ticket=EVAL-<t> --no-wait \
      "$(cat ~/scratch/paseo-run-tickets-<n>/EVAL-<t>.md)"
    ```
 
    Write the brief from § Ticket brief to that file first. `paseo run` takes
-   the prompt only as an argument. Two flags keep the run correct:
+   the prompt only as an argument. Three flags keep the run correct:
+   - `--provider claude/claude-fable-5-2`: a bare `--provider claude` takes
+     the provider's first model, not the default of the Paseo app.
    - `--project <projectId>`: without it Paseo files the worktree under a
      second project that it creates at the git root.
    - `--base <base>`: Paseo fetches an `origin/` base before branching.
