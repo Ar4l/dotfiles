@@ -1,6 +1,6 @@
 # Skills
 
-- [`paseo-run-tickets`](paseo-run-tickets/SKILL.md): works every ticket of a map or spec with one Paseo agent per ticket; no cited sources.
+- [`paseo-run-tickets`](paseo-run-tickets/SKILL.md): starts one Paseo agent per ready ticket of a map or spec; no cited sources.
 - [`pl`](pl/SKILL.md): read-only planning session that hands a minimal plan to a fresh session; no cited sources.
 - [`plan-review`](plan-review/SKILL.md): second opinion on a plan from another model family; the reviewer prompt follows [self-correction and LLM-judge research](plan-review/reviewer-prompt-evidence.md).
 - [`summarise`](summarise/SKILL.md): concise English summary of the current conversation; no cited sources.
