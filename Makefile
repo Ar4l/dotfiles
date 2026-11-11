@@ -21,6 +21,11 @@ install:
 keyring:
 	./keyring.sh
 
+# swapfile for Linux boxes that ship without swap; separate from `all`
+# because it needs sudo
+swap:
+	./swap.sh
+
 all: install restow
 
-.PHONY: stow restow delete simulate install keyring all
+.PHONY: stow restow delete simulate install keyring swap all

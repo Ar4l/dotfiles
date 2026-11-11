@@ -10,6 +10,14 @@ Environment=SHELL=/home/linuxbrew/.linuxbrew/bin/zsh
 ExecStart=%h/.nix-profile/bin/paseo-server
 Restart=on-failure
 RestartSec=5
+# an OOM-killed agent subprocess (a pytest worker, say) must not fail the unit:
+# the default, stop, restarts the daemon and with it every agent at once
+OOMPolicy=continue
+# reclaim and throttle agents before the machine runs dry; past MemoryMax the
+# kernel kills the largest process in this unit instead of thrashing the box.
+# Sized for rem-dev's 32G.
+MemoryHigh=24G
+MemoryMax=28G
 
 [Install]
 WantedBy=default.target
