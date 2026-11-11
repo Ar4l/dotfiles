@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# gcp-rescale — one-command GPU and disk scaling for a GCP dev VM.
+# gcp-rescale — one-command machine and disk scaling for a GCP dev VM.
 #
-#   gcp-rescale gpu scale <preset> [--spot]           resize between CPU/GPU shapes
+#   gcp-rescale machine scale <preset> [--spot]       resize between CPU/GPU shapes
 #   gcp-rescale storage scale <size> [--disk NAME]    grow a persistent disk online
-#   gcp-rescale status | gpu list | storage list | ip | use
+#   gcp-rescale status | machine list | storage list | ip | use
+#
+# 'gpu' is the original name of 'machine' and still works (gpu scale l4).
 #
 # GCP requires the VM to be STOPPED to change machine type, so processes can't
 # survive a resize. State comes back via tmux-resurrect/continuum (wired in
@@ -48,14 +50,18 @@ fi
 RESTORE_PROGS=" vi vim nvim emacs man less more tail top htop irssi weechat mutt ssh claude "
 SHELLS=" sh bash zsh fish tmux "
 
-PRESETS=(cpu l4 l4x2 l4x4 l4x8 a100 a100x2 a100x4 a100x8 a100x16 a100-80 a100-80x2 h200)
+PRESETS=(cpu2 cpu4 cpu cpu16 cpu32 l4 l4x2 l4x4 l4x8 a100 a100x2 a100x4 a100x8 a100x16 a100-80 a100-80x2 h200)
 
 # family/vcpus/ram feed live pricing (a preset's $/hr = vCPUs*core-SKU +
 # GiB*ram-SKU + GPUs*gpu-SKU); ~cost is the fallback when the catalog is
 # unreachable, last verified against live prices 2026-07-19.
 preset() { # -> "machine_type quota_metric gpu_count family vcpus ram_gb ~cost/hr description..."
   case "$1" in
-    cpu)        echo "e2-standard-8  -                     0  e2  8   32   0.30  8 vCPU, no GPU" ;;
+    cpu2)       echo "e2-standard-2  -                     0  e2  2   8    0.07  2 vCPU 8GB" ;;
+    cpu4)       echo "e2-standard-4  -                     0  e2  4   16   0.15  4 vCPU 16GB" ;;
+    cpu | cpu8) echo "e2-standard-8  -                     0  e2  8   32   0.30  8 vCPU 32GB" ;;
+    cpu16)      echo "e2-standard-16 -                     0  e2  16  64   0.59  16 vCPU 64GB" ;;
+    cpu32)      echo "e2-standard-32 -                     0  e2  32  128  1.18  32 vCPU 128GB" ;;
     l4)         echo "g2-standard-8  NVIDIA_L4_GPUS        1  g2  8   32   0.90  1x L4 24GB" ;;
     l4x2)       echo "g2-standard-24 NVIDIA_L4_GPUS        2  g2  24  96   2.10  2x L4 24GB" ;;
     l4x4)       echo "g2-standard-48 NVIDIA_L4_GPUS        4  g2  48  192  4.21  4x L4 24GB" ;;
@@ -75,31 +81,37 @@ usage() {
   cat <<EOF
 ${BOLD}usage: gcp-rescale <command> [flags]${RST}
 
-  ${CYN}gpu scale <preset> [--spot]${RST}
-                           resize the VM: one consent prompt, then fully
-                           automatic (save tmux state, stop, resize, start,
-                           sync ~/.ssh/config, restore sessions, GPU driver)
-  ${CYN}gpu list [region]${RST}        presets with live \$/hr (on-demand + spot) and quota
+  ${CYN}machine scale <preset> [--spot]${RST}
+                           resize the VM between CPU and GPU shapes (cpu32, l4,
+                           …): one consent prompt, then fully automatic (save
+                           tmux state, stop, resize, start, wait for ssh,
+                           restore sessions, GPU driver)
+  ${CYN}machine list [region]${RST}    presets with live \$/hr (on-demand + spot) and quota
                            headroom; region defaults to $REGION
+                           ('gpu scale' / 'gpu list' are the older names)
   ${CYN}storage scale <size> [--disk NAME]${RST}
                            grow a persistent disk online — no VM stop, sessions
                            untouched. GCP disks can never shrink. Default disk:
                            the data disk if the VM has one, else the boot disk
   ${CYN}storage list [region]${RST}    attached disks with \$/mo, plus disk-type prices
-  ${CYN}status${RST}                   current shape, disks, provisioning, IP, ssh sync
+  ${CYN}status${RST}                   current shape, disks, provisioning, how ssh reaches it
   ${CYN}ip${RST}                       re-point ~/.ssh/config Host $SSH_ALIAS at the live IP
+                           (nothing to do for a VM reached through IAP)
   ${CYN}use [inst [zone [project [user]]]]${RST}
                            persist a different target VM (for test clones);
                            'use' alone shows the target, 'use default' resets
 
 flags:
-  ${CYN}--spot${RST}       use Spot provisioning (see SPOT/HR in 'gpu list'; may be
+  ${CYN}--spot${RST}       use Spot provisioning (see SPOT/HR in 'machine list'; may be
                preempted — preemption is a clean stop, so tmux state survives it)
   ${CYN}--disk NAME${RST}  which disk 'storage scale' grows (default: the data disk)
   ${CYN}--refresh${RST}    refetch live prices even if the 7-day cache is still fresh
   ${CYN}--yes${RST}        skip the consent prompt — honored only for 'use'-targeted test
                instances, never for $DEFAULT_INSTANCE
   ${CYN}--dry-run${RST}    print every state-changing command instead of running it
+
+ssh: a VM with an external IP is reached at that IP; one without is reached
+through an IAP tunnel (gcloud compute start-iap-tunnel). Nothing to configure.
 
 team setup: override DEFAULT_INSTANCE/DEF_ZONE/DEF_PROJECT/DEF_USER/SSH_ALIAS in
 ${XDG_CONFIG_HOME:-\$HOME/.config}/gcp-rescale/config — the rest is discovered.
@@ -119,10 +131,26 @@ mutate() { # gcloud instance mutation: mutate <verb> [args...]
   run gcloud compute instances "$verb" "$INSTANCE" "$@" --zone="$ZONE" --project="$PROJECT"
 }
 
-remote() { # remote <ip> <command...> — always by IP so a stale ssh config never bites
-  local ip=$1; shift
-  ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
-      "$SSH_USER@$ip" -- "$@"
+# The transport follows what the VM has (VM_VIA, set by load_vm). With an
+# external access config it is reached at its IP; without one, through an IAP
+# tunnel to the instance name. Neither path reads the Host $SSH_ALIAS block, so
+# a stale ssh config or a dead ControlMaster socket never bites. HostKeyAlias
+# is gcloud's own convention: a recreated VM of the same name gets a fresh
+# known_hosts entry instead of a key mismatch.
+remote() { # remote <command...>; needs load_vm first
+  local opts=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+  if [ "$VM_VIA" = iap ]; then
+    ssh "${opts[@]}" -o ConnectTimeout=20 -o ControlMaster=no -o ControlPath=none \
+      -o HostKeyAlias="compute.$VM_ID" \
+      -o ProxyCommand="gcloud compute start-iap-tunnel $INSTANCE 22 --listen-on-stdin --zone=$ZONE --project=$PROJECT --verbosity=error" \
+      "$SSH_USER@$INSTANCE" -- "$@"
+  else
+    ssh "${opts[@]}" -o ConnectTimeout=10 "$SSH_USER@$VM_IP" -- "$@"
+  fi
+}
+
+ssh_desc() { # how remote() reaches the VM, for messages
+  if [ "$VM_VIA" = iap ]; then echo "IAP tunnel"; else echo "$SSH_USER@${VM_IP:-<new ip>}"; fi
 }
 
 # One describe per invocation; empty natIP is printed as "-" because tabs are
@@ -136,7 +164,8 @@ load_vm() {
 import json, sys
 d = json.load(sys.stdin)
 boot = [x for x in d["disks"] if x.get("boot")][0]
-acc = (d["networkInterfaces"][0].get("accessConfigs") or [{}])[0]
+accs = d["networkInterfaces"][0].get("accessConfigs") or []
+acc = (accs or [{}])[0]
 print("\t".join([
     d["status"],
     d["machineType"].rsplit("/", 1)[-1],
@@ -145,6 +174,8 @@ print("\t".join([
     acc.get("natIP") or "-",
     boot["source"].rsplit("/", 1)[-1],
     str(boot["diskSizeGb"]),
+    d["id"],
+    "ip" if accs else "iap",  # a stopped VM keeps its access config, minus the natIP
 ]))
 for x in d["disks"]:
     scratch = 1 if x.get("type") == "SCRATCH" else 0
@@ -152,7 +183,7 @@ for x in d["disks"]:
     regional = 1 if "/regions/" in x.get("source", "") else 0
     print(name, x["deviceName"], x["diskSizeGb"], 1 if x.get("boot") else 0, scratch, regional)')
   line=${out%%$'\n'*}
-  IFS=$'\t' read -r VM_STATUS VM_TYPE VM_PROV VM_MAINT VM_IP VM_BOOT_DISK VM_BOOT_GB <<<"$line"
+  IFS=$'\t' read -r VM_STATUS VM_TYPE VM_PROV VM_MAINT VM_IP VM_BOOT_DISK VM_BOOT_GB VM_ID VM_VIA <<<"$line"
   if [ "$VM_IP" = "-" ]; then VM_IP=""; fi
   VM_DISKS=${out#*$'\n'} # "name deviceName sizeGb boot scratch regional" per line
   VM_SCRATCH_COUNT=$(awk '$5 == 1 { n++ } END { print n + 0 }' <<<"$VM_DISKS")
@@ -289,6 +320,31 @@ config_hostname() { # HostName currently in the ssh config for our alias
     in_block && $1 == "HostName" { print $2; exit }' "$SSH_CONFIG" 2>/dev/null
 }
 
+config_proxy() { # ProxyCommand currently in the ssh config for our alias
+  awk -v host="$SSH_ALIAS" '
+    tolower($1) == "host" { in_block = ($2 == host) }
+    in_block && tolower($1) == "proxycommand" { print; exit }' "$SSH_CONFIG" 2>/dev/null
+}
+
+# For a VM reached through IAP the alias has no address to keep in sync; it
+# only needs a ProxyCommand that names the instance. "" = fine, else a hint.
+iap_alias_gap() {
+  [ "$INSTANCE" = "$DEFAULT_INSTANCE" ] || return 0
+  case "$(config_proxy)" in
+    *"$INSTANCE"*) ;;
+    *) printf 'Host %s\n  User %s\n  ProxyCommand gcloud compute start-iap-tunnel %s 22 --listen-on-stdin --zone=%s --project=%s\n' \
+         "$SSH_ALIAS" "$SSH_USER" "$INSTANCE" "$ZONE" "$PROJECT" ;;
+  esac
+}
+
+# A ControlMaster on the alias outlives a stop as a dead socket that hangs the
+# next 'ssh $SSH_ALIAS'. Only the default instance owns the alias.
+drop_stale_master() {
+  [ "$INSTANCE" = "$DEFAULT_INSTANCE" ] || return 0
+  if [ "$DRY_RUN" = 1 ]; then plan "ssh -O exit $SSH_ALIAS   # drop the ControlMaster socket the stop leaves behind"; return 0; fi
+  ssh -F "$SSH_CONFIG" -O exit "$SSH_ALIAS" >/dev/null 2>&1 || true
+}
+
 sync_ssh_config() { # $1 = new ip; sole writer of the ssh config, guard inside
   local ip=$1
   if [ "$INSTANCE" != "$DEFAULT_INSTANCE" ]; then
@@ -325,9 +381,9 @@ poll_ip() {
 }
 
 wait_for_ssh() {
-  local ip=$1 deadline=$((SECONDS + 180))
+  local deadline=$((SECONDS + 180))
   while [ "$SECONDS" -lt "$deadline" ]; do
-    remote "$ip" true 2>/dev/null && return 0
+    remote true 2>/dev/null && return 0
     sleep 5
   done
   return 1
@@ -346,10 +402,19 @@ matching_preset() { # reverse lookup: machine type -> preset name
 
 cmd_status() {
   load_vm
-  local p disks sync="${YLW}out of sync${RST}" scol=$YLW
+  local p disks sync="${YLW}out of sync${RST}" scol=$YLW sshline
   p=$(matching_preset "$VM_TYPE")
   [ "$VM_PROV" = "SPOT" ] && p="$p (spot)"
   [ "$(config_hostname)" = "${VM_IP:-none}" ] && sync="${GRN}in sync${RST}"
+  if [ "$VM_VIA" = iap ]; then
+    sshline="ssh:           IAP tunnel (no external IP)"
+    if [ "$INSTANCE" = "$DEFAULT_INSTANCE" ]; then
+      if [ -z "$(iap_alias_gap)" ]; then sshline="$sshline  (Host $SSH_ALIAS: ${GRN}tunnels to it${RST})"
+      else sshline="$sshline  (Host $SSH_ALIAS: ${YLW}no IAP ProxyCommand — see: gcp-rescale ip${RST})"; fi
+    fi
+  else
+    sshline="external IP:   ${VM_IP:-none}  (ssh config: $sync)"
+  fi
   [ "$VM_STATUS" = "RUNNING" ] && scol=$GRN
   disks=$(awk '{
       role = ($4 == 1 ? "boot" : ($5 == 1 ? "local-ssd" : "data"))
@@ -363,21 +428,22 @@ ${BOLD}$INSTANCE${RST} ($ZONE, $PROJECT)
   machine type:  $VM_TYPE  (preset: ${BOLD}$p${RST})
   provisioning:  $VM_PROV, maintenance $VM_MAINT
   disks:         $disks
-  external IP:   ${VM_IP:-none}  (ssh config: $sync)
+  $sshline
 EOF
 }
 
-# One row per GPU family; the xN sizes collapse into SIZES (preset = row name
-# + size, e.g. scale l4x4) and QUOTA says how big the region lets you go.
-BASES=(cpu l4 a100 a100-80 h200)
+# One row per CPU size and per GPU family; a family's xN sizes collapse into
+# SIZES (preset = row name + size, e.g. scale l4x4) and QUOTA says how big the
+# region lets you go.
+BASES=(cpu2 cpu4 cpu cpu16 cpu32 l4 a100 a100-80 h200)
 
-cmd_gpu_list() { # cmd_gpu_list [region] — other regions are price scouting only
+cmd_machine_list() { # cmd_machine_list [region] — other regions are price scouting only
   local region=${1:-$REGION} live=1 prices="" rjson b p type metric gpus vg _ cost desc
   local sizes counts q lim use od sp
   rjson=$(gcloud compute regions describe "$region" --project="$PROJECT" --format=json)
   prices=$(live_prices gpu "$region") ||
     { live=0; warn "live prices unavailable — showing hardcoded approximations"; }
-  echo "$BOLD$(printf '%-11s %-15s %-14s %-12s %8s %8s   %s' PRESET "MACHINE TYPE" GPUS SIZES '$/HR' 'SPOT/HR' QUOTA)$RST"
+  echo "$BOLD$(printf '%-11s %-15s %-14s %-12s %8s %8s   %s' PRESET "MACHINE TYPE" SHAPE SIZES '$/HR' 'SPOT/HR' QUOTA)$RST"
   for b in "${BASES[@]}"; do
     read -r type metric gpus _ _ _ cost desc <<<"$(preset "$b")"
     sizes="" counts=$gpus
@@ -391,9 +457,9 @@ cmd_gpu_list() { # cmd_gpu_list [region] — other regions are price scouting on
     if [ "$live" = 1 ]; then
       read -r od sp <<<"$(awk -v p="$b" '$1 == p { print $2, $3 }' <<<"$prices")"
     fi
-    [ "$gpus" -eq 0 ] && sp="-" # cpu is always STANDARD; scale refuses --spot for it
+    [ "$gpus" -eq 0 ] && sp="-" # cpu presets are always STANDARD; scale refuses --spot for it
     if [ "$b" = "h200" ]; then
-      q="blocked (no quota + needs gVNIC; see: gcp-rescale gpu scale h200)"
+      q="blocked (no quota + needs gVNIC; see: gcp-rescale machine scale h200)"
     elif [ "$gpus" -gt 0 ]; then
       read -r lim use <<<"$(quota "$rjson" "$metric")"
       q=$(awk -v l="$lim" -v u="$use" -v counts="$counts" 'BEGIN {
@@ -415,10 +481,10 @@ cmd_gpu_list() { # cmd_gpu_list [region] — other regions are price scouting on
   done
   echo
   printf '%s' "$DIM"
-  echo "  sizes: append to the preset (gpu scale l4x4, a100x8); \$/hr scales roughly linearly."
+  echo "  sizes: append to the preset (machine scale l4x4, a100x8); \$/hr scales roughly linearly."
   if [ "$live" = 1 ]; then
     echo "  live $region on-demand/spot prices in USD (billing catalog, cached $(date -r "$CACHE_FILE" +%Y-%m-%d 2>/dev/null || echo recently);"
-    echo "  refetch: gcp-rescale gpu list --refresh). n/a = no such SKU in $region (reservation/DWS-only)."
+    echo "  refetch: gcp-rescale machine list --refresh). n/a = no such SKU in $region (reservation/DWS-only)."
   else
     echo "  prices are hardcoded approximations for europe-west4 on-demand (live fetch failed)."
   fi
@@ -447,9 +513,9 @@ cmd_storage_list() { # cmd_storage_list [region] — other regions are price sco
   fi
   # Mount/usage need one read-only ssh probe; skipped when the VM is down or
   # under the test override (so tests never touch a real VM over ssh).
-  if [ "$VM_STATUS" = RUNNING ] && [ -n "$VM_IP" ] && [ -z "${GCP_RESCALE_NO_PROBE:-}" ]; then
+  if [ "$VM_STATUS" = RUNNING ] && [ -z "${GCP_RESCALE_NO_PROBE:-}" ]; then
     # shellcheck disable=SC2016  # expands on the remote side, on purpose
-    probe=$(remote "$VM_IP" 'for l in /dev/disk/by-id/google-*; do d=$(readlink -f "$l") || continue;
+    probe=$(remote 'for l in /dev/disk/by-id/google-*; do d=$(readlink -f "$l") || continue;
       lsblk -rno MOUNTPOINT,FSUSE% "$d" | awk -v n="${l##*/google-}" "\$1 != \"\" {print n, \$0; exit}"; done' \
       2>/dev/null) || probe=""
   fi
@@ -471,7 +537,7 @@ cmd_storage_list() { # cmd_storage_list [region] — other regions are price sco
     fi
     read -r mnt used <<<"$(awk -v d="$dev" '$1 == d { print $2, $3; exit }' <<<"$probe")"
     flag=""
-    [ "$scratch" = 1 ] && flag="  ${YLW}ephemeral — data lost on stop; blocks gpu scale${RST}"
+    [ "$scratch" = 1 ] && flag="  ${YLW}ephemeral — data lost on stop; blocks machine scale${RST}"
     printf '%-21s %-9s %6sG %-19s %9s  %-12s %5s%s\n' \
       "$name" "$role" "$size" "${type:-?}" "$cost" "${mnt:--}" "${used:--}" "$flag"
   done <<<"$VM_DISKS"
@@ -595,7 +661,7 @@ old disk — manual on purpose; this tool won't automate destructive migration."
     echo "${GRN}done: $name = ${new}GB${RST}"
     return 0
   fi
-  if remote "$VM_IP" "$(grow_fs_script "$dev")"; then
+  if remote "$(grow_fs_script "$dev")"; then
     echo "${GRN}done: $name = ${new}GB, filesystem grown${RST}"
   else
     warn "disk is ${new}GB but the in-guest grow failed — finish by hand: ssh in, then:
@@ -605,6 +671,12 @@ old disk — manual on purpose; this tool won't automate destructive migration."
 
 cmd_ip() {
   load_vm
+  if [ "$VM_VIA" = iap ]; then
+    local gap; gap=$(iap_alias_gap)
+    echo "$INSTANCE has no external IP: ssh goes through an IAP tunnel, so there is no address to re-point."
+    [ -z "$gap" ] || printf "For 'ssh %s', put this block in %s:\n%s\n" "$SSH_ALIAS" "$SSH_CONFIG" "$gap"
+    return 0
+  fi
   [ -n "$VM_IP" ] || die "$INSTANCE has no external IP (status: $VM_STATUS)"
   local old; old=$(config_hostname)
   [ -n "$old" ] && [ "$old" != "$VM_IP" ] && forget_host "$old"
@@ -640,55 +712,106 @@ h200 (a3-ultragpu-8g) cannot be applied to this instance yet:
 EOF
 }
 
-# Consent inventory: split live pane commands into "will resume" vs "will NOT
-# restart automatically" using RESTORE_PROGS; idle shells are trivially fine.
+# Consent inventory in one ssh round trip (an IAP tunnel costs seconds each):
+# live pane commands split into "will resume" vs "will NOT restart
+# automatically" using RESTORE_PROGS (idle shells are trivially fine), plus the
+# Paseo agents that are mid-turn. Lines are tagged so ssh noise can't be
+# mistaken for data, and the closing "ok|" proves the session ran to the end.
+# shellcheck disable=SC2016  # expands on the remote side, on purpose
+INVENTORY_SCRIPT='
+tmux list-panes -a -F "pane|#{session_name}:#{window_index}.#{pane_index}|#{pane_current_command}|#{pane_current_path}" 2>/dev/null
+echo "sess|$(tmux list-sessions 2>/dev/null | wc -l)"
+p=$(command -v paseo 2>/dev/null || echo "$HOME/.nix-profile/bin/paseo")
+if [ -x "$p" ]; then echo "paseo|$(timeout 20 "$p" ls -g --json 2>/dev/null | tr -d "\n")"; fi
+echo "ok|"'
+
+SSH_OK=0 # set by print_inventory: lets the save step tell "no tmux" from "no ssh"
+
 print_inventory() {
-  local raw sessions resume=() norestart=() loc cmd path
-  raw=$(remote "$VM_IP" \
-    'tmux list-panes -a -F "#{session_name}:#{window_index}.#{pane_index}|#{pane_current_command}|#{pane_current_path}"' \
-    2>/dev/null) || { echo "Running now:  could not reach tmux over ssh (or none running)"; return 0; }
-  sessions=$(remote "$VM_IP" 'tmux list-sessions 2>/dev/null | wc -l' 2>/dev/null || echo "?")
-  while IFS='|' read -r loc cmd path; do
-    [ -n "$cmd" ] || continue
-    case "$SHELLS" in *" $cmd "*) continue ;; esac
-    path=${path/#$"/home/$SSH_USER"/\~}
-    case "$RESTORE_PROGS" in
-      *" $cmd "*) resume+=("$loc $cmd ($path)") ;;
-      *)          norestart+=("$loc $cmd ($path)") ;;
-    esac
-  done <<<"$raw"
-  echo "Running now:  $(echo "$sessions" | tr -d ' ') tmux session(s), $(wc -l <<<"$raw" | tr -d ' ') pane(s)"
-  if [ ${#resume[@]} -gt 0 ]; then
-    for loc in "${resume[@]}"; do echo "${GRN}Will resume:${RST}  $loc"; done
+  local out raw sessions resume=() norestart=() loc cmd path agents n
+  out=$(remote "$INVENTORY_SCRIPT" 2>&1) || true
+  if ! grep -q '^ok|$' <<<"$out"; then
+    echo "${RED}Running now:  UNKNOWN — could not reach $INSTANCE over ssh ($(ssh_desc)):${RST}"
+    echo "${RED}              $(tail -n 1 <<<"$out")${RST}"
+    echo "${RED}              tmux state can NOT be saved before the stop; the restore falls${RST}"
+    echo "${RED}              back to the last continuum autosave, if there is one.${RST}"
+    return 0
   fi
-  if [ ${#norestart[@]} -gt 0 ]; then
-    for loc in "${norestart[@]}"; do echo "${YLW}Will NOT restart automatically:${RST}  $loc"; done
+  SSH_OK=1
+  raw=$(sed -n 's/^pane|//p' <<<"$out")
+  sessions=$(sed -n 's/^sess|//p' <<<"$out" | tr -d ' ')
+  if [ -z "$raw" ]; then
+    echo "Running now:  no tmux server running"
+  else
+    while IFS='|' read -r loc cmd path; do
+      [ -n "$cmd" ] || continue
+      case "$SHELLS" in *" $cmd "*) continue ;; esac
+      case "$path" in "/home/$SSH_USER"*) path="~${path#"/home/$SSH_USER"}" ;; esac
+      case "$RESTORE_PROGS" in
+        *" $cmd "*) resume+=("$loc $cmd ($path)") ;;
+        *)          norestart+=("$loc $cmd ($path)") ;;
+      esac
+    done <<<"$raw"
+    echo "Running now:  $sessions tmux session(s), $(wc -l <<<"$raw" | tr -d ' ') pane(s)"
+    if [ ${#resume[@]} -gt 0 ]; then
+      for loc in "${resume[@]}"; do echo "${GRN}Will resume:${RST}  $loc"; done
+    fi
+    if [ ${#norestart[@]} -gt 0 ]; then
+      for loc in "${norestart[@]}"; do echo "${YLW}Will NOT restart automatically:${RST}  $loc"; done
+    fi
   fi
+  # Paseo runs as a systemd user unit, so the daemon is back after the start,
+  # but every agent returns idle: a turn in flight at the stop is lost.
+  grep -q '^paseo|' <<<"$out" || return 0
+  agents=$(sed -n 's/^paseo|//p' <<<"$out" | python3 -c '
+import json, sys
+try:
+    agents = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+for a in agents:
+    if a.get("status") == "running":
+        print(a.get("shortId", "?"), a.get("name", "")[:72])') ||
+    { echo "${YLW}Paseo:${RST}        installed, but 'paseo ls' gave no answer — agents unknown"; return 0; }
+  if [ -z "$agents" ]; then
+    echo "Paseo:        no agent is mid-turn"
+    return 0
+  fi
+  n=$(wc -l <<<"$agents" | tr -d ' ')
+  echo "${YLW}Paseo:${RST}        $n agent(s) mid-turn — they come back idle and lose that turn:"
+  while read -r loc; do echo "              $loc"; done <<<"$agents"
   return 0
 }
 
 consent() {
   if [ "$DRY_RUN" = 1 ]; then echo "(dry-run: consent skipped, nothing will be executed)"; return 0; fi
   if [ "$ASSUME_YES" = 1 ] && [ "$INSTANCE" != "$DEFAULT_INSTANCE" ]; then return 0; fi
-  [ -r /dev/tty ] || die "interactive consent is required to touch $INSTANCE (--yes only works for instance overrides)"
-  local a; read -r -p "${BOLD}Proceed? [y/N]${RST} " a </dev/tty || a=""
+  { exec 3</dev/tty; } 2>/dev/null || die "interactive consent is required to touch $INSTANCE (--yes only works for instance overrides)"
+  local a; read -r -p "${BOLD}Proceed? [y/N]${RST} " a <&3 || a=""
   case "$a" in y | Y | yes) ;; *) die "aborted — nothing changed" ;; esac
 }
 
 save_tmux_state() {
-  if ! remote "$VM_IP" 'tmux has-session' 2>/dev/null; then
-    echo "  no tmux server running — nothing to save"
+  local state
+  if [ "$SSH_OK" != 1 ]; then
+    warn "skipping the tmux save: $INSTANCE is unreachable over ssh (see above)"
     return 0
   fi
-  if ! remote "$VM_IP" 'test -x ~/.tmux/plugins/tmux-resurrect/scripts/save.sh' 2>/dev/null; then
-    warn "tmux is running but tmux-resurrect is not installed — panes will NOT be restored"
-    return 0
-  fi
+  # One round trip; save.sh's own output goes to stderr so stdout is the verdict.
+  # A failed ssh is not "no tmux": the inventory reached the VM seconds ago.
   # shellcheck disable=SC2088  # the tilde expands on the remote side
-  remote "$VM_IP" '~/.tmux/plugins/tmux-resurrect/scripts/save.sh quiet' ||
-    die "tmux-resurrect save FAILED — aborting with the VM still running.
-Investigate on the VM (continuum autosaves every minute if you decide to proceed by hand)."
-  echo "  ${GRN}tmux state saved${RST}"
+  state=$(remote 'if ! tmux has-session 2>/dev/null; then echo none
+    elif ! test -x ~/.tmux/plugins/tmux-resurrect/scripts/save.sh; then echo noplugin
+    elif ~/.tmux/plugins/tmux-resurrect/scripts/save.sh quiet 1>&2; then echo saved
+    else echo failed; fi') ||
+    die "ssh to $INSTANCE ($(ssh_desc)) worked a moment ago and fails now — aborting with the VM still running."
+  case "$state" in
+    none)     echo "  no tmux server running — nothing to save" ;;
+    noplugin) warn "tmux is running but tmux-resurrect is not installed — panes will NOT be restored" ;;
+    saved)    echo "  ${GRN}tmux state saved${RST}" ;;
+    *) die "tmux-resurrect save FAILED — aborting with the VM still running.
+Investigate on the VM (continuum autosaves every minute if you decide to proceed by hand)." ;;
+  esac
 }
 
 # Machine type and scheduling must change in ONE instances.update call: GCP
@@ -752,9 +875,8 @@ rollback() { # $1 = failed step; put the VM back on its original shape
   exit 1
 }
 
-ensure_gpu_driver() { # $1 = ip; install NVIDIA driver if missing (Ubuntu)
-  local ip=$1
-  if remote "$ip" 'command -v nvidia-smi >/dev/null && nvidia-smi >/dev/null 2>&1'; then
+ensure_gpu_driver() { # install NVIDIA driver if missing (Ubuntu)
+  if remote 'command -v nvidia-smi >/dev/null && nvidia-smi >/dev/null 2>&1'; then
     return 0
   fi
   echo "  installing NVIDIA driver (takes a few minutes)…"
@@ -763,46 +885,56 @@ ensure_gpu_driver() { # $1 = ip; install NVIDIA driver if missing (Ubuntu)
   # module (/proc/driver/nvidia/version), since ubuntu-drivers can leave two
   # driver flavors on disk and the newest package is not always the loaded one.
   # shellcheck disable=SC2016  # $( ) and $v expand on the remote side
-  if run remote "$ip" 'sudo apt-get -qq update && sudo apt-get -qq install -y ubuntu-drivers-common && sudo ubuntu-drivers install --gpgpu && sudo modprobe nvidia && v=$(sed -n "s/.*Kernel Module[^0-9]*\([0-9][0-9]*\)\..*/\1/p" /proc/driver/nvidia/version | head -1) && sudo apt-get -qq install -y nvidia-utils-$v-server'; then
-    remote "$ip" 'nvidia-smi >/dev/null 2>&1' && return 0
+  if run remote 'sudo apt-get -qq update && sudo apt-get -qq install -y ubuntu-drivers-common && sudo ubuntu-drivers install --gpgpu && sudo modprobe nvidia && v=$(sed -n "s/.*Kernel Module[^0-9]*\([0-9][0-9]*\)\..*/\1/p" /proc/driver/nvidia/version | head -1) && sudo apt-get -qq install -y nvidia-utils-$v-server'; then
+    remote 'nvidia-smi >/dev/null 2>&1' && return 0
     echo "  driver installed but not usable yet (module/library mismatch) — rebooting once"
   else
     echo "  driver installed but not loaded — rebooting once"
   fi
-  mutate reset --quiet
-  wait_for_ssh "$ip"
+  mutate reset --quiet || return 1
+  wait_for_ssh
 }
 
 post_start() { # post_start <gpu_count> <label>
-  local gpus=$1 label=$2 new_ip
+  local gpus=$1 label=$2 new_ip where="ssh through IAP" hint="sshd is up" try=""
+  if [ "$INSTANCE" = "$DEFAULT_INSTANCE" ]; then # only the default instance owns the alias
+    hint="ssh $SSH_ALIAS ready" try="; try: ssh $SSH_ALIAS"
+  fi
   if [ "$DRY_RUN" = 1 ]; then
-    plan "(poll for the new external IP)"
-    plan "ssh-keygen -R <old-ip>  &&  update $SSH_CONFIG: Host $SSH_ALIAS -> <new-ip>"
-    plan "(wait for sshd, up to 180s)"
+    if [ "$VM_VIA" = iap ]; then
+      plan "(wait for sshd through the IAP tunnel, up to 180s)"
+    else
+      plan "(poll for the new external IP)"
+      plan "ssh-keygen -R <old-ip>  &&  update $SSH_CONFIG: Host $SSH_ALIAS -> <new-ip>"
+      plan "(wait for sshd, up to 180s)"
+    fi
     [ "$gpus" -gt 0 ] && plan "ssh: install NVIDIA driver if nvidia-smi is missing (ubuntu-drivers install --gpgpu)"
     plan "ssh: tmux new-session -d   # tmux-continuum auto-restores all sessions"
     return 0
   fi
-  new_ip=$(poll_ip) || { warn "VM started but no external IP appeared within 60s — run 'gcp-rescale ip' later"; return 0; }
-  [ -n "$VM_IP" ] && [ "$new_ip" != "$VM_IP" ] && forget_host "$VM_IP"
-  sync_ssh_config "$new_ip"
-  if ! wait_for_ssh "$new_ip"; then
-    warn "resize done and VM running at $new_ip, but sshd didn't answer within 180s — session restore skipped; try: ssh $SSH_ALIAS"
+  if [ "$VM_VIA" != iap ]; then # an ephemeral external IP changes across a stop
+    new_ip=$(poll_ip) || { warn "VM started but no external IP appeared within 60s — run 'gcp-rescale ip' later"; return 0; }
+    [ -n "$VM_IP" ] && [ "$new_ip" != "$VM_IP" ] && forget_host "$VM_IP"
+    sync_ssh_config "$new_ip"
+    VM_IP=$new_ip where="IP $new_ip"
+  fi
+  if ! wait_for_ssh; then
+    warn "resize done and VM running, but sshd didn't answer within 180s ($(ssh_desc)) — session restore skipped$try"
     return 0
   fi
   if [ "$gpus" -gt 0 ]; then
-    ensure_gpu_driver "$new_ip" ||
+    ensure_gpu_driver ||
       warn "GPU driver install failed — ssh in and run: sudo ubuntu-drivers install --gpgpu"
   fi
-  remote "$new_ip" 'tmux ls >/dev/null 2>&1 || tmux new-session -d' 2>/dev/null ||
+  remote 'tmux ls >/dev/null 2>&1 || tmux new-session -d' 2>/dev/null ||
     warn "could not kick tmux restore — run 'tmux' after ssh'ing in"
-  [ "$gpus" -gt 0 ] && { remote "$new_ip" 'nvidia-smi -L' 2>/dev/null || true; }
-  echo "${GRN}done: $INSTANCE = $label, IP $new_ip — ssh $SSH_ALIAS ready, tmux sessions restoring${RST}"
+  [ "$gpus" -gt 0 ] && { remote 'nvidia-smi -L' 2>/dev/null || true; }
+  echo "${GRN}done: $INSTANCE = $label, $where — $hint, tmux sessions restoring${RST}"
 }
 
-cmd_gpu_scale() {
+cmd_machine_scale() {
   local pname=${1:-}
-  [ -n "$pname" ] || die "usage: gcp-rescale gpu scale <preset>  (see: gcp-rescale gpu list)"
+  [ -n "$pname" ] || die "usage: gcp-rescale machine scale <preset>  (see: gcp-rescale machine list)"
   case "$pname" in
     h100 | b200 | gb200 | gb300)
       die "$pname is not available in $ZONE (h100: europe-west4-b/c; b200/gb200: -b; gb300: not in $REGION).
@@ -813,7 +945,7 @@ This tool only does in-place same-zone resizes — moving zones means migrating 
   local target metric gpus cost desc
   read -r target metric gpus _ _ _ cost desc <<<"$row"
   [ "$pname" = "h200" ] && die "$(h200_help)"
-  [ "$SPOT" = 1 ] && [ "$gpus" -eq 0 ] && die "--spot only makes sense for GPU presets (cpu is always STANDARD)"
+  [ "$SPOT" = 1 ] && [ "$gpus" -eq 0 ] && die "--spot only makes sense for GPU presets (cpu presets are always STANDARD)"
 
   local prov="STANDARD" maint="MIGRATE"
   [ "$SPOT" = 1 ] && prov="SPOT"
@@ -846,29 +978,32 @@ Request more at https://console.cloud.google.com/iam-admin/quotas?project=$PROJE
   echo
   local spot_note=""; [ "$prov" = "SPOT" ] && spot_note=" (spot)"
   echo "${BOLD}$INSTANCE: $VM_TYPE -> $target ($desc), ~\$$cost/hr$spot_note${RST}"
-  if [ "$VM_STATUS" = "RUNNING" ] && [ "$DRY_RUN" = 0 ]; then
-    print_inventory
-  elif [ "$VM_STATUS" = "TERMINATED" ]; then
+  if [ "$VM_STATUS" = "TERMINATED" ]; then
     echo "Running now:  nothing — the VM is stopped"
+  elif [ -n "${GCP_RESCALE_NO_PROBE:-}" ]; then
+    echo "Running now:  (ssh inventory skipped)"
+    SSH_OK=1 # the test override skips the read-only probe, not the save
   else
-    echo "Running now:  (dry-run: ssh inventory skipped)"
+    print_inventory # read-only, so --dry-run shows the real one too
   fi
   local disk_step=""
   [ "$gpus" -gt 0 ] && [ "${VM_BOOT_GB%GB}" -lt 50 ] && disk_step=" -> grow boot disk ${VM_BOOT_GB}->50GB (one-time)"
   local drv_step=""; [ "$gpus" -gt 0 ] && drv_step=" -> install NVIDIA driver if missing"
-  echo "Will do:      save tmux state -> stop VM$disk_step -> resize -> start"
-  echo "              -> new IP into ssh config -> restore tmux sessions$drv_step"
+  local ip_step=""; [ "$VM_VIA" = iap ] || ip_step=" -> new IP into ssh config"
+  echo "Will do:      save tmux state -> stop VM$disk_step -> resize -> start$ip_step"
+  echo "              -> wait for ssh ($(ssh_desc)) -> restore tmux sessions$drv_step"
   echo "${GRN}Will resume:${RST}  claude panes (claude --continue) + resurrect's program list; layout/cwd/scrollback everywhere."
   echo "${YLW}Lost either way:${RST} in-flight claude turns; programs not listed above restart as idle panes."
   consent
 
   if [ "$VM_STATUS" = "RUNNING" ]; then
     if [ "$DRY_RUN" = 1 ]; then
-      plan "ssh $SSH_USER@$VM_IP '~/.tmux/plugins/tmux-resurrect/scripts/save.sh quiet'"
+      plan "ssh ($(ssh_desc)): ~/.tmux/plugins/tmux-resurrect/scripts/save.sh quiet"
     else
       save_tmux_state
     fi
     mutate stop --quiet
+    drop_stale_master
   fi
   if [ -n "$disk_step" ]; then
     run gcloud compute disks resize "$VM_BOOT_DISK" --size=50GB --zone="$ZONE" --project="$PROJECT" --quiet ||
@@ -905,10 +1040,10 @@ case "${ARGS[0]:-}" in
   status) cmd_status ;;
   ip)     cmd_ip ;;
   use)    cmd_use "${ARGS[@]:1}" ;;
-  gpu)
+  machine | gpu) # 'gpu' is the original name, kept so old invocations still work
     case "${ARGS[1]:-}" in
-      list)  cmd_gpu_list "${ARGS[2]:-}" ;;
-      scale) cmd_gpu_scale "${ARGS[2]:-}" ;;
+      list)  cmd_machine_list "${ARGS[2]:-}" ;;
+      scale) cmd_machine_scale "${ARGS[2]:-}" ;;
       *) usage; exit 1 ;;
     esac ;;
   storage)
