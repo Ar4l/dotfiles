@@ -81,8 +81,10 @@ it when it ends.
    - `linear issue view EVAL-<n> --json --no-comments | jq -r
      '.children.nodes[] | "\(.identifier) \(.state.name)"'` gives each
      ticket's state.
-2. Start agents for frontier tickets that have no agent yet, at most 9
-   running. Check with `paseo ls -g --label ticket=EVAL-<t> --json`: the
+2. Start agents for frontier tickets that have no agent yet, until step 1's
+   `paseo ls` lists 9 agents. Count every listed agent, whatever its status:
+   an agent archives itself once nothing is open, so each listed one still
+   holds work. Check with `paseo ls -g --label ticket=EVAL-<t> --json`: the
    frontier lists a ticket until its agent runs `claim`.
 
    ```bash
