@@ -72,6 +72,7 @@ programs=(
   llama.cpp     # run LLMs locally
   ollama        # local LLM server
   opencode      # AI coding agent
+  schpet/tap/linear  # Linear CLI (linear-cli); reads ~/.config/linear/linear.toml
 
                 # EDITORS
   vim           # the only editor you need
