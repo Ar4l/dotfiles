@@ -5,11 +5,10 @@ disable-model-invocation: true
 ---
 
 `/paseo-run-tickets EVAL-<n>` takes a charted map or a spec, sets up the run
-and exits. From then on a Paseo schedule starts a fresh agent every 20 minutes
-to run § Tick. Linear and Paseo hold all state, so no session has to see every
-ticket. Each ticket gets its own agent and worktree in the run's Paseo
-project. The user talks to any of them there. Running the command again on
-the same map or spec reuses the worktree, project and schedule.
+and exits. A Paseo schedule then starts a fresh agent every 20 minutes to run
+§ Tick, which gives each ready ticket its own agent and worktree in the run's
+Paseo project. Running the command again reuses the worktree, project and
+schedule.
 
 The ticket EVAL-<n> sets the mode:
 
@@ -21,24 +20,20 @@ The ticket EVAL-<n> sets the mode:
 
 `<skills>` is the newest installed copy of the mattpocock-skills plugin:
 `ls -d ~/.claude/plugins/cache/claude-plugins-official/mattpocock-skills/*/skills/engineering | sort -V | tail -1`.
-The prompt names the file because Paseo wraps a prompt sent by an agent in a
-`<paseo-system>` tag, so a leading `/implement` does not run as a command.
+The prompt names the skill file because Paseo wraps a prompt sent by an agent
+in a `<paseo-system>` tag, where a leading `/implement` stays plain text.
 
 `<agent>` stands for the flags of the Paseo app's default agent profile, the
 first entry of `daemon.agentProfiles`:
 `jq -r '.daemon.agentProfiles[0] | "--provider \(.provider)/\(.model) --thinking \(.thinkingOptionId)"' ~/.paseo/config.json`.
-Every `paseo run` and `paseo schedule create` passes them. Without
-`--provider` Paseo exits with `Provider is required`, and a bare
-`--provider claude` takes the provider's first model.
+Every `paseo run` and `paseo schedule create` passes them. Paseo requires
+`--provider`, and a bare `--provider claude` takes the provider's first model.
 
 `<n>` is the number of the map or spec, `<t>` of one of its tickets, and
 `<run>` is `~/worktrees/eval-<n>/libs/mellum-eval-workspace`. Run every
 command from `<run>` once it exists.
 
 ## Start
-
-Each step reuses what an earlier launch created, so a second launch adds
-nothing.
 
 1. Read EVAL-<n> with `linear issue view EVAL-<n> --json --no-comments` and
    pick the mode from the table. Stop and tell the user when:
@@ -49,16 +44,16 @@ nothing.
 2. Find the integration branch: the description of the Linear project names it
    as `integration branch <branch>`. `<base>` is `origin/<branch>`
    throughout. Run `git fetch origin`. Unless `~/worktrees/eval-<n>` exists,
-   create it with `git worktree add --detach ~/worktrees/eval-<n> <base>`. No
-   commit ever lands there, because each ticket agent cuts its own branch
-   through `tools/ticket-tracker branch`.
+   create it with `git worktree add --detach ~/worktrees/eval-<n> <base>`. It
+   stays detached at `<base>`; each ticket agent cuts its own branch through
+   `tools/ticket-tracker branch`.
 3. Find the run's Paseo project: the entry of `paseo project ls --json` whose
    path is `<run>`. Without one, create it with `paseo project create <run>
    --json` and name it with `paseo project rename <projectId> "EVAL-<n>
    <title>"`. `<projectId>` is that id throughout.
 4. Look in `paseo schedule ls --json` for a schedule named `EVAL-<n> run
-   tickets`. Paseo accepts two schedules with one name, so a second one would
-   double every tick. If it exists, run `paseo schedule run-once <id>` and
+   tickets`. Paseo accepts two schedules with one name, and a second one
+   doubles every tick. If it exists, run `paseo schedule run-once <id>` and
    tell the user the run was already set up. Otherwise create it:
 
    ```bash
@@ -67,34 +62,28 @@ nothing.
      "Read ~/.agents/skills/paseo-run-tickets/SKILL.md and run its Tick for EVAL-<n> in <mode> mode with base <base> in project <projectId>."
    ```
 
-   The schedule needs `--mode auto`. In the default mode, the scheduled agent
-   stops at its first Bash call to wait for an approval no one sees. When
-   auto mode refuses the command, print it for the user to run and stop.
+   `--mode auto` lets the scheduled agent run Bash with no one there to
+   approve. When auto mode refuses the command, print it for the user to run
+   and stop.
 5. Reply with the project name, the mode, the schedule id and the time the
    schedule expires.
 
 ## Tick
 
-Each tick is a fresh agent. Paseo archives it when it ends, so the user never
-reads its output. Its only effects are its commands.
+Each tick is a fresh agent that reads state and starts agents. Paseo archives
+it when it ends.
 
 1. Read the state:
    - `tools/ticket-tracker frontier --map EVAL-<n>` lists the tickets that
-     are ready. Keep its warnings: step 3 reads them.
-   - `paseo ls -g --label run=EVAL-<n> --json` lists the ticket agents.
-     Without `-g` it lists only agents whose cwd is this directory.
+     are ready. Keep its warnings for step 3.
+   - `paseo ls -g --label run=EVAL-<n> --json` lists the ticket agents; `-g`
+     covers every directory.
    - `linear issue view EVAL-<n> --json --no-comments | jq -r
      '.children.nodes[] | "\(.identifier) \(.state.name)"'` gives each
      ticket's state.
-
-   The tick sends no message to a running ticket agent: the user tells an
-   agent when to merge, and the agent closes its own ticket. A ticket the
-   user started by hand is claimed, so it is off the frontier: leave it
-   alone.
-2. Start agents for frontier tickets that have no agent yet. Check with
-   `paseo ls -g --label ticket=EVAL-<t> --json`, because a ticket counts as
-   unclaimed on the frontier until its agent runs `claim`. Keep at most 9
-   agents running.
+2. Start agents for frontier tickets that have no agent yet, at most 9
+   running. Check with `paseo ls -g --label ticket=EVAL-<t> --json`: the
+   frontier lists a ticket until its agent runs `claim`.
 
    ```bash
    ws=$(paseo workspace create --isolation worktree --project <projectId> \
@@ -106,13 +95,12 @@ reads its output. Its only effects are its commands.
      "$(cat ~/scratch/paseo-run-tickets-<n>/EVAL-<t>.md)"
    ```
 
-   Write the brief from § Ticket brief to that file first. `paseo run` takes
+   Write the brief from § Ticket brief to that file first; `paseo run` takes
    the prompt only as an argument. Two flags keep the run correct:
-   - `--project <projectId>`: without it Paseo files the worktree under a
-     second project that it creates at the git root.
-   - `--base <base>`: Paseo fetches an `origin/` base before branching.
-     Without the flag it branches from the local integration branch, which
-     can be hundreds of commits behind.
+   - `--project <projectId>` files the worktree in the run's project, not in
+     a new project at the git root.
+   - `--base <base>` makes Paseo fetch and branch from the remote integration
+     branch, which the local one can trail by hundreds of commits.
 3. Map mode, when the frontier warnings name the fog sweep: every decision
    ticket is closed and the map's Not yet specified section still has
    bullets. The user picks the outcome of each bullet, so one agent drafts
@@ -134,8 +122,8 @@ reads its output. Its only effects are its commands.
      ```
 
    To finish:
-   - Delete the schedule. Look up its id with `paseo schedule ls --json` by
-     the name `EVAL-<n> run tickets`, then run `paseo schedule delete <id>`.
+   - Delete the schedule: find its id in `paseo schedule ls --json` by the
+     name `EVAL-<n> run tickets`, then run `paseo schedule delete <id>`.
    - Spec mode: set the spec Done with `linear issue update EVAL-<n> -s Done`.
      A map stays open until the user approves after `/to-tickets`.
    - Start one report agent as in step 2, with slug `eval-<n>-done`, no
@@ -146,47 +134,37 @@ reads its output. Its only effects are its commands.
        next steps: `/to-spec` and `/to-tickets` on the map's spec, then
        `/paseo-run-tickets` on that spec.
 
-     The report needs its own workspace: Paseo archives the tick's workspace
-     when the tick ends, together with any agent started in it.
-   - Leave the remaining ticket workspaces in place. A ticket agent archives
-     its own workspace after its last check (§ Ticket brief), so a workspace
-     still listed holds something for the user.
+     The report needs its own workspace because Paseo archives the tick's
+     workspace together with every agent started in it.
+   - Leave the remaining ticket workspaces for the user: each ticket agent
+     archives its own once nothing is open.
 
 ## Ticket brief
 
 ```text
 <the mode's ticket prompt>
 
-You run unattended under /paseo-run-tickets EVAL-<n>. The user reads only
-your last message, in the Paseo app, so every message you end a turn on makes
-sense on its own. Finish all the work you can do alone before you stop.
+You run unattended under /paseo-run-tickets EVAL-<n>. Finish all the work
+you can do alone before you stop.
 
-When you need the user (a decision, a round of questions, a permission, a
-Linear write that was refused, a handoff step), run any handoff your recipe
-names, then end your turn with:
+I, the user, read only your last message, in the Paseo app, with no other
+context. End this last turn with a summary: the ticket, its goal, where it
+stands (PR link if any), and what blocks it, if anything. Focus on what's
+important for me to know or decide.
 
-BLOCKED EVAL-<t>: <the question, one line>
-- the facts the answer depends on
-- the options, your recommendation, and what each one costs
-- the exact text of any Linear write you propose
-- what you will do after each answer
+Once your PR is open and its checks pass, ask me to merge it or to tell you
+to merge. When I answer, read the PR's state with `gh pr view`, then finish
+the ticket.
 
-Use at most 10 lines per question. Include only what changes the user's
-answer.
-
-No one watches your PR for you. Once it is open and its checks pass, use the
-BLOCKED message to ask the user to merge it or to tell you to merge. When
-they answer, read the PR's state with `gh pr view`, then finish the ticket.
-
-Anything that leaves this repository needs the user first: before you push
-to another repository or open a PR, issue or comment there, stop with the
-BLOCKED message and give its exact title and text.
+Ask me first for any write outside this repository (a push, PR, issue or
+comment) and for any Linear write that was refused. Give its exact title and
+text.
 
 Last check, once your ticket is closed and its PR, if any, is merged:
 - the worktree holds no uncommitted or unpushed work;
-- re-read this session: every question, promise and follow-up is settled or
+- every question, promise and follow-up in this session is settled or
   recorded on a ticket.
-If anything is open, end with the BLOCKED message that names it. If nothing
-is open, write one closing line, then archive your own workspace:
+If anything is open, name it in your summary. Otherwise write the summary,
+then archive your own workspace:
 paseo workspace archive "$(paseo workspace ls --json | jq -r --arg c "$PASEO_AGENT_CWD" '.[] | select(.cwd==$c) | .workspaceId')"
 ```
