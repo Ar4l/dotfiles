@@ -15,9 +15,9 @@ RestartSec=5
 OOMPolicy=continue
 # reclaim and throttle agents before the machine runs dry; past MemoryMax the
 # kernel kills the largest process in this unit instead of thrashing the box.
-# Sized for rem-dev's 32G.
-MemoryHigh=24G
-MemoryMax=28G
+# Percentages of physical RAM, so the limits follow a VM resize.
+MemoryHigh=75%
+MemoryMax=90%
 
 [Install]
 WantedBy=default.target
