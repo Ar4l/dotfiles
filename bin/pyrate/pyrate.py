@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, logging, re, pickle, fire, subprocess, requests, tabulate, dataclasses as dc
+import os, glob, time, logging, re, pickle, shutil, fire, mutagen, subprocess, requests, tabulate, dataclasses as dc
 
 @dc.dataclass
 class Data:
@@ -17,6 +17,8 @@ class Pyrate(object):
     PLAYLISTS_FOLDER = 'playlists'
     YOUTUBE_FOLDER = 'youtube'
     SOUNDCLOUD_FOLDER = 'soundcloud'
+    REKORDBOX_DB = os.path.expanduser('~/Library/Pioneer/rekordbox/master.db')
+    REKORDBOX_FOLDER = 'spotify'
 
     def __init__(self):
         ''' load and validate metadata: Data '''
@@ -35,11 +37,8 @@ class Pyrate(object):
         def get_info(pl: str, url: str) -> list:
             ''' get playlist info for tabulation '''
 
-            m3u_file = os.path.join(
-                    self._metadata.library_path, self.PLAYLISTS_FOLDER,
-                    pl, f'{pl.strip()}.m3u'
-                )
-            track_count = len(open(m3u_file, 'r').readlines()) \
+            m3u_file = self._m3u(pl)
+            track_count = sum(not line.startswith('#') for line in open(m3u_file)) \
                 if os.path.isfile(m3u_file) \
                 else '\033[1;31mmissing\033[0m'
             # hyperlinked_name = f'\x1b]8;;{url}\x1b\\\033[1m{pl:.35}\033[0m\x1b]8;;\x1b\\'
@@ -145,6 +144,55 @@ class Pyrate(object):
 
         self._save_metadata()
 
+    def rekordbox(self, *names):
+        '''
+        mirror tracked playlists into rekordbox's 'spotify' or 'soundcloud' folder (quit rekordbox first)
+        '''
+        from pyrekordbox import MasterDatabase
+        from pyrekordbox.utils import get_rekordbox_pid
+        if get_rekordbox_pid():
+            raise SystemExit('quit rekordbox first')
+
+        rekordbox_dir = os.path.dirname(self.REKORDBOX_DB)
+        backup = f'{rekordbox_dir}/pyrate-backup/{time.strftime("%Y%m%d-%H%M%S")}'
+        os.makedirs(backup)
+        for file in glob.glob(f'{rekordbox_dir}/master.db*') + [f'{rekordbox_dir}/masterPlaylists6.xml']:
+            shutil.copy2(file, backup)
+        print(f'backup: {backup}')
+
+        db = MasterDatabase(path=self.REKORDBOX_DB)
+        folders = {}   # { 'spotify' or 'soundcloud': its rekordbox folder }
+
+        for name in names:
+            source = self.SOUNDCLOUD_FOLDER if self._is_soundcloud(name) else self.REKORDBOX_FOLDER
+            if source not in folders:
+                folders[source] = db.get_playlist(Name=source, Attribute=1).first() or db.create_playlist_folder(source)
+            folder = folders[source]
+            root = os.path.dirname(self._m3u(name))
+            with open(self._m3u(name)) as m3u:
+                paths = [os.path.join(root, line.strip()) for line in m3u if line.strip() and not line.startswith('#')]
+
+            playlist = db.get_playlist(Name=name, ParentID=folder.ID).first() \
+                or db.create_playlist(name, parent=folder)
+            for song in list(playlist.Songs):
+                db.remove_from_playlist(playlist, song)
+            for path in filter(os.path.isfile, paths):
+                content = db.get_content(FolderPath=path).first() or self._add_to_rekordbox(db, path)
+                db.add_to_playlist(playlist, content)
+            print(f'{name}: {len(playlist.Songs)} of {len(paths)} tracks')
+
+        db.commit()
+
+    def _add_to_rekordbox(self, db, path):
+        ''' add a track to the rekordbox collection, with the tags its own import would read '''
+        tags = mutagen.File(path, easy=True)
+        tag = lambda key: (tags.get(key) or [None])[0]
+        title = tag('title') or os.path.splitext(os.path.basename(path))[0]
+        content = db.add_content(path, Title=title, Length=round(tags.info.length))
+        if tag('artist'):
+            content.ArtistID = (db.get_artist(Name=tag('artist')).first() or db.add_artist(tag('artist'))).ID
+        return content
+
     def reset(self):
         ''' reset the library path '''
 
@@ -204,7 +252,7 @@ class Pyrate(object):
 
         # the above causes rate limit atm for some reason, but there is also no more need 
         # for a sync save file (or at least, duplicates aren't downloaded)
-        cmd = ['spotdl', url, '--format', 'm4a', '--m3u', f'{name}.m3u']
+        cmd = ['spotdl', 'download', url, '--format', 'm4a', '--m3u', f'{name}.m3u', '--use-official-api', '--add-unavailable', '--print-errors', '--lyrics']
 
         p = subprocess.Popen(cmd)
         if block: p.wait()
@@ -218,53 +266,67 @@ class Pyrate(object):
 
     def _get_soundcloud_playlist(self, url):
         '''
-        get a soundcloud song and add to 'soundcloud' playlist
+        get a soundcloud set or a user's likes, with an m3u in soundcloud's order (likes: newest first)
         '''
-        if '?' in url:
-            url = url.split('?')[0]
-
-        name = os.path.join(
-            os.path.basename(os.path.dirname(os.path.dirname(url))), # user
-            os.path.basename(url)   # playlist name
-        )
+        url = url.split('?')[0].rstrip('/')
+        user, *_, name = url.split('soundcloud.com/')[1].split('/')
+        name = f'{user}/{name}'
 
         # add playlist to metadata
         self._metadata.playlists[name] = url
         self._save_metadata()
 
-        playlist_path = os.path.join(
-            self._metadata.library_path, 
-            self.SOUNDCLOUD_FOLDER, 
-            name,
-        )
+        playlist_path = os.path.dirname(self._m3u(name))
         os.makedirs(playlist_path, exist_ok=True)
         os.chdir(playlist_path)
-        m3u_file = f'{os.path.basename(name)}.m3u'
 
-        cmd = [
-            'yt-dlp',
-            '-o', '%(title)s.mp3',
-            '--print-to-file', '%(title)s.mp3', m3u_file,
-            '--download-archive', 'downloaded.txt',
-            '-x', '--audio-format', 'mp3',
-            url,
-        ]
-        subprocess.run(cmd)
+        # one line per entry: a track has the ie_key 'Soundcloud', a liked set has none
+        listing = subprocess.run(
+            ['yt-dlp', '--flat-playlist', '--print', '%(ie_key)s %(id)s %(url)s', url],
+            stdout=subprocess.PIPE, text=True, check=True,
+        ).stdout.splitlines()
+        tracks = dict(line.split()[1:] for line in listing if line.startswith('Soundcloud '))   # { id: url }
+        for line in listing:
+            if not line.startswith('Soundcloud '):
+                print(f'skipping a set among the tracks: {line.split()[-1]}')
 
-        # need to cleanup files and m3u file 
-        # regex = r"[^a-zA-Z0-9()\[\] \*-.]"
-        regex = r'[\/*＊]'
-        for filename in os.listdir(playlist_path):
-            if filename.endswith('flac'):
-                new_name = re.sub(regex, '', filename)
-                new_path = os.path.join(playlist_path, new_name)
-                os.rename(f'{playlist_path}/{filename}', new_path)
+        def on_disk() -> dict:
+            ''' { track id: file name }, from the id that ends every file name '''
+            files = (re.search(r' \[(\d+)\]\.(m4a|mp3)$', file) for file in os.listdir('.'))
+            return {file[1]: file.string for file in files if file}
 
-        with open(m3u_file) as f:
-            m3u_contents = ''.join(re.sub(regex, '', line) for line in f.readlines())
+        # the files are the record of what is downloaded, so a failed track is retried on the next run.
+        # previews (30 seconds of a track that needs a login) and opus (rekordbox cannot read it) are refused.
+        new = [track_url for track_id, track_url in tracks.items() if track_id not in on_disk()]
+        if new:
+            subprocess.run([
+                'yt-dlp',
+                '-o', '%(title)s [%(id)s].%(ext)s',
+                '-f', 'ba[format_id!*=preview][acodec!=opus]',
+                '-x', '--embed-metadata', '--embed-thumbnail',
+                *new,
+            ])
 
-        with open(m3u_file, 'w') as f:
-            f.write(m3u_contents)
+        files = on_disk()
+        with open(self._m3u(name), 'w') as m3u:
+            m3u.writelines(f'{files[track_id]}\n' for track_id in tracks if track_id in files)
+
+        missing = [track_url for track_id, track_url in tracks.items() if track_id not in files]
+        print(f'{name}: {len(tracks) - len(missing)} of {len(tracks)} tracks on disk, {len(new) - len(missing)} new')
+        for track_url in missing:
+            print(f'    missing: {track_url}')
+
+    def _is_soundcloud(self, name):
+        ''' soundcloud playlists are named <user>/<set> or <user>/likes, and are told apart by their url '''
+        return 'soundcloud' in self._metadata.playlists.get(name, '')
+
+    def _m3u(self, name):
+        ''' the m3u of a playlist: playlists/<name>/<name>.m3u, or soundcloud/<user>/<set>/<set>.m3u '''
+        return os.path.join(
+            self._metadata.library_path,
+            self.SOUNDCLOUD_FOLDER if self._is_soundcloud(name) else self.PLAYLISTS_FOLDER,
+            name, f'{os.path.basename(name)}.m3u',
+        )
 
     def _load_metadata(self, metadata_path):
 
