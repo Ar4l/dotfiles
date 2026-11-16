@@ -5,9 +5,13 @@ Usage: shot.py <base-url> <out.png> <desktop|phone> [step ...]
 Steps run in order before the screenshot:
   text:<visible text>     click the first element with this text
   label:<aria label>      click the first element with this accessibility label
+  hover:<aria label>      move the pointer over the first element with this label
+  count:<aria label>      print how many elements carry this label
   xy:<x>,<y>              click at viewport coordinates
   scroll:<pixels>         wheel-scroll at the centre of the content pane
   wait:<ms>               pause
+  goto:<path>             open this path of the base URL
+  back                    go back one page
   url                     print the current URL
 
 Prints the page URL and console errors; never prints storage or cookies.
@@ -71,6 +75,9 @@ def main() -> int:
                     loc = page.get_by_label(arg, exact=True).first
                     loc.tap(timeout=5000) if vp["mobile"] else loc.click(timeout=5000)
                     page.wait_for_timeout(1500)
+                elif kind == "hover":
+                    page.get_by_label(arg, exact=True).first.hover(timeout=5000)
+                    page.wait_for_timeout(800)
                 elif kind == "xy":
                     x, y = (float(v) for v in arg.split(","))
                     page.touchscreen.tap(x, y) if vp["mobile"] else page.mouse.click(x, y)
