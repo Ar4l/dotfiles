@@ -1,6 +1,7 @@
 import { type Page, expect, test } from "@playwright/test";
 
 // The fixture from run.sh: agents 1 to 4 in workspace alpha, agents 5 to 7 in workspace beta.
+// Agent 2 takes ten seconds to answer a prompt; the others answer at once.
 const [alpha, beta] = (process.env.MRU_WORKSPACES ?? "").split(",");
 
 /** A place the switcher can land on: an agent by number, or beta's terminal tab. */
@@ -9,6 +10,10 @@ type Stop = number | "terminal";
 const SELECTED = '[data-testid^="workspace-tab-"][aria-selected="true"]';
 const workspaceOf = (stop: Stop) => (stop === "terminal" || stop > 4 ? beta : alpha);
 const titleOf = (stop: Stop) => (stop === "terminal" ? /./ : `Agent ${stop}`);
+/** Project and workspace name, as the overlay labels an entry. */
+const labelOf = (stop: Stop) => (workspaceOf(stop) === alpha ? "alpha / main" : "beta / main");
+const agentTab = (page: Page, agent: number) =>
+  page.locator(`[data-testid^="workspace-tab-agent_"][aria-label="Agent ${agent}"]`).filter({ visible: true });
 
 /** What the plugin's list should hold, most recent first. Every step checks the app against it. */
 let mru: Stop[] = [];
@@ -53,8 +58,27 @@ async function openWorkspace(page: Page, workspace: string): Promise<void> {
 
 async function clickAgent(page: Page, agent: number): Promise<void> {
   await openWorkspace(page, workspaceOf(agent));
-  await page.locator(`[data-testid^="workspace-tab-agent_"][aria-label="Agent ${agent}"]`).filter({ visible: true }).click();
+  await agentTab(page, agent).click();
   await arrive(page, agent);
+}
+
+/** Holds Ctrl and taps Tab until the overlay is up, with the first entry behind the tab on screen selected. */
+async function openOverlay(page: Page): Promise<void> {
+  await page.keyboard.down("Control");
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("mru-switcher")).toBeVisible();
+}
+
+/** The status the overlay shows for an agent, read from its host, without switching tabs. */
+async function statusOf(page: Page, agent: number): Promise<string> {
+  await openOverlay(page);
+  // The overlay opens with the status it knew last and repaints when the host answers.
+  await page.waitForTimeout(300);
+  const row = page.getByTestId("mru-switcher").locator("> div").filter({ hasText: `Agent ${agent}` });
+  const status = `${await row.getAttribute("data-status")}: ${await row.locator('[data-part="status"]').textContent()}`;
+  await page.keyboard.press("Escape");
+  await page.keyboard.up("Control");
+  return status;
 }
 
 /** Holds Ctrl, taps Tab `tabs` times, runs `whileHeld`, releases, and asserts where that lands. */
@@ -89,8 +113,10 @@ test("Ctrl+Tab switches between recently viewed tabs", async ({ page }) => {
 
   await test.step("2. walks the list while Ctrl is held", async () => {
     await ctrlTab(page, 4, async () => {
-      await expect(overlay.locator("> div")).toHaveText(mru.map(titleOf));
-      await expect(overlay.locator('> div[aria-selected="true"]')).toHaveText("Agent 3");
+      await expect(overlay.locator('[data-part="title"]')).toHaveText(mru.map(titleOf));
+      await expect(overlay.locator('[data-part="workspace"]')).toHaveText(mru.map(labelOf));
+      await expect(overlay.locator('> div[data-status="done"]')).toHaveCount(7);
+      await expect(overlay.locator('> div[aria-selected="true"] [data-part="title"]')).toHaveText("Agent 3");
       const box = await overlay.boundingBox();
       expect(box && box.x >= 0 && box.y >= 0 && box.x + box.width <= 1400 && box.y + box.height <= 900).toBe(true);
     });
@@ -134,9 +160,11 @@ test("Ctrl+Tab switches between recently viewed tabs", async ({ page }) => {
 
   await test.step("5. ten jumps leave floating panels in place", async () => {
     for (let i = 0; i < 10; i++) await ctrlTab(page, 3);
-    // Navigation outside the app's own helper can stack hidden workspace decks, which
-    // misplaces composer popovers (upstream docs/expo-router.md).
-    await expect(page.locator('[data-testid^="workspace-deck-entry-"]')).toHaveCount(1);
+    // A jump clicks the app's own controls, so both workspaces stay mounted and one is on
+    // screen. The URL route would have unmounted the other.
+    const decks = page.locator('[data-testid^="workspace-deck-entry-"]');
+    await expect(decks).toHaveCount(2);
+    await expect(decks.filter({ visible: true })).toHaveCount(1);
     await page.getByTestId("combined-model-selector").filter({ visible: true }).click();
     const picker = page.getByTestId("combobox-desktop-container");
     await expect(picker).toBeVisible();
@@ -156,6 +184,69 @@ test("Ctrl+Tab switches between recently viewed tabs", async ({ page }) => {
     await expect(page.locator(SELECTED).filter({ visible: true })).toHaveAttribute("aria-label", titleOf(before));
     await ctrlTab(page, 1);
     expect(mru[1]).toBe(before);
+  });
+
+  await test.step("7. the pointer selects a row, and a press jumps to it", async () => {
+    let target = mru[3];
+    await openOverlay(page);
+    let box = (await overlay.locator("> div").nth(3).boundingBox())!;
+    await page.mouse.move(box.x + 50, box.y + box.height / 2);
+    await page.mouse.move(box.x + 60, box.y + box.height / 2);
+    await expect(overlay.locator('> div[aria-selected="true"]')).toHaveAttribute("data-index", "3");
+    await page.keyboard.up("Control");
+    await arrive(page, target);
+
+    target = mru[2];
+    await openOverlay(page);
+    box = (await overlay.locator("> div").nth(2).boundingBox())!;
+    await page.mouse.move(box.x + 50, box.y + box.height / 2);
+    await page.mouse.down();
+    await expect(overlay).toHaveCount(0);
+    await page.mouse.up();
+    await page.keyboard.up("Control");
+    await arrive(page, target);
+  });
+
+  await test.step("8. a closed tab reopens", async () => {
+    await clickAgent(page, 3);
+    await clickAgent(page, 4);
+    const tab = agentTab(page, 3);
+    const id = (await tab.getAttribute("data-testid"))!.slice("workspace-tab-agent_".length);
+    await tab.hover();
+    await page.getByTestId(`workspace-agent-close-${id}`).filter({ visible: true }).click();
+    await expect(tab).toHaveCount(0);
+    await ctrlTab(page, 1);
+    expect(mru[0]).toBe(3);
+  });
+
+  await test.step("9. the list shows what each agent is doing", async () => {
+    await clickAgent(page, 2);
+    const composer = page.getByTestId("message-input-root").filter({ visible: true }).locator("textarea");
+    await composer.fill("go");
+    await composer.press("Enter");
+    await clickAgent(page, 5);
+    await expect.poll(() => statusOf(page, 2)).toBe("running: Working");
+    // It finishes while another tab is on screen, which leaves it unread.
+    await expect.poll(() => statusOf(page, 2), { timeout: 30_000 }).toBe("attention: Ready to review");
+  });
+
+  await test.step("10. a jump leaves the other agents of a workspace unread", async () => {
+    const decks = page.locator('[data-testid^="workspace-deck-entry-"]');
+    // Opening alpha from its sidebar row would show Agent 2, its unread agent, and mark it read.
+    await clickAgent(page, 6);
+    await ctrlTab(page, mru.indexOf(4));
+    await expect(decks).toHaveCount(2); // through the clicks, not the URL
+    expect(await statusOf(page, 2)).toBe("attention: Ready to review");
+
+    // After a reload alpha is not mounted, so its tab cannot be clicked together with its row.
+    await ctrlTab(page, 1);
+    expect(mru[0]).toBe(6);
+    await page.reload();
+    await pluginStarted(page);
+    await expect(agentTab(page, 6)).toHaveAttribute("aria-selected", "true");
+    await ctrlTab(page, 1);
+    expect(mru[0]).toBe(4);
+    expect(await statusOf(page, 2)).toBe("attention: Ready to review");
   });
 
   expect(errors).toEqual([]);

@@ -57,8 +57,10 @@ done
 paseo --home "$home" plugin ls | grep -q "mru-switcher  *running" || { echo "The plugin did not start"; exit 1; }
 
 # Two workspaces: agents 1 to 4 in alpha, 5 to 7 in beta. The mock provider spends no tokens.
+# Agent 2 takes ten seconds per reply, so the spec can catch it at work.
 workspaces=()
 agent=0
+slow=
 for fixture in alpha:4 beta:3; do
   repo="$home/repos/${fixture%:*}"
   mkdir -p "$repo"
@@ -69,10 +71,16 @@ for fixture in alpha:4 beta:3; do
   workspaces+=("$workspace")
   for _ in $(seq "${fixture#*:}"); do
     agent=$((agent + 1))
-    paseo --home "$home" run --provider mock --mode load-test --model e2e-fast-stream \
-      --workspace "$workspace" --title "Agent $agent" -q hello >/dev/null
+    if [[ $agent == 2 ]]; then
+      slow=$(paseo --home "$home" run --provider mock --mode load-test --model ten-second-stream \
+        --workspace "$workspace" --title "Agent $agent" --no-wait -q hello)
+    else
+      paseo --home "$home" run --provider mock --mode load-test --model e2e-fast-stream \
+        --workspace "$workspace" --title "Agent $agent" -q hello >/dev/null
+    fi
   done
 done
+paseo --home "$home" wait "$slow" --timeout 60 >/dev/null
 
 cd "$plugin"
 [[ -d node_modules/@playwright/test ]] || npm install

@@ -1,8 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CAP, type Entry, type Key, type Selection, drop, entryFor, placeOf, step, visit, workspaceKey } from "./mru.ts";
+import {
+  CAP,
+  type Entry,
+  type Key,
+  type Selection,
+  drop,
+  entryFor,
+  isEntry,
+  placeOf,
+  statusOf,
+  step,
+  visit,
+  workspaceKey,
+} from "./mru.ts";
 
-const entry = (n: number): Entry => ({ key: `agent:srv/${n}`, path: `/h/srv/agent/${n}`, title: `Agent ${n}` });
+const entry = (n: number): Entry => entryFor({ serverId: "srv", workspaceId: "wks_1" }, `agent_${n}`, `Agent ${n}`);
 
 /** Feeds keys to a closed overlay listing `count` entries and returns the index it jumps to. */
 function press(keys: Key[], count = 7, start = 1): number | null {
@@ -18,15 +31,27 @@ const tabs = (n: number): Key[] => Array<Key>(n).fill("tab");
 test("an agent tab is tracked by its stable agent URL", () => {
   const place = placeOf("/h/srv/workspace/wks_1");
   assert.deepEqual(place, { serverId: "srv", workspaceId: "wks_1" });
-  assert.deepEqual(entryFor(place!, "agent_abc", "Fix bug"), {
+  assert.deepEqual(entryFor(place!, "agent_abc", "Fix bug", "dotfiles / main"), {
     key: "agent:srv/abc",
     path: "/h/srv/agent/abc",
     title: "Fix bug",
+    serverId: "srv",
+    workspaceId: "wks_1",
+    agentId: "abc",
+    workspace: "dotfiles / main",
   });
 });
 
 test("any other tab is tracked as its workspace", () => {
-  const expected = { key: "ws:srv/wks_1", path: "/h/srv/workspace/wks_1", title: "zsh" };
+  const expected = {
+    key: "ws:srv/wks_1",
+    path: "/h/srv/workspace/wks_1",
+    title: "zsh",
+    serverId: "srv",
+    workspaceId: "wks_1",
+    agentId: null,
+    workspace: "",
+  };
   assert.deepEqual(entryFor(placeOf("/h/srv/workspace/wks_1")!, "terminal_9", "zsh"), expected);
   assert.deepEqual(entryFor(placeOf("/h/srv/workspace/wks_1/")!, null, "zsh"), expected);
 });
@@ -94,4 +119,24 @@ test("Escape and blur select nothing", () => {
 test("a failed jump drops the entry", () => {
   const list = [1, 2, 3].reduce<Entry[]>((acc, n) => visit(acc, entry(n)), []);
   assert.deepEqual(drop(list, "agent:srv/2").map((e) => e.key), ["agent:srv/3", "agent:srv/1"]);
+});
+
+test("entries stored by an older version are not loaded", () => {
+  assert.equal(isEntry(entry(1)), true);
+  assert.equal(isEntry(entryFor(placeOf("/h/srv/workspace/wks_1")!, "terminal_9", "zsh")), true);
+  assert.equal(isEntry({ key: "agent:srv/1", path: "/h/srv/agent/1", title: "Agent 1" }), false);
+  assert.equal(isEntry(null), false);
+});
+
+test("an agent's status follows the app's own rules, most urgent first", () => {
+  const idle = { status: "idle", requiresAttention: false, attentionReason: null, pendingPermissions: [] };
+  assert.equal(statusOf(idle), "done");
+  assert.equal(statusOf({ ...idle, requiresAttention: true, attentionReason: "finished" }), "attention");
+  assert.equal(statusOf({ ...idle, status: "running" }), "running");
+  assert.equal(statusOf({ ...idle, status: "running", requiresAttention: true }), "running");
+  assert.equal(statusOf({ ...idle, status: "error" }), "failed");
+  assert.equal(statusOf({ ...idle, requiresAttention: true, attentionReason: "error" }), "failed");
+  assert.equal(statusOf({ ...idle, status: "running", pendingPermissions: [{}] }), "needs_input");
+  assert.equal(statusOf({ ...idle, status: "error", attentionReason: "permission" }), "needs_input");
+  assert.equal(statusOf({ status: "idle" }), "done");
 });

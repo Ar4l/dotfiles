@@ -1,11 +1,17 @@
-// Pure logic for the switcher: the recency list and the key state machine. No globals.
+// Pure logic for the switcher: the recency list, the key state machine and agent status. No globals.
 
 export interface Entry {
   /** `agent:<serverId>/<agentId>` or `ws:<serverId>/<workspaceId>`. */
   key: string;
-  /** Where a jump goes: the stable agent URL or the workspace pathname. */
+  /** The URL that opens the entry when its tab cannot be clicked: the agent URL or the workspace pathname. */
   path: string;
   title: string;
+  serverId: string;
+  workspaceId: string;
+  /** Null for the entry that stands for a whole workspace. */
+  agentId: string | null;
+  /** Project and workspace names as the workspace header shows them, e.g. `dotfiles / main`. */
+  workspace: string;
 }
 
 /** Entries kept in storage. */
@@ -34,7 +40,7 @@ export function workspaceKey(place: Place): string {
 }
 
 /** The entry for a workspace and its selected tab. A non-agent tab is tracked as its workspace. */
-export function entryFor(place: Place, tabId: string | null, title: string): Entry {
+export function entryFor(place: Place, tabId: string | null, title: string, workspace = ""): Entry {
   const host = `/h/${encodeURIComponent(place.serverId)}`;
   if (tabId?.startsWith(AGENT_TAB)) {
     const agentId = tabId.slice(AGENT_TAB.length);
@@ -42,13 +48,33 @@ export function entryFor(place: Place, tabId: string | null, title: string): Ent
       key: `agent:${place.serverId}/${agentId}`,
       path: `${host}/agent/${encodeURIComponent(agentId)}`,
       title,
+      ...place,
+      agentId,
+      workspace,
     };
   }
   return {
     key: workspaceKey(place),
     path: `${host}/workspace/${encodeURIComponent(place.workspaceId)}`,
     title,
+    ...place,
+    agentId: null,
+    workspace,
   };
+}
+
+/** Whether `value` is an entry this version stored. */
+export function isEntry(value: unknown): value is Entry {
+  const entry = value as Partial<Record<keyof Entry, unknown>> | null;
+  return (
+    typeof entry?.key === "string" &&
+    typeof entry.path === "string" &&
+    typeof entry.title === "string" &&
+    typeof entry.serverId === "string" &&
+    typeof entry.workspaceId === "string" &&
+    (entry.agentId === null || typeof entry.agentId === "string") &&
+    typeof entry.workspace === "string"
+  );
 }
 
 /** Moves `entry` to the front and keeps at most `cap` entries. */
@@ -82,4 +108,23 @@ export function step(selection: Selection, key: Key, count: number, start = 1): 
     return { selection: back ? count - 1 : start % count, jump: null };
   }
   return { selection: (selection + (back ? count - 1 : 1)) % count, jump: null };
+}
+
+/** The app's five agent states, in the order its sidebar ranks them. */
+export type Status = "needs_input" | "failed" | "running" | "attention" | "done";
+
+/** The fields of an agent snapshot that decide its status. */
+export interface AgentState {
+  status: string;
+  requiresAttention?: boolean;
+  attentionReason?: string | null;
+  pendingPermissions?: readonly unknown[];
+}
+
+/** Same rules as the app's own status dots (`deriveAgentStateBucket` in @getpaseo/protocol). */
+export function statusOf(agent: AgentState): Status {
+  if ((agent.pendingPermissions?.length ?? 0) > 0 || agent.attentionReason === "permission") return "needs_input";
+  if (agent.status === "error" || agent.attentionReason === "error") return "failed";
+  if (agent.status === "running") return "running";
+  return agent.requiresAttention ? "attention" : "done";
 }

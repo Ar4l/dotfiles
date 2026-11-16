@@ -4,7 +4,7 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: ".",
   workers: 1,
-  timeout: 120_000,
+  timeout: 180_000,
   reporter: [["list", { printSteps: true }]],
   outputDir: process.env.MRU_OUTPUT,
   use: {
