@@ -1,0 +1,7 @@
+{
+  "id": "ticket-runs",
+  "name": "Ticket runs",
+  "requirements": {
+    "paseo": ">=0.15.4"
+  }
+}

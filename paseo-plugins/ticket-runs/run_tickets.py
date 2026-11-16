@@ -25,6 +25,10 @@ import os
 import re
 import subprocess
 import sys
+
+if sys.version_info < (3, 11):
+    sys.exit("run_tickets.py needs Python 3.11 or newer")
+
 import tomllib
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
