@@ -1,0 +1,10 @@
+[Unit]
+Description=Ticket runs: a check every 10 minutes
+
+[Timer]
+# on the clock (:00, :10, ...), which is what the screen shows as the next check
+OnCalendar=*:0/10
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
