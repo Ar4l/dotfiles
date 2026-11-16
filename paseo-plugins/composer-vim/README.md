@@ -1,6 +1,7 @@
-# Vim keys in the composer for Paseo
+# Vim keys in the composer and the thread for Paseo
 
-The box you write a message in takes Vim's keys: insert, normal and visual mode.
+The box you write a message in takes Vim's keys: insert, normal and visual mode. From normal
+mode Ctrl+K moves the keys to the agent thread above it, which Vim reads and searches.
 
 - A composer starts in insert mode and types as before. Escape or Ctrl+[ enters normal mode.
 - A label left of the context window meter names the mode: green INSERT, blue NORMAL, purple VISUAL.
@@ -10,7 +11,7 @@ The box you write a message in takes Vim's keys: insert, normal and visual mode.
 - Each composer keeps its own mode, undo list and place.
 
 The command-center item "Vim keys in the composer: turn off or on" switches the keys for
-the window. The switch is `localStorage["composer-vim:off"]`.
+the window, the thread's too. The switch is `localStorage["composer-vim:off"]`.
 
 Paseo has a setting for the file editor only: Settings → Editor → Vim keybindings. It has
 no setting, issue or pull request for the composer as of 2026-11-16. The discussion
@@ -19,9 +20,9 @@ is about moving between panes, and leaves the composer out.
 
 ## Escape and a running agent
 
-Paseo binds Escape to Interrupt agent. With this plugin Escape in the composer is Vim's in
-every mode and never interrupts. The stop button still does, and so does Escape while the
-focus is outside the composer or the keys are off. To free Escape everywhere, clear
+Paseo binds Escape to Interrupt agent. With this plugin Escape in the composer and in the
+thread is Vim's in every mode and never interrupts. The stop button still does, and so does
+Escape while the focus is elsewhere or the keys are off. To free Escape everywhere, clear
 Interrupt agent in Settings → Shortcuts.
 
 ## Keys
@@ -32,6 +33,7 @@ below and nothing else, and reads no vimrc.
 | Kind | Keys |
 | --- | --- |
 | Motions | `h j k l`, `w b e W B E`, `0 ^ $`, `gg G`, `f F t T ; ,`, `%`, `{ }`, the arrows, Home, End |
+| Search | `/ ? n N * #`, also after an operator and in visual mode |
 | Operators | `d c y` with a motion or a text object, `dd cc yy`, `D C Y`, `x X s S` |
 | Text objects | `iw aw iW aW`, `i" a" i' a'` and backticks, `i( a( ib`, `i[ a[`, `i{ a{ iB`, `i< a<`, `ip ap` |
 | Insert | `i a I A o O` |
@@ -46,6 +48,49 @@ A count works before a command, a motion and an operator: `3w`, `d2w`, `2dd`.
 - While the app lists commands or files, the arrows and Enter are the list's. Escape leaves insert mode and keeps the text.
 - A click moves the block. A drag, or Shift with an arrow, starts visual mode.
 - Cmd+V in normal mode lands before the block.
+- A search in the composer moves the block and draws no matches. Enter ends the pattern and sends nothing.
+
+## The thread
+
+Ctrl+K in normal mode moves the keys to the thread above the composer, as `<C-k>` moves to
+the window above in the Vim config. The cursor is the same blue block, and the label by the
+context window meter keeps naming the mode.
+
+| Kind | Keys |
+| --- | --- |
+| Leave | Ctrl+J returns to the composer. `i a I A o O` return and start to insert. A click leaves too |
+| Move | `h l`, `w b e W B E`, `0 ^ $`, `gg G`, `f F t T ; ,`, `%`, and `j k` by the lines of the page |
+| Between messages | `{ }` move to the next paragraph, list, tool call or message |
+| Scroll | Ctrl+D, Ctrl+U, Ctrl+F, Ctrl+B, Ctrl+E, Ctrl+Y, `zt zz zb`, `H M L` |
+| Select and yank | `v V`, `o`, the text objects, `y` with a motion, `yy`, `Y`, and Cmd+C in visual mode |
+| Search | `/ ? n N * #` |
+| Open | Enter presses what the cursor is on: "View turn details", a tool call, a link |
+
+- The text is all the thread shows, in reading order: messages, their times, tool calls, the line under a turn.
+- A paragraph, a list item and a table cell are one line each, however often the page wraps them.
+- A key that would change the text does nothing. A yank lands on the system clipboard, where the composer's `p` finds it.
+- `scrolloff` is 3 lines, as in the config.
+- A cursor that moves up stops the app from following a reply as it grows. `G` follows again.
+- `gg` goes to the top of what the app has loaded. The app then fetches the messages before it.
+
+### Search
+
+- `ignorecase` with `smartcase`, as in the config: `/zebra` finds `Zebra`, `/Zebra` does not find `zebra`.
+- Matches are highlighted until Escape, and the view moves to the match while the pattern is typed.
+- A pattern is Vim's, turned into a JavaScript one: `\( \) \| \+ \? \{ \}`, `\< \>`, `\v`, `\c`, `\C`. A pattern JavaScript rejects is searched as plain text.
+- The label says when a search wrapped or found nothing.
+
+A search covers the whole thread, which the page does not hold. The app loads the latest
+messages only, and of a thread over 100 rows it draws the rows near the view. So when the
+next match is not on the page, the search reads on a screen at a time and has the app fetch
+older messages. The label says "searching older messages" meanwhile, and any key stops it.
+In a thread of 70 turns each step to the next match took under a second, and "Pattern not
+found" took three.
+
+- Folded text is not searched: a turn behind "View turn details", the body of a tool call. Enter unfolds it.
+- A search downward that wraps starts again at the top of what is loaded, not at the thread's first message.
+- A count applies to matches on the page: `3n` past the page finds the next one.
+- Cmd+F is still the app's Find, for plain text in user and assistant messages.
 
 ## What it takes from the Vim config
 
@@ -55,6 +100,9 @@ These follow `files/.vim/common.vim` and the Neovim config, where they apply to 
 | --- | --- |
 | `clipboard^=unnamed,unnamedplus` | A yank or a delete lands on the system clipboard, and `p` puts what the clipboard holds |
 | `j` and `k` as `gj` and `gk` without a count | They move by the lines the composer wraps; with a count, by lines of text |
+| `<C-h> <C-j> <C-k> <C-l>` move between windows | Ctrl+K moves to the thread and Ctrl+J back to the composer |
+| `incsearch`, `hlsearch`, `ignorecase`, `smartcase`, `scrolloff=3` | The thread's search and scrolling follow them |
+| Escape clears the matches (Neovim), as vim-cool does | Escape in normal mode hides the thread's matches |
 | Space is the leader | Space moves nowhere |
 | Shift+Enter is `O<Esc>j` | An empty line above, the cursor stays on its line |
 | vim-surround, with vim-repeat | `ds"`, `cs"'`, `ysiw)`, `yss]`, visual `S`, and `.` repeats them |
@@ -78,9 +126,10 @@ no `npm install`. It loads plugins only when `pluginsEnabled` is `true` in
 
 ## App internals it leans on
 
-Paseo 0.15.4 gives plugins no key bindings and no access to the composer's text, so
-`client/web.ts` listens for keys on the window and edits the composer's `<textarea>`. Rerun
-`e2e/run.sh` after every Paseo upgrade. It fails when one of these changes.
+Paseo 0.15.4 gives plugins no key bindings and no access to the composer's text or the
+thread's. So `client/web.ts` listens for keys on the window and edits the composer's
+`<textarea>`, and `client/thread.ts` reads the thread's text off the page. Rerun `e2e/run.sh`
+after every Paseo upgrade. It fails when one of these changes.
 
 | Internal | Used for |
 | --- | --- |
@@ -90,9 +139,17 @@ Paseo 0.15.4 gives plugins no key bindings and no access to the composer's text,
 | `context-window-meter` | Placing the mode's label. Without it the label sits above the composer's right corner |
 | `composer-autocomplete-popover` | Leaving the arrows to the list of commands or files |
 | The composer empties its text after a send | Returning to insert mode |
+| `agent-chat-scroll` inside `workspace-pane-*` | Finding the thread that belongs to a composer, and scrolling it |
+| The app leaves plain keys alone while a text field has the focus (`keyboard/focus-scope.ts`) | In the thread the focus is in a hidden read-only field, so Escape, `?` and Space are not the app's |
+| `data-history-row-id` on a row, and `data-index` on a row drawn only near the view | Where a message ends, for `{ }`. Knowing that a match may lie past rows that are not drawn |
+| `load-older-history-spinner` | Waiting for the older messages a search asked for |
+| The app stops following a reply after a `wheel` event upward on the thread | A scroll upward comes with such an event, or the app scrolls back down |
+| A button around "View turn details" and around a tool call | Enter |
 
 The browser does the rest: `caret-shape: block` draws the block on an empty line,
-`Selection.modify` finds the wrapped lines, and `navigator.clipboard` is the clipboard.
+`Selection.modify` finds the wrapped lines, and `navigator.clipboard` is the clipboard. The
+thread's cursor, selection and matches are CSS highlights (`CSS.highlights`), which colour
+text and leave the page as it is.
 Drop the plugin when Paseo ships Vim keys for the composer.
 
 ## Tests
@@ -105,12 +162,15 @@ e2e/run.sh    # the released app in headless Chromium, about a minute
 ```
 
 `e2e/run.sh` boots a throwaway daemon in a temp home on a free port, installs the plugin,
-starts two agents and runs `e2e/keys.spec.ts`. It never touches `~/.paseo` or the live
+starts three agents and runs `e2e/keys.spec.ts`. It never touches `~/.paseo` or the live
 daemon. It uses Paseo.app when it is installed and the `paseo` on the path otherwise, and
 needs Playwright's Chromium (`npx playwright install chromium`).
 
 - The agents use the mock provider, which costs no tokens and exists only in development mode.
 - The agent Slow takes ten seconds per reply, so the spec can press Escape while it works.
+- The agent Pages has five turns of thirty messages. The app loads its last turns only, so the spec's search has to fetch the first.
+- The spec's browser says it is a Mac, because the app binds Ctrl+K off a Mac.
+- A thread long enough for the app to draw it in part was searched by hand on 2026-11-16: 70 turns, up and down through every match. The spec has no such thread, as it takes three minutes to build.
 - The spec ran against the nix build of Paseo 0.15.4 on Linux on 2026-11-16, in Chromium 151, and not yet against Paseo.app.
 - That build's web UI crashes at the root, so the spec rewrites one reference in the bundle the browser receives.
 - The spec grants itself the clipboard. Paseo.app decides on its own whether `p` may read it.
@@ -119,12 +179,20 @@ needs Playwright's Chromium (`npx playwright install chromium`).
 ## Not covered
 
 - Paseo.app itself and physical key presses: check Escape, `dw`, `p` after a copy elsewhere, and Enter by hand after an install or an upgrade.
-- The rest of the config: mappings on the leader, windows and buffers, and plugins for files, Git, completion and search.
-- Search (`/ ? n *`), `:` commands, macros, marks, named registers, `>` and `<`, `gu`, `gU`, `g~`, `ge`, block-wise visual mode, replace mode.
+- The rest of the config: mappings on the leader, `<C-h>` and `<C-l>`, buffers, and plugins for files, Git, completion and search.
+- `:` commands, macros, marks, named registers, `>` and `<`, `gu`, `gU`, `g~`, `ge`, block-wise visual mode, replace mode.
+- A search's offset (`/foo/e`), its history, and Vim's pattern atoms beyond those listed above.
+- In the thread: a click or a drag does not move the cursor, it leaves the thread.
+- In the thread: the cursor is not drawn on an empty line, where visual mode can put it after `}`.
+- In the thread: a reply with a fenced code block or a table. The mock agent writes none, so the rig has not shown one.
+- The thread of a terminal, a file or a browser tab: only an agent's thread is read.
+- Windows and Linux desktops: there the app binds Ctrl+K, Ctrl+D, Ctrl+B, Ctrl+E and Ctrl+F, and those keys stay the app's.
+- A browser without the CSS Custom Highlight API: the thread's keys work and nothing is drawn.
+- Paseo 0.16.0, released on 2026-11-16.
 - vim-surround's tags (`t`), its word and sentence targets, and `ySS`.
 - A count before `i`, `a`, `o` and `.` repeats nothing.
 - `j` and `k` count their column in characters, so in a proportional font the block shifts sideways between lines.
-- `j` and `k` in visual mode and after an operator move by lines of text, as in the config.
+- In the composer, `j` and `k` in visual mode and after an operator move by lines of text, as in the config.
 - A browser whose `Selection.modify` skips text fields: `j` and `k` move by lines of text.
 - A browser without `caret-shape`: an empty line shows a thin caret in normal mode, and the label tells the mode.
 - A browser that refuses the clipboard: `p` puts what Vim yanked last, and a yank stays inside Vim.

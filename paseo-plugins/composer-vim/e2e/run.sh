@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end check of the Vim keys: the released app bundle in headless Chromium against a
-# throwaway daemon with two mock agents. The live daemon and ~/.paseo are never touched.
+# throwaway daemon with three mock agents. The live daemon and ~/.paseo are never touched.
 #
 #   e2e/run.sh          run the spec, then stop the daemon and delete its home
 #   e2e/run.sh --keep   leave the daemon running afterwards, to open the rig in a browser
@@ -67,7 +67,7 @@ for _ in $(seq 30); do
 done
 paseo --home "$home" plugin ls | grep -q "composer-vim  *running" || { echo "The plugin did not start"; exit 1; }
 
-# One workspace with two agents. "Slow" takes ten seconds per reply, so the spec can
+# One workspace with three agents. "Slow" takes ten seconds per reply, so the spec can
 # interrupt it; "Quick" answers at once.
 repo="$home/repos/alpha"
 mkdir -p "$repo"
@@ -79,6 +79,13 @@ paseo --home "$home" run --provider mock --mode load-test --model e2e-fast-strea
   --workspace "$workspace" --title Quick -q hello >/dev/null
 paseo --home "$home" run --provider mock --mode load-test --model ten-second-stream \
   --workspace "$workspace" --title Slow -q hello >/dev/null
+# "Pages" has five turns of thirty messages, and its Nth prompt ends in the Nth of these
+# words. The app loads the last turns only, so a search for "aardvark" has to fetch more.
+pages=$(paseo --home "$home" run --provider mock --mode load-test --model e2e-fast-stream \
+  --workspace "$workspace" --title Pages -q "emit 30 assistant messages before synthetic user message aardvark")
+for word in badger cougar dingo egret; do
+  paseo --home "$home" send "$pages" "emit 30 assistant messages before synthetic user message $word" >/dev/null
+done
 
 cd "$plugin"
 [[ -d node_modules/@playwright/test ]] || npm install

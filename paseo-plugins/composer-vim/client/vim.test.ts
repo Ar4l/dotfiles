@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Vim, create, moveTo, press, puts, select, selection } from "./vim.ts";
+import { type Vim, create, matches, moveTo, peek, press, puts, regexp, select, selection } from "./vim.ts";
 
 /** Splits `dw<Esc>` into keys: one per character, and `<Esc>`, `<CR>`, `<C-r>` as one. */
 const keysOf = (keys: string) =>
@@ -353,4 +353,118 @@ test("j and k keep their column through a selection that did not move", () => {
   select(vim, ...selection(vim));
   type(vim, "j");
   assert.equal(vim.cursor, 20);
+});
+
+cases("search", [
+  ["|one two one two", "/two<CR>", "one |two one two"],
+  ["|one two one two", "2/two<CR>", "one two one |two"],
+  ["one two one |two", "?one<CR>", "one two |one two"],
+  ["one two |one two", "/one<CR>", "|one two one two"],
+  ["|one two one two", "/two<CR>n", "one two one |two"],
+  ["|one two one two", "/two<CR>nN", "one |two one two"],
+  ["one two one |two", "?one<CR>n", "|one two one two"],
+  ["one two one |two", "?one<CR>N", "|one two one two"],
+  // An empty pattern repeats the last one, Backspace edits the one being typed.
+  ["|one two one two", "/two<CR>/<CR>", "one two one |two"],
+  ["|one two one two", "/tx<BS>wo<CR>", "one |two one two"],
+  ["|one two", "/<BS>l", "o|ne two"],
+  ["|one two", "/tw<Esc>l", "o|ne two"],
+  ["|one two", "/nine<CR>", "|one two"],
+  // smartcase, and a pattern as Vim writes it
+  ["|one Two two", "/two<CR>", "one |Two two"],
+  ["|one two Two", "/Two<CR>", "one two |Two"],
+  ["|one Two two", "/two\\C<CR>", "one Two |two"],
+  ["|a (b) c", "/(b<CR>", "a |(b) c"],
+  ["|ab abab", "/\\(ab\\)\\+$<CR>", "ab |abab"],
+  ["|ab abab", "/\\v(ab)+$<CR>", "ab |abab"],
+  ["|foobar foo", "/\\<foo\\><CR>", "foobar |foo"],
+  ["|x a.c abc", "/a\\.c<CR>", "x |a.c abc"],
+  ["|foo bar\nfoo", "*", "foo bar\n|foo"],
+  ["foo food |foo", "#", "|foo food foo"],
+  ["|  foo x foo", "*", "  foo x |foo"],
+  // with an operator and in visual mode
+  ["|one two three", "d/thr<CR>", "|three"],
+  ["one |two three", "v/thr<CR>d", "one |hree"],
+  ["|one two one", "/one<CR>dn", "|one"],
+]);
+
+test("a search says when it wraps or fails, and Escape hides its matches", () => {
+  const vim = type(at("|one two one"), "/one<CR>");
+  assert.equal(vim.message, null);
+  assert.deepEqual(matches(vim), [{ start: 0, end: 3 }, { start: 8, end: 11 }]);
+  type(vim, "n");
+  assert.equal(vim.message, "hit BOTTOM, continuing at TOP");
+  type(vim, "N");
+  assert.equal(vim.message, "hit TOP, continuing at BOTTOM");
+  type(vim, "l");
+  assert.equal(vim.message, null);
+  type(vim, "<Esc>");
+  assert.deepEqual(matches(vim), []);
+  type(vim, "/nine<CR>");
+  assert.equal(vim.message, "Pattern not found: nine");
+});
+
+test("a pattern being typed shows where Enter would go", () => {
+  const vim = type(at("|one two one"), "/tw");
+  assert.deepEqual(vim.pending, ["/", "t", "w"]);
+  assert.deepEqual(peek(vim), { start: 4, end: 6, wrapped: false });
+  assert.deepEqual(matches(vim), [{ start: 4, end: 6 }]);
+  // Named keys other than Enter and Backspace are swallowed.
+  assert.equal(press(vim, "ArrowLeft"), true);
+  assert.equal(press(vim, "Enter"), true);
+  assert.equal(vim.cursor, 4);
+  assert.equal(peek(vim), null);
+});
+
+test("Vim patterns become JavaScript ones", () => {
+  assert.equal(regexp("a+b").source, "a\\+b");
+  assert.equal(regexp("a\\+b").source, "a+b");
+  assert.equal(regexp("\\va+(b|c)").source, "a+(b|c)");
+  assert.equal(regexp("x\\{2,3}").source, "x{2,3}");
+  assert.equal(regexp("a\\=").source, "a?");
+  assert.equal(regexp("foo(").source, "foo\\(");
+  assert.equal(regexp("[a").source, "\\[a");
+  assert.equal(regexp("abc").flags, "gim");
+  assert.equal(regexp("aBc").flags, "gm");
+  assert.equal(regexp("aBc\\c").flags, "gim");
+});
+
+/** The agent thread: a text nobody edits. */
+function reading(text: string): Vim {
+  const vim = at(text);
+  vim.readonly = true;
+  return vim;
+}
+const read = (text: string, keys: string) => {
+  const vim = type(reading(text), keys);
+  return `${vim.text.slice(0, vim.cursor)}|${vim.text.slice(vim.cursor)}`;
+};
+
+test("a read-only text takes motions, yanks and searches, and no change", () => {
+  for (const keys of ["x", "dd", "dw", "cw", "ifoo<Esc>", "A", "o", "p", "rX", "~", "J", "u", ".", "vd", "Vc", "ysiw)", "<S-CR>"]) {
+    const vim = type(reading("one |two\nthree"), `yiw${keys}`);
+    assert.equal(vim.text, "one two\nthree", keys);
+    // A change from visual mode leaves the selection as it was.
+    assert.equal(vim.mode, { vd: "visual", Vc: "visual-line" }[keys] ?? "normal", keys);
+    assert.deepEqual(vim.pending, [], keys);
+    assert.equal(vim.register.text, "two", keys);
+  }
+  assert.equal(read("one |two\nthree", "w"), "one two\n|three");
+  assert.equal(type(reading("one |two\nthree"), "vey").register.text, "two");
+  assert.equal(type(reading("one |two\nthree"), "yy").register.text, "one two\n");
+  assert.equal(read("one |two\nthree", "/thr<CR>"), "one two\n|three");
+});
+
+test("in a read-only text { and } rest on the blocks, not between them", () => {
+  const text = "a1\na2\n\nb1\nb2\n\n\nc1";
+  assert.equal(read(`|${text}`, "}"), "a1\na2\n\n|b1\nb2\n\n\nc1");
+  assert.equal(read(`|${text}`, "2}"), "a1\na2\n\nb1\nb2\n\n\n|c1");
+  assert.equal(read(`|${text}`, "3}"), "a1\na2\n\nb1\nb2\n\n\n|c1");
+  assert.equal(read("a1\na2\n\nb1\nb|2\n\n\nc1", "{"), "a1\na2\n\n|b1\nb2\n\n\nc1");
+  assert.equal(read("a1\na2\n\n|b1\nb2\n\n\nc1", "{"), "|a1\na2\n\nb1\nb2\n\n\nc1");
+  assert.equal(read("a1\na2\n\nb1\nb2\n\n\n|c1", "{"), "a1\na2\n\n|b1\nb2\n\n\nc1");
+  assert.equal(read("a|1\na2", "{"), "|a1\na2");
+  assert.equal(read("|a1\na2", "{"), "|a1\na2");
+  // An operator and visual mode keep Vim's own paragraphs.
+  assert.equal(type(reading(`|${text}`), "y}").register.text, "a1\na2\n");
 });

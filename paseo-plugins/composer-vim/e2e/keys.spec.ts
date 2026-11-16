@@ -1,7 +1,8 @@
 import { type Page, expect, test } from "@playwright/test";
 
-// The fixture from run.sh: one workspace with the agents Quick and Slow. Slow takes ten
-// seconds to answer a prompt.
+// The fixture from run.sh: one workspace with the agents Quick, Slow and Pages. Slow takes
+// ten seconds to answer a prompt. Pages has five turns of thirty messages each, more than the
+// app loads at once, and each turn is folded behind "View turn details".
 const workspace = process.env.VIM_WORKSPACE ?? "";
 
 // The web UI bundled with the nix build of Paseo 0.15.4 reads BottomSheetModalInternalProvider
@@ -21,8 +22,10 @@ const text = (page: Page) =>
   });
 /** Types keys one by one. `<Esc>` and `<CR>` are single keys. */
 async function keys(page: Page, sequence: string): Promise<void> {
-  for (const key of sequence.match(/<Esc>|<CR>|<S-CR>|<C-r>|<Left>|<Right>|<S-Right>|[^]/g) ?? []) {
-    const named = { "<Esc>": "Escape", "<CR>": "Enter", "<S-CR>": "Shift+Enter", "<C-r>": "Control+r", "<Left>": "ArrowLeft", "<Right>": "ArrowRight", "<S-Right>": "Shift+ArrowRight" }[key];
+  for (const key of sequence.match(/<Esc>|<CR>|<S-CR>|<C-[a-z]>|<Left>|<Right>|<S-Right>|[^]/g) ?? []) {
+    const named =
+      { "<Esc>": "Escape", "<CR>": "Enter", "<S-CR>": "Shift+Enter", "<Left>": "ArrowLeft", "<Right>": "ArrowRight", "<S-Right>": "Shift+ArrowRight" }[key] ??
+      (key.startsWith("<C-") ? `Control+${key[3]}` : undefined);
     if (named) await page.keyboard.press(named);
     else await page.keyboard.type(key);
   }
@@ -31,6 +34,26 @@ const openAgent = async (page: Page, title: string) => {
   await page.locator(`[data-testid^="workspace-tab-agent_"][aria-label="${title}"]`).filter({ visible: true }).click();
   await composer(page).click();
 };
+/** The thread on screen: its cursor with the text around it, what is highlighted, and where it is scrolled. */
+const thread = (page: Page) =>
+  page.evaluate(() => {
+    const ranges = (name: string) => [...((CSS.highlights.get(name) as Iterable<Range> | undefined) ?? [])];
+    const [block] = ranges("composer-vim-cursor");
+    const node = block?.startContainer as Text | undefined;
+    const scroll = [...document.querySelectorAll<HTMLElement>("[data-testid='agent-chat-scroll']")].find((s) => s.checkVisibility())!;
+    return {
+      /** `[x]` is the character under the block. */
+      cursor: block && node ? `${node.data.slice(Math.max(0, block.startOffset - 12), block.startOffset)}[${block}]${node.data.slice(block.endOffset, block.endOffset + 12)}` : null,
+      y: block ? Math.round(block.getBoundingClientRect().top) : null,
+      visual: ranges("composer-vim-visual").join("|"),
+      matches: ranges("composer-vim-search").length,
+      focus: document.activeElement?.getAttribute("data-testid") ?? document.activeElement?.tagName,
+      atBottom: scroll.scrollTop >= scroll.scrollHeight - scroll.clientHeight - 2,
+      text: scroll.innerText,
+    };
+  });
+/** A search past the page reads on for a while: the label says so until it is done. */
+const searched = (page: Page) => expect(badge(page)).not.toContainText("searching", { timeout: 30_000 });
 /** What the send button offers tells whether the agent is at work. */
 const sendButton = (page: Page, label: string) => page.getByLabel(label, { exact: true }).filter({ visible: true });
 
@@ -254,5 +277,163 @@ test("Vim keys in the composer", async ({ page }) => {
     await keys(page, "<S-CR>");
     expect(await text(page)).toBe("ine\n\n[a]lpha (betaZZ)");
     await expect(badge(page)).toHaveText("NORMAL");
+  });
+
+  await test.step("16b. a search moves in the composer, and its Enter does not send", async () => {
+    await keys(page, "gg/beta");
+    await expect(badge(page)).toHaveText("NORMAL /beta");
+    await keys(page, "<CR>");
+    expect(await text(page)).toBe("ine\n\nalpha ([b]etaZZ)");
+    await keys(page, "?in<CR>");
+    expect(await text(page)).toBe("[i]ne\n\nalpha (betaZZ)");
+    await keys(page, "/nothing<CR>");
+    await expect(badge(page)).toHaveText("NORMAL Pattern not found: nothing");
+    await keys(page, "<Esc>");
+  });
+
+  await test.step("17. Ctrl+K moves the keys to the thread, Ctrl+J and i bring them back", async () => {
+    await openAgent(page, "Quick");
+    // In insert mode Ctrl+K stays the browser's.
+    await keys(page, "<C-k>");
+    expect((await thread(page)).focus).toBe("TEXTAREA");
+    await keys(page, "<Esc><C-k>");
+    await expect.poll(async () => (await thread(page)).focus).toBe("composer-vim-thread");
+    await expect(badge(page)).toHaveText("NORMAL");
+    expect((await thread(page)).cursor).not.toBeNull();
+    await keys(page, "<C-j>");
+    expect((await thread(page)).focus).toBe("TEXTAREA");
+    expect((await thread(page)).cursor).toBeNull();
+    await expect(badge(page)).toHaveText("NORMAL");
+    await keys(page, "<C-k>i");
+    expect((await thread(page)).focus).toBe("TEXTAREA");
+    await expect(badge(page)).toHaveText("INSERT");
+    await keys(page, "<Esc>");
+  });
+
+  await test.step("18. the thread takes motions, and j and k move by the lines of the page", async () => {
+    await keys(page, "<C-k>gg");
+    expect((await thread(page)).cursor).toBe("[h]ello");
+    await keys(page, "/one two<CR>");
+    expect((await thread(page)).cursor).toBe("[o]ne two");
+    await keys(page, "w");
+    expect((await thread(page)).cursor).toBe("one [t]wo");
+    await keys(page, "$");
+    expect((await thread(page)).cursor).toBe("one tw[o]");
+    // The reply's long paragraph wraps: j and k stay inside it.
+    await keys(page, "/I'll take<CR>");
+    const top = (await thread(page)).y!;
+    await keys(page, "j");
+    const below = await thread(page);
+    expect(below.y).toBeGreaterThan(top);
+    expect(below.cursor).not.toContain("I'll take");
+    await keys(page, "k");
+    expect((await thread(page)).y).toBe(top);
+    await keys(page, "2j");
+    expect((await thread(page)).y).toBeGreaterThan(below.y!);
+    // A change does nothing, and the composer below keeps its text.
+    await keys(page, "ddxrZ");
+    expect((await thread(page)).text).toContain("I'll take a look");
+    await expect(badge(page)).toHaveText("NORMAL");
+  });
+
+  await test.step("19. visual mode selects in the thread and a yank lands on the clipboard", async () => {
+    const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+    await keys(page, "?one two<CR>wyiw");
+    await expect.poll(clipboard).toBe("two");
+    await keys(page, "0ve");
+    await expect(badge(page)).toHaveText("VISUAL");
+    expect((await thread(page)).visual).toBe("one");
+    await keys(page, "y");
+    await expect.poll(clipboard).toBe("one");
+    await expect(badge(page)).toHaveText("NORMAL");
+    await keys(page, "V");
+    await expect(badge(page)).toHaveText("V-LINE");
+    expect((await thread(page)).visual).toBe("one two");
+    // Cmd+C copies what visual mode shows.
+    await page.keyboard.press("ControlOrMeta+c");
+    await expect.poll(clipboard).toBe("one two\n");
+    await keys(page, "<Esc>");
+    // What the thread yanked, the composer puts.
+    await keys(page, "yiw<C-j>p");
+    await expect.poll(() => text(page)).toBe("on[e]");
+    await keys(page, "dd");
+  });
+
+  await test.step("20. a search shows its matches while it is typed, wraps, and Escape hides them", async () => {
+    await keys(page, "<C-k>gg/cycle");
+    await expect(badge(page)).toHaveText("NORMAL /cycle");
+    // smartcase: "cycle" finds both headings "Cycle 1".
+    expect((await thread(page)).matches).toBe(2);
+    expect((await thread(page)).cursor).toBeNull();
+    await keys(page, "<CR>");
+    await expect(badge(page)).toHaveText("NORMAL");
+    const first = await thread(page);
+    expect(first.cursor).toBe("[C]ycle 1");
+    await keys(page, "n");
+    expect((await thread(page)).y).toBeGreaterThan(first.y!);
+    await keys(page, "n");
+    await searched(page);
+    await expect(badge(page)).toHaveText("NORMAL hit BOTTOM, continuing at TOP");
+    expect((await thread(page)).y).toBe(first.y);
+    await keys(page, "/Cycle 2<CR>");
+    await searched(page);
+    await expect(badge(page)).toHaveText("NORMAL Pattern not found: Cycle 2");
+    await keys(page, "<Esc>");
+    expect((await thread(page)).matches).toBe(0);
+    await expect(badge(page)).toHaveText("NORMAL");
+    // Escape and Backspace leave a pattern being typed.
+    await keys(page, "/hel<Esc>");
+    await expect(badge(page)).toHaveText("NORMAL");
+    expect((await thread(page)).cursor).toBe("[C]ycle 1");
+  });
+
+  await test.step("21. a search upward loads older messages, and Enter unfolds a turn", async () => {
+    await openAgent(page, "Pages");
+    await keys(page, "<Esc><C-k>");
+    await expect.poll(async () => (await thread(page)).focus).toBe("composer-vim-thread");
+    // The app has loaded the last turns only.
+    expect((await thread(page)).text).not.toContain("aardvark");
+    await keys(page, "?aardvark<CR>");
+    await searched(page);
+    expect((await thread(page)).cursor).toBe("ser message [a]ardvark");
+    await expect(badge(page)).toHaveText("NORMAL");
+    // Down again past the turns in between, and around from the last one.
+    await keys(page, "/egret<CR>");
+    await searched(page);
+    expect((await thread(page)).cursor).toBe("ser message [e]gret");
+    await keys(page, "/aardvark<CR>");
+    await searched(page);
+    await expect(badge(page)).toHaveText("NORMAL hit BOTTOM, continuing at TOP");
+    expect((await thread(page)).cursor).toBe("ser message [a]ardvark");
+
+    // The first turn shows its messages. The next one is folded until Enter is pressed on it.
+    const shown = async () => (await thread(page)).text.split("pre-echo message 7").length - 1;
+    const before = await shown();
+    await keys(page, "/View turn<CR>");
+    await searched(page);
+    expect((await thread(page)).cursor).toBe("[V]iew turn det");
+    await keys(page, "<CR>");
+    await expect.poll(shown).toBe(before + 1);
+    // G returns to the end, where the app follows the thread again.
+    await keys(page, "G");
+    await expect.poll(async () => (await thread(page)).atBottom).toBe(true);
+    await keys(page, "<C-j>");
+  });
+
+  await test.step("22. Escape, ? and Space in the thread leave a running agent and the app alone", async () => {
+    await openAgent(page, "Slow");
+    await keys(page, "<Esc>ccagain<CR>");
+    await expect(sendButton(page, "Stop agent")).toBeVisible();
+    await keys(page, "<Esc><C-k>");
+    await expect.poll(async () => (await thread(page)).focus).toBe("composer-vim-thread");
+    await keys(page, "<Esc><Esc>v<Esc>?<Esc> k");
+    await page.waitForTimeout(1500);
+    await expect(sendButton(page, "Stop agent")).toBeVisible();
+    await expect(page.getByTestId("keyboard-shortcuts-dialog")).toHaveCount(0);
+    // The cursor moved up, so the app no longer pulls the view down as the reply grows.
+    const { y, cursor } = await thread(page);
+    await page.waitForTimeout(1200);
+    expect(await thread(page)).toMatchObject({ y, cursor, atBottom: false });
+    await keys(page, "G<C-j>");
   });
 });

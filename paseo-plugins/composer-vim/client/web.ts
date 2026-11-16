@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import {
   type Area,
+  type CopyEvt,
   type Elem,
   type KeyEvt,
   type Listener,
@@ -14,6 +15,7 @@ import {
   navigator,
   window,
 } from "./dom";
+import { createThread, threadStyles } from "./thread";
 import { type Vim, create, moveTo, press, puts, select, selection } from "./vim";
 
 // App internals this plugin leans on; README.md lists them.
@@ -34,7 +36,10 @@ const MODE = "data-composer-vim";
 const STYLES =
   `textarea[${MODE}="normal"]{caret-shape:block;caret-animation:manual;caret-color:${COLOR.normal}}` +
   `textarea[${MODE}="normal"]::selection{background:${COLOR.normal};color:#fff}` +
-  `textarea[${MODE}^="visual"]::selection{background:${COLOR.visual};color:#fff}`;
+  `textarea[${MODE}^="visual"]::selection{background:${COLOR.visual};color:#fff}` +
+  threadStyles(COLOR);
+/** The composers of a pane: one per tab, and only the tab on top is visible. */
+const PANE = "[data-testid^='workspace-pane-']";
 /** How long a put waits for the system clipboard before it uses what Vim yanked last. */
 const CLIPBOARD_WAIT = 300;
 
@@ -122,18 +127,21 @@ function run(): Running {
     if (root) observer?.observe(root);
   };
 
-  /** Draws the mode of the composer that has the focus, and opens the guard while it has it. */
-  const show = (area: Area | null) => {
-    const vim = area && !off() && document.activeElement === area ? vims.get(area) : undefined;
-    setGuard(Boolean(vim));
+  /**
+   * Draws the mode of the composer that has the focus, and opens the guard while it has it.
+   * With `reading`, the mode is the thread's above that composer.
+   */
+  const show = (area: Area | null, reading?: Vim) => {
+    const vim = reading ?? (area && !off() && document.activeElement === area ? vims.get(area) : undefined);
+    setGuard(Boolean(vim) && !reading);
     const root = area && vim ? (area.closest(COMPOSER) ?? area) : null;
     watch(root);
     if (!area || !vim || !root) {
       badge.style.cssText = "display:none";
       return;
     }
-    area.setAttribute(MODE, vim.mode);
-    badge.textContent = [LABEL[vim.mode], vim.pending.join("")].filter(Boolean).join(" ");
+    if (!reading) area.setAttribute(MODE, vim.mode);
+    badge.textContent = [LABEL[vim.mode], vim.pending.join(""), vim.message].filter(Boolean).join(" ");
     // Left of the context window meter, or above the composer's corner when it has none.
     const meter = root.querySelector(METER)?.getBoundingClientRect();
     const box = root.getBoundingClientRect();
@@ -145,7 +153,7 @@ function run(): Running {
       `font:700 9px/1 ${getComputedStyle(area).fontFamily};letter-spacing:.08em;white-space:nowrap;` +
       `color:#fff;background:${COLOR[vim.mode]}`;
   };
-  const redraw = () => show(composerOf(document.activeElement));
+  const redraw = (): void => (thread.active() ? thread.redraw() : show(composerOf(document.activeElement)));
 
   /** Reads the textarea into its Vim: the text, and a selection the user or the app made. */
   const pull = (area: Area): Vim => {
@@ -240,7 +248,44 @@ function run(): Running {
     });
   };
 
+  /** The composer on top in the pane of `area`, which may have left the page. */
+  const composerNear = (area: Area): Area | null => {
+    if (area.isConnected && area.checkVisibility()) return area;
+    const areas = [...document.querySelectorAll(`${COMPOSER} textarea`)].filter((other) => other.checkVisibility());
+    const pane = area.closest(PANE);
+    return ((areas.find((other) => other.closest(PANE) === pane) ?? areas[0]) as Area | undefined) ?? null;
+  };
+
+  const thread = createThread({
+    show,
+    compose(from, key) {
+      const area = composerNear(from);
+      if (!area) return;
+      area.focus();
+      if (!key || off()) return;
+      const vim = pull(area);
+      feed(area, vim, key);
+      show(area);
+    },
+    yank: (text) => void navigator.clipboard?.writeText(text).catch(() => {}),
+  });
+
   const onKey = (event: KeyEvt) => {
+    const take = () => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    if (event.target === thread.sink) {
+      // Ctrl+J, the window below: the composer.
+      const down = event.ctrlKey && !event.metaKey && !event.altKey && !event.defaultPrevented && event.key.toLowerCase() === "j";
+      if (down || !thread.active()) {
+        const from = thread.area();
+        thread.leave();
+        if (from) thread.compose(from);
+        if (down) take();
+      } else if (thread.key(event)) take();
+      return;
+    }
     const area = composerOf(event.target);
     if (!area || off() || event.isComposing || event.metaKey || event.altKey) return;
     let key = event.key;
@@ -248,20 +293,24 @@ function run(): Running {
       // Ctrl+[ is Escape, unless the app has it: its shortcuts run first and cancel the key.
       if (key === "[" && !event.defaultPrevented) key = "Escape";
       else if (key.toLowerCase() === "r") key = "<C-r>";
+      else if (key.toLowerCase() === "k" && !event.defaultPrevented) key = "<C-k>";
       else return;
     }
-    const take = () => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    };
     if (waiting) {
       take();
       waiting.push(key);
       return;
     }
     const vim = pull(area);
-    if (vim.mode === "insert" && key === "<C-r>") return;
+    if (vim.mode === "insert" && key.startsWith("<C-")) return;
     const normal = vim.mode !== "insert";
+    if (key === "<C-k>") {
+      // The window above the composer is the thread, as `<C-w>k` in the Vim config. With no
+      // thread to read the key still does nothing: on a Mac it would cut the line.
+      take();
+      if (vim.pending.length === 0) thread.enter(area);
+      return;
+    }
     // While the app lists commands or files, the arrows walk that list.
     const listed = document.querySelector(AUTOCOMPLETE) !== null;
     if (normal && !listed && !event.shiftKey && area.value !== "") key = ARROWS[key] ?? key;
@@ -301,6 +350,16 @@ function run(): Running {
     if (vim?.mode === "normal") area.setSelectionRange(vim.cursor, vim.cursor);
   };
   const onBlur = (event: TargetEvt) => {
+    if (event.target === thread.sink) {
+      // The focus went elsewhere: a click, a shortcut of the app. A window that only lost
+      // the focus keeps the thread.
+      setTimeout(() => {
+        if (document.activeElement === thread.sink || !thread.active()) return;
+        thread.leave();
+        redraw();
+      }, 0);
+      return;
+    }
     const area = composerOf(event.target);
     if (!area) return;
     if (!off()) collapse(area);
@@ -311,6 +370,13 @@ function run(): Running {
     const area = composerOf(event.target);
     if (area && !off()) collapse(area);
   };
+  /** Cmd+C in the thread copies what visual mode has selected. */
+  const onCopy = (event: CopyEvt) => {
+    const text = event.target === thread.sink ? thread.selected() : null;
+    if (text === null) return;
+    event.clipboardData?.setData("text/plain", text);
+    event.preventDefault();
+  };
   const unmark = () => {
     for (const area of document.querySelectorAll(`textarea[${MODE}]`)) area.removeAttribute(MODE);
   };
@@ -320,6 +386,7 @@ function run(): Running {
     [window, "focusin", onFocus],
     [window, "focusout", onBlur],
     [window, "paste", onPaste],
+    [window, "copy", onCopy],
     [window, "input", redraw],
     [window, "resize", redraw],
     [document, "selectionchange", onSelection],
@@ -330,6 +397,7 @@ function run(): Running {
   return {
     stop() {
       for (const [target, type, listener] of listeners) target.removeEventListener(type, listener, true);
+      thread.stop();
       setGuard(false);
       watch(null);
       unmark();
@@ -338,6 +406,9 @@ function run(): Running {
       styles.remove();
     },
     toggle() {
+      const reading = thread.area();
+      thread.leave();
+      if (reading) thread.compose(reading);
       const area = composerOf(document.activeElement);
       if (off()) localStorage.removeItem(OFF);
       else {

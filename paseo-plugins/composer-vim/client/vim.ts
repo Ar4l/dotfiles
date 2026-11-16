@@ -34,6 +34,18 @@ export interface Vim {
   replaying: boolean;
   /** Set by a command that changes the text, so `.` can repeat it. */
   changed: boolean;
+  /** The text is not the user's to change: the agent thread. Yanks, motions and searches work. */
+  readonly: boolean;
+  /** The pattern being typed after `/` or `?`, until Enter. */
+  prompt: { forward: boolean; pattern: string } | null;
+  /** The last search, for `n` and `N`. */
+  searched: { pattern: string; forward: boolean } | null;
+  /** The matches of the last search are shown, until Escape. */
+  highlight: boolean;
+  /** What the last key has to say: a search that wrapped or found nothing. */
+  message: string | null;
+  /** The last key searched and found no match on that side of the cursor. */
+  missed: "above" | "below" | null;
 }
 
 export function create(text = "", cursor = text.length): Vim {
@@ -53,6 +65,12 @@ export function create(text = "", cursor = text.length): Vim {
     base: null,
     replaying: false,
     changed: false,
+    readonly: false,
+    prompt: null,
+    searched: null,
+    highlight: false,
+    message: null,
+    missed: null,
   };
 }
 
@@ -180,6 +198,118 @@ function findChar(t: string, p: number, how: string, char: string, count: number
 }
 
 type Range = { start: number; end: number; linewise?: boolean };
+
+const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * A Vim pattern as a JavaScript one. Vim's default is "magic": `( ) | + ? {` stand for
+ * themselves until a backslash precedes them, and `\v` turns that around for the rest.
+ * `\<` and `\>` are the ends of a word.
+ * `ignorecase` with `smartcase`: a capital letter makes the search match case, and `\c` or
+ * `\C` decide it outright. A pattern JavaScript rejects is searched as plain text.
+ */
+export function regexp(source: string): RegExp {
+  let body = "";
+  let very = false;
+  let braces = 0;
+  let fold = !/\p{Lu}/u.test(source.replace(/\\./g, ""));
+  for (let i = 0; i < source.length; i++) {
+    const escaped = source[i] === "\\" && i + 1 < source.length;
+    const c = escaped ? source[++i] : source[i];
+    // Magic: an operator needs its backslash. Very magic: a backslash takes its meaning away.
+    const active = escaped !== very || (c === "}" && braces > 0);
+    if (escaped && c === "v") very = true;
+    else if (escaped && (c === "c" || c === "C")) fold = c === "c";
+    else if (c === "<" || c === ">") body += active ? "\\b" : c;
+    else if (c === "=") body += active ? "?" : c;
+    else if ("(){}|+?".includes(c)) {
+      if (active) braces += c === "{" ? 1 : c === "}" ? -1 : 0;
+      body += active ? c : `\\${c}`;
+    } else body += escaped || c === "\\" ? `\\${c}` : c;
+  }
+  const flags = fold ? "gim" : "gm";
+  try {
+    return new RegExp(body, flags);
+  } catch {
+    return new RegExp(literal(source), flags);
+  }
+}
+
+type Match = { start: number; end: number };
+const MATCH_CAP = 5000;
+let found: { text: string; source: string; matches: Match[] } | null = null;
+
+/** Where a pattern matches, in order. Empty matches do not count. */
+function matchesOf(text: string, source: string): Match[] {
+  if (found?.text === text && found.source === source) return found.matches;
+  const matches: Match[] = [];
+  const pattern = regexp(source);
+  for (let m = pattern.exec(text); m && matches.length < MATCH_CAP; m = pattern.exec(text)) {
+    if (m[0].length === 0) pattern.lastIndex++;
+    else matches.push({ start: m.index, end: m.index + m[0].length });
+  }
+  found = { text, source, matches };
+  return matches;
+}
+
+/** The `count`th match after `from`, or before it, around the ends of the text. */
+function seek(text: string, source: string, from: number, forward: boolean, count: number): (Match & { wrapped: boolean }) | null {
+  const matches = matchesOf(text, source);
+  if (matches.length === 0) return null;
+  // The first match in the direction of travel.
+  let first = forward ? matches.findIndex((m) => m.start > from) : -1;
+  if (!forward) for (let k = matches.length - 1; k >= 0 && first < 0; k--) if (matches[k].start < from) first = k;
+  const step = forward ? count - 1 : 1 - count;
+  const index = (first < 0 ? (forward ? 0 : matches.length - 1) : first) + step;
+  const wrapped = first < 0 || index < 0 || index >= matches.length;
+  return { ...matches[((index % matches.length) + matches.length) % matches.length], wrapped };
+}
+
+/** The matches to highlight: those of the pattern being typed, or of the last search. */
+export function matches(vim: Vim): Match[] {
+  const source = vim.prompt ? vim.prompt.pattern : vim.highlight ? vim.searched?.pattern : undefined;
+  return source ? matchesOf(vim.text, source) : [];
+}
+
+/** Where Enter would take the pattern being typed, for `incsearch`. */
+export function peek(vim: Vim): Match | null {
+  if (!vim.prompt?.pattern) return null;
+  return seek(vim.text, vim.prompt.pattern, vim.cursor, vim.prompt.forward, 1);
+}
+
+export const notFound = (source: string) => `Pattern not found: ${source}`;
+
+/** Moves to a match of the last search and says so when the search wrapped or failed. */
+function search(vim: Vim, forward: boolean, count: number, from = vim.cursor): Motion | null {
+  const source = vim.searched?.pattern;
+  if (!source) return null;
+  vim.highlight = true;
+  const match = seek(vim.text, source, from, forward, count);
+  if (!match || match.wrapped) vim.missed = forward ? "below" : "above";
+  if (!match) vim.message = notFound(source);
+  else if (match.wrapped) vim.message = forward ? "hit BOTTOM, continuing at TOP" : "hit TOP, continuing at BOTTOM";
+  return match && { to: match.start };
+}
+
+/** The start of the block of lines after the cursor's, or of the cursor's own, then of the one before. */
+function hop(t: string, p: number, forward: boolean): number {
+  const blank = (q: number) => emptyLine(t, lineStart(t, q));
+  let line = lineStart(t, p);
+  if (forward) {
+    while (lineEnd(t, line) < t.length && !blank(line)) line = lineEnd(t, line) + 1;
+    while (lineEnd(t, line) < t.length && blank(line)) line = lineEnd(t, line) + 1;
+    return blank(line) ? p : line;
+  }
+  const top = (from: number) => {
+    let q = from;
+    while (q > 0 && !blank(q - 1)) q = lineStart(t, q - 1);
+    return q;
+  };
+  let start = top(line);
+  if (p > start || blank(line)) return blank(start) ? p : start;
+  while (start > 0 && blank(start - 1)) start = lineStart(t, start - 1);
+  return start > 0 ? top(lineStart(t, start - 1)) : p;
+}
 
 function wordObject(t: string, p: number, around: boolean, big: boolean): Range | null {
   const s = lineStart(t, p);
@@ -435,8 +565,45 @@ function motion(
       const q = matchPair(t, p);
       return q === null ? null : { to: q, inclusive: true };
     }
+    case "/":
+    case "?": {
+      let typed = "";
+      for (let k = next(); k !== "Enter"; k = next()) {
+        if (k === undefined) {
+          vim.prompt = { forward: key === "/", pattern: typed };
+          return MORE;
+        }
+        typed += k;
+      }
+      // Enter on an empty pattern repeats the last one.
+      if (typed) vim.searched = { pattern: typed, forward: key === "/" };
+      else if (vim.searched) vim.searched = { ...vim.searched, forward: key === "/" };
+      return search(vim, key === "/", count);
+    }
+    case "n":
+    case "N":
+      return vim.searched ? search(vim, (key === "n") === vim.searched.forward, count) : null;
+    case "*":
+    case "#": {
+      // The word under the cursor, or the next one on the line.
+      const end = lineEnd(t, p);
+      let a = p;
+      while (a < end && !WORD.test(t[a])) a++;
+      if (a >= end) return null;
+      let b = a;
+      while (a > lineStart(t, p) && WORD.test(t[a - 1])) a--;
+      while (b < end && WORD.test(t[b])) b++;
+      vim.searched = { pattern: `\\c\\<${literal(t.slice(a, b))}\\>`, forward: key === "*" };
+      return search(vim, key === "*", count, a);
+    }
     case "{":
     case "}": {
+      // In a text nobody edits the cursor skips the empty lines and rests on the blocks.
+      if (vim.readonly && !operator && vim.mode === "normal") {
+        let q = p;
+        for (let k = 0; k < count; k++) q = hop(t, q, key === "}");
+        return q === p ? null : { to: q };
+      }
       let q = p;
       for (let k = 0; k < count; k++) q = paragraph(t, q, key === "}" ? 1 : -1);
       return { to: q };
@@ -907,19 +1074,41 @@ export function press(vim: Vim, key: string): boolean {
     return true;
   }
 
+  vim.message = null;
+  vim.missed = null;
   if (key === "Escape") {
+    // As in the Neovim config, Escape with nothing under way also hides the matches.
+    if (vim.pending.length === 0 && vim.mode === "normal") vim.highlight = false;
     vim.pending = [];
+    vim.prompt = null;
     vim.mode = "normal";
     vim.cursor = clamp(vim.text, vim.cursor);
     return true;
   }
 
   vim.cursor = vim.mode === "normal" ? clamp(vim.text, vim.cursor) : Math.min(vim.cursor, vim.text.length);
-  vim.pending.push(key);
+  if (vim.prompt) {
+    // A pattern is being typed. Backspace takes its last character, and the `/` after that.
+    if (key === "Backspace") vim.pending.pop();
+    else if (key.length > 1 && key !== "Enter") return true;
+    if (key === "Backspace" && vim.prompt.pattern === "") {
+      vim.pending = [];
+      vim.prompt = null;
+      return true;
+    }
+  }
+  if (!vim.prompt || key !== "Backspace") vim.pending.push(key);
+  vim.prompt = null;
   vim.changed = false;
   const keys = vim.pending;
   const normal = vim.mode === "normal";
+  const before = vim.readonly ? { ...vim, undo: [...vim.undo], redo: [...vim.redo] } : null;
   const outcome = command(vim, keys);
+  if (before && (vim.text !== before.text || (vim.mode as Mode) === "insert")) {
+    // The text is not ours to change: the key is taken and does nothing.
+    Object.assign(vim, before, { pending: [], prompt: null });
+    return true;
+  }
   if (outcome === MORE) return true;
   vim.pending = [];
   // A change starts at the cursor before it or after it, whichever comes first: `u` returns there.

@@ -1,14 +1,44 @@
 // The plugin typechecks without the DOM library. This declares only what it uses.
 
-export interface Elem {
+export interface Rect {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  width: number;
+  height: number;
+}
+export interface DomNode {
+  isConnected: boolean;
+  parentElement: Elem | null;
+}
+/** A text node. */
+export interface TextNode extends DomNode {
+  data: string;
+}
+export interface DomRange {
+  setStart(node: DomNode, offset: number): void;
+  setEnd(node: DomNode, offset: number): void;
+  getBoundingClientRect(): Rect;
+}
+export interface Elem extends DomNode {
   tagName: string;
   style: { cssText: string };
   textContent: string | null;
-  isConnected: boolean;
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
   closest(selector: string): Elem | null;
   querySelector(selector: string): Elem | null;
+  querySelectorAll(selector: string): Iterable<Elem>;
   matches(selector: string): boolean;
-  getBoundingClientRect(): { left: number; right: number; top: number; bottom: number; width: number; height: number };
+  contains(node: DomNode | null): boolean;
+  checkVisibility(options?: { visibilityProperty: boolean }): boolean;
+  addEventListener(type: string, listener: () => void): void;
+  removeEventListener(type: string, listener: () => void): void;
+  getBoundingClientRect(): Rect;
+  focus(options?: { preventScroll: boolean }): void;
+  click(): void;
   setAttribute(name: string, value: string): void;
   removeAttribute(name: string): void;
   append(...nodes: Elem[]): void;
@@ -40,6 +70,10 @@ export interface KeyEvt {
 export interface TargetEvt {
   target: Elem | null;
 }
+export interface CopyEvt extends TargetEvt {
+  clipboardData: { setData(type: string, text: string): void } | null;
+  preventDefault(): void;
+}
 export type Listener = (event: never) => void;
 
 interface Globals {
@@ -55,6 +89,9 @@ interface Globals {
     body: Elem;
     activeElement: Elem | null;
     createElement(tag: string): Elem;
+    createRange(): DomRange;
+    /** Walks the text nodes under `root`: `show` is `NodeFilter.SHOW_TEXT`, 4. */
+    createTreeWalker(root: Elem, show: number): { nextNode(): TextNode | null };
     querySelector(selector: string): Elem | null;
     querySelectorAll(selector: string): Iterable<Elem>;
     /** Types `text` over the selection of the focused field, as the keyboard would. */
@@ -64,13 +101,37 @@ interface Globals {
   };
   localStorage: { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void };
   Event: new (type: string, init: { bubbles: boolean }) => unknown;
-  getComputedStyle(element: Elem): { color: string; fontFamily: string };
+  getComputedStyle(element: Elem): { color: string; fontFamily: string; display: string; whiteSpace: string };
   /** The window's selection, which is the focused textarea's. `modify` is missing in some browsers. */
   getSelection(): { modify?(alter: "move", direction: "forward" | "backward", by: "line" | "lineboundary"): void } | null;
   navigator: { clipboard?: { readText(): Promise<string>; writeText(text: string): Promise<void> } };
   ResizeObserver?: new (changed: () => void) => { observe(element: Elem): void; disconnect(): void };
+  MutationObserver: new (changed: () => void) => {
+    observe(element: Elem, what: { childList: boolean; characterData: boolean; subtree: boolean }): void;
+    disconnect(): void;
+  };
+  /** The CSS Custom Highlight API: colours ranges of text without touching the page. Missing in old browsers. */
+  CSS: { highlights?: { set(name: string, highlight: unknown): void; delete(name: string): void } };
+  Highlight?: new (...ranges: DomRange[]) => { priority: number };
+  requestAnimationFrame(run: () => void): number;
+  KeyboardEvent: new (type: string, init: Record<string, unknown>) => unknown;
+  WheelEvent: new (type: string, init: { deltaY: number }) => unknown;
 }
 
 // Undefined on native, where the plugin never starts.
-export const { window, document, localStorage, Event, getComputedStyle, getSelection, navigator, ResizeObserver } =
-  globalThis as unknown as Globals;
+export const {
+  window,
+  document,
+  localStorage,
+  Event,
+  KeyboardEvent,
+  WheelEvent,
+  getComputedStyle,
+  getSelection,
+  navigator,
+  ResizeObserver,
+  MutationObserver,
+  CSS,
+  Highlight,
+  requestAnimationFrame,
+} = globalThis as unknown as Globals;
