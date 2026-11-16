@@ -39,6 +39,10 @@ paseo plugin remove <name>                             # the folder stays
 
 A reload is enough: a restart of the daemon stops every agent on the machine.
 
+`agents-update` does the pull and reload on the Mac and on rem-dev each time it runs, and
+prints any plugin that is not running. After a Paseo upgrade it also reruns the browser
+tests of the Mac's plugins (`e2e/run.sh`) against the new Paseo.app.
+
 ## Work on a plugin
 
 ```sh

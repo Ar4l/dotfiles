@@ -4,7 +4,8 @@
 # ///
 """Update claude, codex, central and paseo on this Mac and on rem-dev. Steps, in order:
 
- 1. Print installed versions on both hosts plus the latest release. (--check stops here)
+ 1. Print installed versions on both hosts plus the latest release, and each daemon's
+    Paseo plugins (red: not running). (--check stops here)
  2. Mac:     brew upgrade --cask claude-code@latest codex; central update --install
     rem-dev: claude update; brew upgrade --cask codex; central update --install
     These leave running agents alone, so no prompt.
@@ -31,7 +32,13 @@
        Interrupts running turns; idle agents resume. ~15 s down.
     f. Verify: version, terminal create + kill, agent count; print downtime.
        Then comment the validation on PR 3853.
- 5. If PR 3853 is merged/closed, print what to delete from this script.
+ 5. Paseo plugins (paseo-plugins/README.md). A daemon runs them from its own dotfiles
+    checkout, so on both hosts: git pull --ff-only that checkout, `paseo plugin reload`
+    each enabled plugin (agents keep running), print any that is not running.
+    Then, once per Paseo version on the Mac: run each plugin's e2e/run.sh against
+    Paseo.app with a throwaway daemon (~1 min each), since the plugins lean on app
+    internals a release can change. A pass is recorded in ~/.local/state/agents-update.
+ 6. If PR 3853 is merged/closed, print what to delete from this script.
 
 PROMPTs read /dev/tty; without one the script stops there. --approve-paseo answers
 yes to all of them and is only for when a human already approved out of band; it
@@ -41,7 +48,7 @@ Every step is idempotent: after any failure, rerun. Slow rem-dev steps (4a, 4b, 
 run detached on rem-dev with their log streamed back, so a dropped SSH/IAP connection
 only costs a reconnect; gh and ssh calls retry.
 """
-import argparse, json, os, re, subprocess, sys, time
+import argparse, json, os, re, shlex, subprocess, sys, time
 from pathlib import Path
 
 REMOTE = "rem-dev"
@@ -50,6 +57,7 @@ DOTFILES = Path(__file__).resolve().parent.parent
 UPSTREAM, FORK, FIX_PR = "getpaseo/paseo", "Ar4l/paseo", 3853
 UNPATCHED_GLOB = "`node_modules/node-pty/prebuilds/${process.platform}-${process.arch}/**`"
 SMOKE_PORT = 6799
+TESTED = Path.home() / ".local/state/agents-update/plugins-tested"  # the Paseo version the plugins' browser tests last passed on
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=30", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4", REMOTE]
 TOOLS = {  # name: (mac update, rem-dev update)
     "claude": ("brew upgrade --cask claude-code@latest", "claude update"),
@@ -174,6 +182,65 @@ def latest(tool):
     return version_in(sh("central update </dev/null 2>&1 | grep -i 'target version'", check=False))
 
 
+def plugins(host=None):
+    """The daemon's plugins as [(id, status, path)]; None when the daemon does not answer."""
+    try:
+        found = json.loads(sh("paseo plugin ls --json 2>/dev/null", host, check=False))
+    except ValueError:
+        return None
+    return [(p["id"], p.get("status", "?") if p.get("enabled") else "disabled", p.get("path", "")) for p in found]
+
+
+def plugin_status():
+    for host in (None, REMOTE):
+        found = plugins(host)
+        cells = [green(name) if status == "running" else (yellow if status == "disabled" else red)(f"{name} ({status})")
+                 for name, status, _ in found or []]
+        print(f"{'plugins':8} {host or 'mac':8} {red('no answer from paseo') if found is None else ', '.join(cells) or dim('none')}")
+        for name, status, _ in found or []:
+            if status not in ("running", "disabled"):
+                print(f"  {name}: see `paseo plugin logs {name}`" + (f" on {host}" if host else ""))
+
+
+def update_plugins():
+    for host in (None, REMOTE):
+        found = [(name, path) for name, status, path in plugins(host) or [] if status != "disabled"]
+        if not found:
+            continue
+        log(f"{host or 'mac'}: pull the dotfiles checkout, reload {', '.join(name for name, _ in found)}")
+        paths, names = (" ".join(shlex.quote(x) for x in col) for col in zip(*[(path, name) for name, path in found]))
+        out = sh(f"""for repo in $(for d in {paths}; do git -C "$d" rev-parse --show-toplevel 2>/dev/null; done | sort -u); do
+                git -C "$repo" pull -q --ff-only >/dev/null 2>&1 || echo "git pull --ff-only failed in $repo: the plugins run what is checked out"
+            done
+            for name in {names}; do paseo plugin reload "$name" >/dev/null 2>&1 || echo "paseo plugin reload $name failed"; done""", host, check=False)
+        if out:
+            print(yellow(out))
+    plugin_status()
+
+
+def test_plugins():
+    """Run the browser tests of the Mac's plugins once per Paseo version."""
+    now = version("paseo")
+    if now == "-" or (TESTED.exists() and TESTED.read_text().strip() == now):
+        return
+    failed = False
+    for name, _, path in plugins() or []:
+        script = Path(path) / "e2e/run.sh"
+        if not script.exists():
+            continue
+        log(f"{name}: browser test against Paseo.app {now} with a throwaway daemon (~1 min)")
+        r = subprocess.run([str(script)], capture_output=True, text=True)
+        print(f"{name:14} browser test {green('passed') if r.returncode == 0 else red('FAILED')} on paseo {now}")
+        if r.returncode:
+            failed = True
+            print("\n".join((r.stdout + r.stderr).splitlines()[-15:]))
+    if failed:
+        print(yellow("A plugin may be broken by this Paseo version; its README lists the app internals it uses. Rerun to test again."))
+    else:
+        TESTED.parent.mkdir(parents=True, exist_ok=True)
+        TESTED.write_text(now + "\n")
+
+
 def report():
     log(f"checking versions on mac, {REMOTE}, and upstream")
     rows = [(t, version(t), version(t, REMOTE), latest(t)) for t in [*TOOLS, "paseo"]]
@@ -181,6 +248,7 @@ def report():
     for tool, mac, remote, new in rows:
         cell = lambda v: (green if v == new else red if v == "-" else yellow)(f"{v:10}")  # green: current, yellow: behind, red: missing
         print(f"{tool:8} {cell(mac)} {cell(remote)} {new}")
+    plugin_status()
     return dict((r[0], r[1:3]) for r in rows)
 
 
@@ -357,5 +425,7 @@ if __name__ == "__main__":
     update_tools(before)
     update_paseo_mac(a.approve_paseo)
     update_paseo_remote(a.approve_paseo)
+    update_plugins()
+    test_plugins()
     check_fix_pr()
     log(green("done"))
