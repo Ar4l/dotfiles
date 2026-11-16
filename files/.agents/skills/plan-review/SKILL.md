@@ -48,7 +48,9 @@ grep); if past due, offer a refresh per that doc's Re-review note. Advisory only
 ## Step 1 — Locate the plan file
 
 Prefer a path the session references. Otherwise take the newest plan under
-`~/.local/state/agent-plans/`.
+`~/.local/state/agent-plans/` — the machine-local staging dir for handing plans
+between agent sessions (repo-versioned plan dirs hold the canonical copy; see
+that dir's README). Skip its `README.md`.
 If multiple recent plans make it ambiguous, ask the user.
 
 ## Step 2 — Assemble the review context
