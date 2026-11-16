@@ -101,7 +101,7 @@ app's own shortcut for it, so it does what that shortcut does.
 | Keys | Does | The app's shortcut in Paseo.app |
 | --- | --- | --- |
 | Ctrl+H, Ctrl+J, Ctrl+K, Ctrl+L, or Ctrl+W then `h j k l` | Focus the pane on that side | Cmd+Shift+Arrow |
-| `gt`, `gT`, Space `n`, Space `p` | The next and the previous tab | Alt+Shift+] and Alt+Shift+[ |
+| `gt`, `gT`, Space `n`, Space `p` | The next and the previous tab | Alt+Shift+] and Alt+Shift+[, from Paseo 0.16.0 Cmd+Shift+] and Cmd+Shift+[ |
 | `3gt` | Tab 3 | Cmd+Alt+3 |
 | `]w`, `[w` | The next and the previous workspace | Cmd+] and Cmd+[ |
 | Ctrl+W `v`, Ctrl+W `s` | Split the pane to the right, and down | Cmd+\ and Cmd+Shift+\ |
@@ -173,7 +173,7 @@ after every Paseo upgrade. It fails when one of these changes.
 | The app stops following a reply after a `wheel` event upward on the thread | A scroll upward comes with such an event, or the app scrolls back down |
 | A button around "View turn details" and around a tool call | Enter |
 | The app's key listener answers a key event a script made (`dispatchEvent`) | Every key in "Around the app" |
-| The ids and keys of the app's shortcuts (`keyboard/keyboard-shortcuts.ts`), listed in `client/app.ts` | Pressing the shortcut of a pane, tab or workspace action |
+| The ids and keys of the app's shortcuts (`keyboard/keyboard-shortcuts.ts`), listed in `client/keys.ts` | Pressing the shortcut of a pane, tab or workspace action |
 | `localStorage["@paseo:keyboard-shortcut-overrides"]` | Pressing a shortcut as it was changed in Settings |
 | The app moves between panes only while no text field has the focus, then focuses the pane it chose | The focus leaves the composer before the shortcut is pressed |
 
@@ -189,8 +189,13 @@ Drop the plugin when Paseo ships Vim keys for the composer.
 npm install
 npm run typecheck
 npm test      # the editor, client/vim.test.ts
-e2e/run.sh    # the released app in headless Chromium, about a minute
+e2e/run.sh    # the app's shortcuts, then the released app in headless Chromium, about a minute
 ```
+
+`e2e/run.sh` first runs `e2e/bindings.mjs`. Paseo.app binds other keys than a browser, and the
+spec below runs in a browser. So the check fetches the shortcut code of the installed Paseo
+version from GitHub and gives it the key event the plugin makes for each action in
+`client/keys.ts`. It fails unless the app resolves each to that action, in Paseo.app and in a browser.
 
 `e2e/run.sh` boots a throwaway daemon in a temp home on a free port, installs the plugin,
 starts four agents in two workspaces and runs `e2e/keys.spec.ts`. It never touches `~/.paseo` or the live
@@ -201,10 +206,11 @@ needs Playwright's Chromium (`npx playwright install chromium`).
 - The agent Slow takes ten seconds per reply, so the spec can press Escape while it works.
 - The agent Pages has five turns of thirty messages. The app loads its last turns only, so the spec's search has to fetch the first.
 - The spec's browser says it is a Mac: off a Mac the app binds Ctrl+K and has no shortcut for a pane.
-- In a browser the app's shortcuts for a workspace and a numbered tab are Alt+], Alt+[ and Alt+Shift+3. The spec presses those. Paseo.app's Cmd+], Cmd+[ and Cmd+Alt+3 are not pressed by any test.
-- Paseo 0.16.0 was not run. Its source has the same test ids, shortcut ids and key listener (read on 2026-11-16).
+- In a browser the app's shortcuts for a workspace and a numbered tab are Alt+], Alt+[ and Alt+Shift+3. The spec presses those. Paseo.app's own are never pressed: `e2e/bindings.mjs` covers them.
+- Paseo 0.16.0 was not run in a browser. `e2e/bindings.mjs` passes on its shortcut code: in Paseo.app it moved the next and the previous tab to Cmd+Shift+] and Cmd+Shift+[ under new ids, which `client/keys.ts` lists.
+- Paseo 0.16.0's source has the same test ids. Its key listener moved to `keyboard/internal/sources/dom.web.ts`, keeps the popover rule, and hides a key the app takes from every later listener (read on 2026-11-16).
 - A thread long enough for the app to draw it in part was searched by hand on 2026-11-16: 70 turns, up and down through every match. The spec has no such thread, as it takes three minutes to build.
-- The spec ran against the nix build of Paseo 0.15.4 on Linux on 2026-11-16, in Chromium 151, and not yet against Paseo.app.
+- The spec ran on 2026-11-16 against the nix build of Paseo 0.15.4 on Linux, in Chromium 151, and against Paseo.app 0.15.4 on a Mac.
 - That build's web UI crashes at the root, so the spec rewrites one reference in the bundle the browser receives.
 - The spec grants itself the clipboard. Paseo.app decides on its own whether `p` may read it.
 - `e2e/run.sh --keep` leaves the daemon up and prints its URL and the command that stops it.
@@ -212,7 +218,7 @@ needs Playwright's Chromium (`npx playwright install chromium`).
 ## Not covered
 
 - Paseo.app itself and physical key presses: check Escape, `dw`, `p` after a copy elsewhere, and Enter by hand after an install or an upgrade.
-- Paseo.app's own workspace and numbered-tab shortcuts: check `]w`, `[w` and `3gt` by hand.
+- Pressing Paseo.app's own shortcuts in the app: `e2e/bindings.mjs` checks them against the app's code only. Check `gt`, `]w` and `3gt` by hand after an upgrade.
 - A shortcut changed in Settings → Shortcuts: the code reads it, and no test has changed one.
 - The rest of the config: the other mappings on the leader, and plugins for files, Git, completion and search.
 - `:` commands, macros, marks, named registers, `>` and `<`, `gu`, `gU`, `g~`, `ge`, block-wise visual mode, replace mode.

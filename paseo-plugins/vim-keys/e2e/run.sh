@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end check of the Vim keys: the released app bundle in headless Chromium against a
 # throwaway daemon with mock agents in two workspaces. The live daemon and ~/.paseo are never touched.
+# Before that, e2e/bindings.mjs checks the app's shortcuts, which needs GitHub.
 #
 #   e2e/run.sh          run the spec, then stop the daemon and delete its home
 #   e2e/run.sh --keep   leave the daemon running afterwards, to open the rig in a browser
@@ -46,6 +47,17 @@ finish() {
   exit "$status"
 }
 trap finish EXIT
+
+# The spec below runs in a browser, where the app binds other keys than in Paseo.app. So the
+# shortcuts the plugin presses are first checked against the shortcut code of this Paseo version.
+version=$(paseo --version)
+mkdir "$home/source"
+for file in keyboard-shortcuts shortcut-string; do
+  curl -sfL "https://raw.githubusercontent.com/getpaseo/paseo/v$version/packages/app/src/keyboard/$file.ts" |
+    sed 's#"@/keyboard/shortcut-string"#"./shortcut-string.ts"#' >"$home/source/$file.ts" ||
+    { echo "Could not fetch the shortcut code of Paseo $version from GitHub"; exit 1; }
+done
+node "$plugin/e2e/bindings.mjs" "$home/source"
 
 paseo daemon config set --home "$home" daemon.listen "127.0.0.1:$port" >/dev/null
 paseo daemon config set --home "$home" features.webUi.enabled true >/dev/null
