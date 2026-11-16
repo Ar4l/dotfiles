@@ -7,7 +7,7 @@ straight from this checkout, with no build step and no `npm install`.
 | --- | --- | --- |
 | [`vim-keys`](vim-keys/README.md) | Vim keys for the composer, the agent thread, and for moving between tabs, panes and workspaces | the Mac |
 | [`mru-switcher`](mru-switcher/README.md) | Ctrl+Tab switches between the tabs you viewed last | the Mac |
-| [`ticket-runs`](ticket-runs/README.md) | One agent per ready Linear sub-ticket, and a screen that shows them | every machine whose daemon the app connects to |
+| [`ticket-runs`](ticket-runs/README.md) | One agent per ready Linear sub-ticket, and a screen that shows them | the machine that holds the runs |
 
 ## Install
 
@@ -22,8 +22,9 @@ paseo plugin ls                # the plugin shows as "running"
 
 - A daemon loads plugins only when `pluginsEnabled` is `true` in `~/.paseo/config.json`.
   Plugins run unsandboxed, so `install.sh` leaves that switch to you: Settings > Plugins.
-- The app shows a plugin's screen and sidebar row for the machine you are looking at. Install
-  `ticket-runs` on every machine, or its sidebar row goes when you open another machine's workspace.
+- The app shows one sidebar row per plugin, whichever machine's workspace is open. When
+  several machines have the plugin, the row shows the machine you are looking at. So install
+  `ticket-runs` only where runs live: on a machine without runs its row says "No runs".
 - `ticket-runs` also has a timer, on the machine that holds the runs. `make restow` links
   its units and `systemctl --user enable --now ticket-runs.timer` starts it.
 - Enable a unit by its name. Given a path, systemd writes an absolute link into

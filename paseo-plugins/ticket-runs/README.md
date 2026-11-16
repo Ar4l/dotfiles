@@ -112,12 +112,17 @@ Blocked · 30
 
 ## Install
 
-[`../README.md`](../README.md) has the steps for any plugin. This one needs two things:
+[`../README.md`](../README.md) has the steps for any plugin. This one needs two things, both
+on the machine that holds the runs:
 
 ```sh
-paseo plugin install ~/dotfiles/paseo-plugins/ticket-runs   # on every machine the app connects to
-systemctl --user enable --now ticket-runs.timer             # on the machine that holds the runs
+paseo plugin install ~/dotfiles/paseo-plugins/ticket-runs
+systemctl --user enable --now ticket-runs.timer
 ```
+
+The app then shows that machine's runs in the sidebar row on every workspace. A second
+machine with the plugin shows its own runs while you look at its workspaces, and a picker at
+the top right of the screen switches machine.
 
 `journalctl --user -u ticket-runs` shows the timer's checks.
 
@@ -132,7 +137,9 @@ npm test                           # the script against stand-ins for linear, pa
 tools reported it on 2026-11-16, stripped of titles and names.
 
 The screen was checked in headless Chromium against a throwaway daemon: a second
-`paseo daemon run --home DIR` with its own port, the web UI and plugins enabled.
+`paseo daemon run --home DIR` with its own port, the web UI and plugins enabled. The sidebar
+row across machines was checked with two of them, the second added in the app as a direct
+connection. Its `daemon.cors.allowedOrigins` in `config.json` must list the first one's URL.
 
 ```sh
 uv run -q --with playwright python shot.py URL OUT.png desktop|phone STEP...   # the file's head lists the steps
@@ -153,6 +160,7 @@ A link that a longer chain implies is drawn only for the chosen ticket.
 ## Not yet
 
 - The screen on a real phone.
-- Whether the sidebar row stays on the Mac after a switch to another machine's workspace.
+- The sidebar row in the Mac app, which reaches the other machine through the relay. Two
+  throwaway daemons with direct connections showed it on every workspace.
 - What a Paseo restart or update does to the plugin.
 - The Linear state as a badge on each workspace row: Paseo newer than 0.15.4 documents it.
