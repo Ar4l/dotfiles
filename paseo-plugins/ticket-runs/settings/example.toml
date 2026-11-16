@@ -1,0 +1,44 @@
+# Settings of a ticket run. One file serves every run of one kind of parent ticket:
+#
+#   run_tickets.py start PARENT --settings example [name=value ...]
+#
+# `start` takes the defaults, then this file, then the name=value pairs, and stores the
+# result with the run. Delete a line to get its default. An unknown name stops `start`.
+
+# Start only tickets that carry this Linear label. Default: every ready ticket.
+label = "ready"
+
+# First message to a ticket's agent. {id}, {title} and {url} are the ticket's;
+# {parent} is the run's parent ticket. Default: the brief in run_tickets.py.
+prompt = """
+Work on Linear ticket {id} "{title}" ({url}), a sub-ticket of {parent}. It is assigned to me, which marks it as yours.
+
+Finish all the work you can do alone, then end with a summary: where the ticket
+stands and what you need from me.
+
+To give the ticket back, remove its assignee and say why.
+"""
+
+# Message to one agent, in a workspace of its own, when the last open ticket closes.
+# Only {parent} is filled in. Default: nothing starts.
+finish_prompt = """
+Every sub-ticket of {parent} is closed. Write a closing report: each ticket with its
+pull request, and what is left to do.
+"""
+
+# Git checkout, or a folder inside one, that the run's worktree is made from.
+# Default: the folder `start` runs in.
+dir = "~/code/project"
+
+# Git ref each ticket's branch starts from. Default: the checkout's default branch.
+base = "origin/main"
+
+# Name of a Paseo agent profile (Settings > Agents), or provider/model.
+# Default: Paseo's first profile.
+agent = "claude/claude-haiku-5-5"
+
+# Permission mode of the agents. Default: auto.
+mode = "auto"
+
+# Minutes a ticket added after the start waits before its agent starts. Default: 60.
+wait_minutes = 60
