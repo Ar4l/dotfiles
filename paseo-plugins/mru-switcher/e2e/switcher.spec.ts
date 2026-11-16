@@ -108,7 +108,8 @@ async function statusOf(page: Page, agent: number): Promise<string> {
   // The overlay opens with the status it knew last and repaints when the host answers.
   await page.waitForTimeout(300);
   const row = page.getByTestId("mru-switcher").locator("> div").filter({ hasText: `Agent ${agent}` });
-  const status = `${await row.getAttribute("data-status")}: ${await row.locator('[data-part="status"]').textContent()}`;
+  // The dot carries the status word as its tooltip.
+  const status = `${await row.getAttribute("data-status")}: ${await row.locator("span").first().getAttribute("title")}`;
   await page.keyboard.press("Escape");
   await page.keyboard.up("Control");
   return status;
@@ -149,6 +150,8 @@ test("Ctrl+Tab switches between recently viewed tabs", async ({ page }) => {
       await expect(overlay.locator('[data-part="title"]')).toHaveText(mru.map(titleOf));
       await expect(overlay.locator('[data-part="workspace"]')).toHaveText(mru.map(labelOf));
       await expect(overlay.locator('> div[data-status="done"]')).toHaveCount(7);
+      // Beside the dot: how long ago each agent got its last prompt. The rig prompted them all just now.
+      await expect(overlay.locator('[data-part="status"]')).toHaveText(mru.map(() => /^(just now|\d+m ago)$/));
       await expect(overlay.locator('> div[aria-selected="true"] [data-part="title"]')).toHaveText("Agent 3");
       const box = await overlay.boundingBox();
       expect(box && box.x >= 0 && box.y >= 0 && box.x + box.width <= 1400 && box.y + box.height <= 900).toBe(true);

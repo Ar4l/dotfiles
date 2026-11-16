@@ -8,8 +8,9 @@ Arc or Alt+Tab.
 - Shift+Tab walks back. Escape closes the list and stays put.
 - Move the pointer over a row to select it. Press a row to jump to it at once.
 
-Each row shows the tab's title, its project and workspace, and what the agent is doing in
-the app's own words and colours: Needs input, Failed, Working, Ready to review, Done.
+Each row shows the tab's title, its project and workspace, a dot in the app's own status
+colour, and how long ago you last prompted the agent. The dot's tooltip names the status in
+the app's words: Needs input, Failed, Working, Ready to review, Done.
 
 The list holds 20 entries, lives in the window's `localStorage` and survives a reload.
 An agent tab is one entry. Any other tab (terminal, file, browser) counts as its workspace.

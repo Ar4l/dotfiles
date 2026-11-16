@@ -21,11 +21,12 @@ import {
   type Place,
   type Selection,
   SHOWN,
-  type Status,
+  type RowState,
   drop,
   entryFor,
   isEntry,
   placeOf,
+  promptedAt,
   statusOf,
   step,
   visit,
@@ -162,8 +163,8 @@ function run(hosts: ReadonlySet<HostApi>): Running {
   let first = 1;
   let drawn = false;
   let pending: Pending | null = null;
-  /** Last known status per entry key, shown at once while a fresh one is fetched. */
-  const statuses = new Map<string, Status>();
+  /** Last known status and prompt time per entry key, shown at once while fresh ones are fetched. */
+  const statuses = new Map<string, RowState>();
   /** When each entry's status was last requested. */
   const asked = new Map<string, number>();
   /** Key of the tab last recorded as on screen. */
@@ -426,7 +427,7 @@ function run(hosts: ReadonlySet<HostApi>): Running {
   }
 
   function jump(entry: Entry): void {
-    if (statuses.get(entry.key) === "gone") return;
+    if (statuses.get(entry.key)?.status === "gone") return;
     if (entry.key === (pending?.entry.key ?? current()?.key)) return;
     list = visit(list, entry);
     const now = Date.now();
@@ -454,8 +455,10 @@ function run(hosts: ReadonlySet<HostApi>): Running {
         .then((result) => {
           const status = statusOf(result?.agent ?? null, document.querySelector(agentTabOf(entry)) !== null);
           if (status === "gone") forget(key);
-          if (statuses.get(key) === status) return;
-          statuses.set(key, status);
+          const prompted = promptedAt(result?.agent ?? null);
+          const known = statuses.get(key);
+          if (known?.status === status && known.prompted === prompted) return;
+          statuses.set(key, { status, prompted });
           overlay.update(statuses);
         })
         .catch(() => {

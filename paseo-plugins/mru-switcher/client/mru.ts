@@ -129,6 +129,14 @@ export interface AgentState {
   attentionReason?: string | null;
   pendingPermissions?: readonly unknown[];
   archivedAt?: string | null;
+  lastUserMessageAt?: string | null;
+}
+
+/** What a row shows about its agent: the status behind its dot, and when it last got a prompt. */
+export interface RowState {
+  status: Status;
+  /** Epoch milliseconds, or null for an agent that was never prompted. */
+  prompted: number | null;
 }
 
 /**
@@ -142,4 +150,21 @@ export function statusOf(agent: AgentState | null, tabOpen = false): Status {
   if (agent.status === "error" || agent.attentionReason === "error") return "failed";
   if (agent.status === "running") return "running";
   return agent.requiresAttention ? "attention" : "done";
+}
+
+/** When the agent last got a prompt, in epoch milliseconds, or null if it never did. */
+export function promptedAt(agent: AgentState | null): number | null {
+  const time = Date.parse(agent?.lastUserMessageAt ?? "");
+  return Number.isNaN(time) ? null : time;
+}
+
+/** How long ago `then` was, worded as the app words it (`describeTimeAgo`): past a week, the date. */
+export function ago(then: number, now: number): string {
+  const minutes = Math.floor((now - then) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}h ago`;
+  if (minutes < 7 * 24 * 60) return `${Math.floor(minutes / (24 * 60))}d ago`;
+  const date = new Date(then);
+  return `${date.toLocaleDateString("en-US", { month: "short" })} ${date.getDate()}`;
 }

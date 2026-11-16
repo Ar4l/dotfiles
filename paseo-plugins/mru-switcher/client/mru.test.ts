@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   CAP,
+  ago,
   type Entry,
   type Key,
   type Selection,
@@ -10,6 +11,7 @@ import {
   entryFor,
   isEntry,
   placeOf,
+  promptedAt,
   statusOf,
   step,
   visit,
@@ -140,6 +142,22 @@ test("an agent's status follows the app's own rules, most urgent first", () => {
   assert.equal(statusOf({ ...idle, status: "running", pendingPermissions: [{}] }), "needs_input");
   assert.equal(statusOf({ ...idle, status: "error", attentionReason: "permission" }), "needs_input");
   assert.equal(statusOf({ status: "idle" }), "done");
+});
+
+test("a row says how long ago its agent was last prompted, in the app's words", () => {
+  const now = Date.parse("2026-11-16T12:00:00Z");
+  const minute = 60_000;
+  assert.equal(promptedAt({ status: "idle", lastUserMessageAt: "2026-11-16T11:55:00Z" }), now - 5 * minute);
+  assert.equal(promptedAt({ status: "idle", lastUserMessageAt: null }), null);
+  assert.equal(promptedAt({ status: "idle" }), null);
+  assert.equal(promptedAt(null), null);
+  assert.equal(ago(now - 59_000, now), "just now");
+  assert.equal(ago(now - 5 * minute, now), "5m ago");
+  assert.equal(ago(now - 59 * minute, now), "59m ago");
+  assert.equal(ago(now - 60 * minute, now), "1h ago");
+  assert.equal(ago(now - 47 * 60 * minute, now), "1d ago");
+  assert.equal(ago(now - 6 * 24 * 60 * minute, now), "6d ago");
+  assert.equal(ago(new Date(2026, 9, 3, 12).getTime(), now), "Oct 3");
 });
 
 test("an archived or deleted agent is gone, unless its tab is open", () => {

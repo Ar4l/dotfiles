@@ -7,12 +7,13 @@ import {
   requestAnimationFrame,
   window,
 } from "./dom";
-import { type Entry, type Status, cardWidth } from "./mru";
+import { type Entry, type RowState, type Status, ago, cardWidth } from "./mru";
 import type { Preview } from "./preview";
 
 /**
  * The app's own status words (sidebar.statusBucket) and the dot colours of its light and
- * dark themes (status-dot-color.ts). `gone` is this plugin's.
+ * dark themes (status-dot-color.ts). `gone` is this plugin's. The dot carries the colour and
+ * the word as its tooltip; the text beside it says when the agent was last prompted.
  */
 const STATUS: Record<Status, { label: string; colours?: [light: string, dark: string] }> = {
   needs_input: { label: "Needs input", colours: ["#b37824", "#db932e"] },
@@ -28,12 +29,12 @@ export interface Overlay {
   open(
     entries: readonly Entry[],
     selection: number,
-    statuses: ReadonlyMap<string, Status>,
+    states: ReadonlyMap<string, RowState>,
     previews?: ReadonlyMap<string, Preview>,
   ): void;
   select(selection: number): void;
-  /** Repaints the status of every listed entry. */
-  update(statuses: ReadonlyMap<string, Status>): void;
+  /** Repaints the status and last prompt time of every listed entry. */
+  update(states: ReadonlyMap<string, RowState>): void;
   close(): void;
   contains(node: unknown): boolean;
 }
@@ -99,19 +100,22 @@ export function createOverlay(onHover: (index: number) => void, onPick: (index: 
     return element;
   };
 
-  function paintStatus(row: Row, status: Status | undefined): void {
+  function paintStatus(row: Row, state: RowState | undefined): void {
+    const status = state?.status;
     const { label, colours } = status ? STATUS[status] : { label: "", colours: undefined };
     const colour = colours?.[dark ? 1 : 0] ?? "";
     const fill = !status ? "transparent" : colour || `color-mix(in srgb,${foreground} 30%,transparent)`;
     row.dot.style.cssText = `flex:none;width:8px;height:8px;border-radius:50%;background:${fill}`;
-    row.state.style.cssText = `flex:none;font-size:11px;${colour ? `color:${colour}` : "opacity:.55"}`;
-    row.state.textContent = label;
+    row.dot.setAttribute("title", label);
+    row.state.style.cssText = "flex:none;font-size:11px;opacity:.55";
+    const prompted = state?.prompted ?? null;
+    row.state.textContent = status === "gone" ? label : prompted === null ? "" : ago(prompted, Date.now());
     if (status) row.element.setAttribute("data-status", status);
     row.title.style.cssText = titleCss + (status === "gone" ? "opacity:.45;text-decoration:line-through" : "");
   }
 
   return {
-    open(entries, selection, statuses, previews) {
+    open(entries, selection, states, previews) {
       const colours = sample();
       foreground = colours.foreground;
       dark = colours.dark;
@@ -148,7 +152,7 @@ export function createOverlay(onHover: (index: number) => void, onPick: (index: 
         } else {
           element.append(row.dot, title, workspace, row.state);
         }
-        paintStatus(row, statuses.get(entry.key));
+        paintStatus(row, states.get(entry.key));
         return row;
       });
       root.replaceChildren(...rows.map((row) => row.element));
@@ -182,8 +186,8 @@ export function createOverlay(onHover: (index: number) => void, onPick: (index: 
           rowCss + (selected ? `background:color-mix(in srgb,${foreground} 14%,transparent)` : "");
       });
     },
-    update(statuses) {
-      for (const row of rows) paintStatus(row, statuses.get(row.key));
+    update(states) {
+      for (const row of rows) paintStatus(row, states.get(row.key));
     },
     close() {
       cancelAnimationFrame(frame);
