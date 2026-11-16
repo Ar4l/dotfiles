@@ -5,6 +5,7 @@ import {
   type Entry,
   type Key,
   type Selection,
+  cardWidth,
   drop,
   entryFor,
   isEntry,
@@ -139,4 +140,13 @@ test("an agent's status follows the app's own rules, most urgent first", () => {
   assert.equal(statusOf({ ...idle, status: "running", pendingPermissions: [{}] }), "needs_input");
   assert.equal(statusOf({ ...idle, status: "error", attentionReason: "permission" }), "needs_input");
   assert.equal(statusOf({ status: "idle" }), "done");
+});
+
+test("cards share the window's width, and a few cards stay narrow", () => {
+  for (const width of [600, 1400, 2560]) {
+    const row = 7 * cardWidth(7, width) + 6 * 6 + 12;
+    assert.ok(row <= width * 0.94 && row <= 1180, `seven cards fit a ${width} px window`);
+  }
+  assert.equal(cardWidth(7, 1400), 161);
+  assert.equal(cardWidth(2, 1400), 220);
 });

@@ -77,6 +77,15 @@ export function isEntry(value: unknown): value is Entry {
   );
 }
 
+/** The `localStorage` value that turns the list into a row of cards with previews. */
+export const CARDS = "cards";
+
+/** Width of one card: `count` cards and the gaps between them fill at most 94% of the window. */
+export function cardWidth(count: number, windowWidth: number): number {
+  const row = Math.min(1180, windowWidth * 0.94) - 12 - 6 * (count - 1);
+  return Math.floor(Math.min(220, row / Math.max(1, count)));
+}
+
 /** Moves `entry` to the front and keeps at most `cap` entries. */
 export function visit(list: readonly Entry[], entry: Entry, cap = CAP): Entry[] {
   return [entry, ...list.filter((other) => other.key !== entry.key)].slice(0, cap);

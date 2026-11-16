@@ -25,6 +25,37 @@ from Ctrl up to the tab selected, in the rig below.
 - Opening the list asks each listed agent's host for its status: at most seven requests.
 - The plugin reads the DOM twice after a click or a shortcut, and every 30 ms during a jump. It runs no timer otherwise.
 
+## Cards layout (experimental, off by default)
+
+The overlay can draw the recent tabs as a row of cards, each with a small picture of its
+workspace above the title. A split workspace shows its panes, and the panes the tab is not
+in are dimmed. Keys, hover and press work as in the list.
+
+Turn it on with the command-center item "Recent tabs: switch between list and cards", or
+set `localStorage["mru-switcher:layout"]` to `cards`. The item switches without a message.
+The next Ctrl+Tab shows the result.
+
+Plugins have no screenshot API, so the picture is a copy of the workspace's DOM
+(`cloneNode`), scaled down with a CSS transform. The plugin takes the copy one second after
+your last click or shortcut, when the browser is idle. It keeps copies in memory for the
+seven listed entries only, and never writes them to storage.
+
+- A card is empty until its tab has been on screen for a second. Copies do not survive a reload.
+- A picture shows the tab a second after your last click on it, not what the agent wrote since.
+- Terminals are blank: xterm draws on a canvas, and a copied canvas is empty.
+- Browser tabs, iframes and videos are left out of the copy.
+- Seven cards share the window's width, so each is about 160 px wide in a 1400 px window.
+
+The costs below are from the rig with seven cards, six of them with a picture, about 5,800
+copied elements in all.
+
+- Taking a copy of a workspace of 1,100 elements: 1 to 2 ms, or 2 to 4 ms at 4x CPU throttle.
+- The cards appear in the first frame. The pictures follow one per frame: all six after 110 to 130 ms, 400 ms at 4x.
+- A frame that adds a picture took 17 to 26 ms, or 25 to 68 ms at 4x. A Tab pressed then waits that long.
+- A jump after the cards were drawn is 10 ms slower than from the list (17 ms at 4x): the copies leave the document.
+- A quick Ctrl+Tab never draws the overlay and costs what it costs with the list.
+- With the layout off, the only extra work is reading the `localStorage` key after a click and when the list opens.
+
 ## Install
 
 ```sh
@@ -46,8 +77,9 @@ after every Paseo upgrade; it fails when one of these changes.
 | Path `/h/<server>/workspace/<workspace>` | Knowing which workspace is on screen |
 | `workspace-tab-<tab>` with `aria-selected` and `aria-label` | The selected tab and its title; `agent_<id>` marks an agent tab; clicked to jump |
 | `sidebar-workspace-row-<server>:<workspace>` | Clicked to jump to another workspace |
-| `workspace-deck-entry-<server>:<workspace>` | Finding a workspace's tabs, mounted or on screen |
-| `workspace-pane-*` | Picking the focused pane when panes are split |
+| `workspace-deck-entry-<server>:<workspace>` | Finding a workspace's tabs, mounted or on screen; copied for a card's picture |
+| `workspace-pane-*` | Picking the focused pane when panes are split; dimming the other panes in a picture |
+| Styles set by class names (React Native Web) | A copy of a workspace looks the same outside the app's tree |
 | `workspace-header-subtitle`, `workspace-header-title` | The project and workspace names in the list |
 | Path `/h/<server>/agent/<agent>` | The fallback jump: the app redirects it to the agent's workspace and selects its tab |
 | `deriveAgentStateBucket`, `status-dot-color.ts` | The status rules in `client/mru.ts` and the colours in `client/overlay.ts` are copies |
@@ -105,3 +137,4 @@ seeds seven agents in two workspaces and runs `e2e/switcher.spec.ts`. It never t
 - A workspace entry opens like its sidebar row, so it lands on the workspace's unread agent when it has one.
 - An agent that turns unread between the host's answer and the jump is shown for a moment and marked read.
 - An agent on an offline host shows no status.
+- The cards layout in Paseo.app, in Safari, and with several hosts serving the plugin (the command-center item would appear once per host).

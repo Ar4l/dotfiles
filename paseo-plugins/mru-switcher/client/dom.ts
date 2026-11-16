@@ -4,9 +4,13 @@ export interface Elem {
   style: { cssText: string };
   textContent: string | null;
   isConnected: boolean;
+  scrollTop: number;
   parentElement: Elem | null;
   getAttribute(name: string): string | null;
   setAttribute(name: string, value: string): void;
+  removeAttribute(name: string): void;
+  getBoundingClientRect(): { width: number; height: number };
+  cloneNode(deep: boolean): Elem;
   checkVisibility(): boolean;
   contains(node: unknown): boolean;
   closest(selector: string): Elem | null;
@@ -60,8 +64,26 @@ interface Globals {
   localStorage: { getItem(key: string): string | null; setItem(key: string, value: string): void };
   PopStateEvent: new (type: string) => unknown;
   getComputedStyle(element: Elem): { backgroundColor: string };
+  requestAnimationFrame(callback: () => void): number;
+  cancelAnimationFrame(handle: number): void;
+  /** Missing in Safari. */
+  requestIdleCallback?(callback: () => void, options: { timeout: number }): number;
 }
 
 // Undefined on native, where the switcher never starts.
-export const { window, document, history, location, localStorage, PopStateEvent, getComputedStyle } =
-  globalThis as unknown as Globals;
+const { requestIdleCallback } = globalThis as unknown as Globals;
+export const {
+  window,
+  document,
+  history,
+  location,
+  localStorage,
+  PopStateEvent,
+  getComputedStyle,
+  requestAnimationFrame,
+  cancelAnimationFrame,
+} = globalThis as unknown as Globals;
+
+/** Runs `run` once the browser has nothing else to do, or after `timeout` ms. */
+export const idle: (run: () => void, options: { timeout: number }) => unknown =
+  requestIdleCallback ?? ((run) => setTimeout(run, 0));

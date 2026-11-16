@@ -249,5 +249,59 @@ test("Ctrl+Tab switches between recently viewed tabs", async ({ page }) => {
     expect(await statusOf(page, 2)).toBe("attention: Ready to review");
   });
 
+  await test.step("11. the cards layout shows a split workspace as two panes", async () => {
+    // The flag is a command-center item. It changes only how the overlay is drawn.
+    await page.getByTestId("sidebar-search").click();
+    const panel = page.getByTestId("command-center-panel");
+    await panel.getByTestId("command-center-input").fill("Recent tabs");
+    await panel.getByRole("button", { name: /^Recent tabs: switch between list and cards/ }).click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("mru-switcher:layout"))).toBe("cards");
+
+    // Agent 4 moves into a second pane, to the right of the others.
+    const panes = page.locator('[data-testid^="workspace-pane-"]').filter({ visible: true });
+    await page.getByTestId("workspace-split-pane-menu").filter({ visible: true }).first().click();
+    await page.getByTestId("workspace-split-pane-right").click();
+    await expect(panes).toHaveCount(2);
+    await agentTab(page, 4).click();
+    await page.keyboard.press("Meta+Alt+Shift+ArrowRight");
+    await expect(panes.last().locator('[aria-label="Agent 4"]')).toHaveCount(1);
+    // A preview is taken a second after the last click on a tab.
+    for (const agent of [4, 1]) {
+      await agentTab(page, agent).click();
+      await page.waitForTimeout(1500);
+    }
+
+    const cards = overlay.locator("> div");
+    const cardOf = (agent: number) =>
+      cards.filter({ has: page.locator(`[data-part="title"]:text-is("Agent ${agent}")`) });
+    await openOverlay(page);
+    await expect(overlay).toHaveAttribute("data-layout", "cards");
+    await expect(cards).toHaveCount(7);
+    await expect(cardOf(4)).toHaveAttribute("aria-selected", "true");
+    for (const [agent, focused] of [[1, 0], [4, 1]]) {
+      const copied = cardOf(agent).locator('[data-part="preview"] [data-pane]');
+      await expect(copied).toHaveCount(2);
+      await expect(copied.nth(focused)).toHaveAttribute("data-pane", "focused");
+      await expect(copied.nth(1 - focused)).toHaveAttribute("data-pane", "");
+    }
+    const box = (await overlay.boundingBox())!;
+    expect(box.x >= 0 && box.y >= 0 && box.x + box.width <= 1400 && box.y + box.height <= 900).toBe(true);
+    await page.keyboard.up("Control");
+    await expect(overlay).toHaveCount(0);
+    await expect.poll(async () => (await stored(page))[0]?.title).toBe("Agent 4");
+
+    // A press on a card's preview jumps, here to the other workspace.
+    await openOverlay(page);
+    const card = (await cardOf(6).boundingBox())!;
+    await page.mouse.move(card.x + 20, card.y + 20);
+    await page.mouse.down();
+    await expect(overlay).toHaveCount(0);
+    await page.mouse.up();
+    await page.keyboard.up("Control");
+    await expect(page).toHaveURL(new RegExp(`/workspace/${beta}$`));
+    await expect(agentTab(page, 6)).toHaveAttribute("aria-selected", "true");
+    await expect.poll(async () => (await stored(page))[0]?.title).toBe("Agent 6");
+  });
+
   expect(errors).toEqual([]);
 });

@@ -7,12 +7,14 @@ import {
   PopStateEvent,
   document,
   history,
+  idle,
   localStorage,
   location,
   window,
 } from "./dom";
 import {
   type AgentState,
+  CARDS,
   type Entry,
   type Key,
   type Selection,
@@ -28,6 +30,7 @@ import {
   workspaceKey,
 } from "./mru";
 import { createOverlay } from "./overlay";
+import { type Preview, capture } from "./preview";
 
 /** The part of a host's API the switcher reads agent state from. */
 export interface Paseo {
@@ -53,6 +56,8 @@ const sidebarRowOf = (entry: Entry) => testId(`sidebar-workspace-row-${entry.ser
 const agentTabOf = (entry: Entry) => `${deckOf(entry)} ${testId(`${TAB_PREFIX}agent_${entry.agentId}`)}`;
 
 const STORE = "mru-switcher";
+/** Holds `cards` while the experimental layout is on: a row of cards with previews. */
+const LAYOUT = "mru-switcher:layout";
 /** A quick Ctrl+Tab toggle is over before this, and never draws the overlay. */
 const SHOW_MS = 150;
 /** How often a jump on its way is looked at. */
@@ -63,6 +68,23 @@ const CLICK_MS = 1200;
 const ASK_MS = 250;
 /** How long a jump may take to land before its entry counts as gone. */
 const LAND_MS = 5000;
+
+function cards(): boolean {
+  try {
+    return localStorage.getItem(LAYOUT) === CARDS;
+  } catch {
+    return false;
+  }
+}
+
+/** Switches the overlay between the list and the cards. */
+export function toggleCards(): void {
+  try {
+    localStorage.setItem(LAYOUT, cards() ? "list" : CARDS);
+  } catch {
+    // Storage is blocked: the overlay stays a list.
+  }
+}
 
 interface Shared {
   /** One per host that serves the plugin. Each stops working when its host unloads the plugin. */
@@ -114,6 +136,8 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
   let pending: Pending | null = null;
   /** Last known status per entry key, shown at once while a fresh one is fetched. */
   const statuses = new Map<string, Status>();
+  /** With the cards layout on: what each listed entry's workspace looked like, at most SHOWN of them. */
+  const previews = new Map<string, Preview>();
   let soon = 0;
   let late = 0;
   let poll = 0;
@@ -271,7 +295,30 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
     clearTimeout(soon);
     clearTimeout(late);
     soon = setTimeout(track, 150);
-    late = setTimeout(track, 1000);
+    late = setTimeout(() => {
+      track();
+      snap();
+    }, 1000);
+  }
+
+  /**
+   * Copies the workspace on screen for its entry's card. It runs a second after the last click
+   * or shortcut, when the app is idle, and never during a jump.
+   */
+  function snap(): void {
+    if (!cards()) return previews.clear();
+    idle(
+      () => {
+        const entry = current();
+        const deck = entry && document.querySelector(deckOf(entry));
+        if (!entry || !deck || pending || selection !== null) return;
+        const tab = entry.agentId === null ? null : document.querySelector(agentTabOf(entry));
+        previews.set(entry.key, capture(deck, PANE, tab?.closest(PANE) ?? null));
+        const listed = list.slice(0, SHOWN);
+        for (const key of previews.keys()) if (!listed.some((other) => other.key === key)) previews.delete(key);
+      },
+      { timeout: 2000 },
+    );
   }
 
   function jump(entry: Entry): void {
@@ -308,7 +355,7 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
     clearTimeout(draw);
     if (selection === null || drawn) return;
     drawn = true;
-    overlay.open(shown, selection, statuses);
+    overlay.open(shown, selection, statuses, cards() ? previews : undefined);
   }
 
   function press(key: Key): void {
