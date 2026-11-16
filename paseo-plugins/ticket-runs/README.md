@@ -55,5 +55,6 @@ headless Chromium with `prototype/shot.py` against a throwaway daemon.
 
 Paseo 0.15.4 gives a plugin no drawing surface. `client/graph.ts` lays the graph out and
 writes it as one SVG document, which Paseo's `Icon` draws; invisible buttons over the nodes
-take the taps. Paseo refuses an SVG above 64 KiB, and a run that large gets a list instead.
+take the taps and the pointer. Each tap, hover or legend choice writes the SVG again, so the
+graph has no animation, drag or zoom. Paseo refuses an SVG above 64 KiB, and a run that large gets a list instead.
 The run of 2026-11-16 had 62 linked tickets and 189 links, and its SVG was 27 KiB.

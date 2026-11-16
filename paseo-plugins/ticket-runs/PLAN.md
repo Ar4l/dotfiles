@@ -52,9 +52,11 @@ Blocked · 30
   hold what the run does, the last and next check, the last five starts, and
   the dependency graph of the run's tickets.
 - The graph draws blockers on the left and what they block to the right. A
-  tap on a ticket lights up its links and shows its name; a tap on the name
-  opens its agent. A link that a longer chain implies is drawn only for the
-  tapped ticket.
+  tap on a ticket, or the pointer over it, lights up its links, keeps its
+  whole chain visible and shows its name; a tap on the name opens its agent.
+  The legend's groups ("Needs you", "Blocked") each keep their tickets
+  bright. A link that a longer chain implies is drawn only for the chosen
+  ticket.
 - "What the run does" words the run's settings: which tickets it starts, with
   what prompt, agent, folder and branch, and what follows the last ticket.
 - A "Needs you" row shows the pull request of the branch in the ticket's

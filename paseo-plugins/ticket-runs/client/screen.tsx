@@ -7,8 +7,10 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 import { Pressable, Text, View, type PressableStateCallbackType, type TextStyle, type ViewStyle } from "react-native";
 import { checkRpc, pauseRpc, replaceAgentRpc, startRpc, type Done, type Health, type Run, type Ticket } from "../shared/status";
 import {
+  GROUP_LABELS,
   STATUS_KEY,
   dependencyTree,
+  groupKey,
   groupsOf,
   needsYouCount,
   orderedRuns,
@@ -18,11 +20,12 @@ import {
   statusMark,
   useStatus,
   type Group,
+  type GroupKey,
   type RowContext,
   type Tone,
   type TreeNode,
 } from "./data";
-import { NODE_H, drawGraph, layoutGraph, neighbours } from "./graph";
+import { NODE_H, chain, drawGraph, layoutGraph, neighbours } from "./graph";
 import { clock } from "./time";
 
 /** A group with more rows than this starts collapsed. Applies to "Needs you" and "Blocked". */
@@ -117,7 +120,11 @@ function makeStyles(c: Colors, compact: boolean) {
       detailsSheet: { gap: 24 },
       section: { gap: 8 },
       treeRow: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 26 },
-      graphCaption: { gap: 2, minHeight: 50 },
+      // A fixed height: a caption that grew on hover would move the graph under the pointer.
+      graphCaption: { gap: 2, height: 50, overflow: "hidden" },
+      legend: { flexDirection: "row", flexWrap: "wrap", gap: 2 },
+      chip: { flexDirection: "row", alignItems: "center", gap: 5, height: 24, paddingHorizontal: 8, borderRadius: 12 },
+      chipDot: { width: 9, height: 9, borderRadius: 5, borderWidth: 1.5 },
       graphScroll: { flexGrow: 0 },
       treeChildren: { marginLeft: 7, paddingLeft: 9, borderLeftWidth: 1, borderLeftColor: c.border },
       recentRow: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 30, borderRadius: 6 },
@@ -152,6 +159,7 @@ function makeStyles(c: Colors, compact: boolean) {
       textButtonText: { color: c.foreground, fontSize: 13 },
       sectionLabel: { color: c.foregroundMuted, fontSize: 13 },
       treeId: { color: c.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums"] },
+      chipText: { color: c.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums"] },
       treeTitle: { flex: 1, minWidth: 0, color: c.foreground, fontSize: 13 },
       small: { color: c.foreground, fontSize: 13, lineHeight: 19 },
       smallMuted: { color: c.foregroundMuted, fontSize: 13, lineHeight: 19 },
@@ -486,22 +494,41 @@ function DetailsSection({ label, children }: { label: string; children: ReactNod
 }
 
 type MaybeId = string | null;
+type MaybeGroup = GroupKey | null;
+
+const GROUP_ORDER: readonly GroupKey[] = ["soon", "working", "needs_you", "blocked"];
+
+function groupColor(c: Colors, key: GroupKey): string {
+  if (key === "working") return c.statusSuccess;
+  if (key === "needs_you") return c.statusWarning;
+  return key === "soon" ? c.foreground : c.foregroundMuted;
+}
+
+/** A ticket's outline in the graph: the colour of its group, red when a start or a check failed. */
+function ticketColor(c: Colors, ticket: Ticket): string {
+  const failed = ticket.state === "checks_failed" || ticket.state === "could_not_start";
+  return failed ? c.statusDanger : groupColor(c, groupKey(ticket));
+}
 
 /**
  * What blocks what, as a graph: blockers on the left, the tickets they block to the right.
- * A tap on a ticket lights up its links. A run too large for one SVG falls back to a list.
+ * The pointer over a ticket, or a tap, lights up its links and keeps its whole chain visible;
+ * a group in the legend keeps that group's tickets. A run too large for one SVG gets a list.
  */
 function Dependencies({ run, actions }: { run: Run; actions: TicketActions }) {
   const { c, s } = useUi();
   const [chosen, setChosen] = useState<MaybeId>(null);
+  const [hovered, setHovered] = useState<MaybeId>(null);
+  const [group, setGroup] = useState<MaybeGroup>(null);
   const graph = useMemo(() => layoutGraph(run), [run]);
-  const selected = graph?.nodes.find((node) => node.id === chosen) ?? null;
+  const pinned = graph?.nodes.find((node) => node.id === chosen) ?? null;
+  const selected = graph?.nodes.find((node) => node.id === hovered) ?? pinned;
   const picture = useMemo(() => {
     if (!graph) return null;
     const drawn = drawGraph(
       graph,
       {
-        outline: (ticket) => (ticket ? toneColor(c, statusMark(ticket).tone) : c.foregroundMuted),
+        outline: (ticket) => (ticket ? ticketColor(c, ticket) : c.foregroundMuted),
         fill: c.surface1,
         text: c.foreground,
         muted: c.foregroundMuted,
@@ -509,10 +536,11 @@ function Dependencies({ run, actions }: { run: Run; actions: TicketActions }) {
         highlight: c.foreground,
       },
       selected?.id ?? null,
+      group ? (node) => node.ticket !== null && groupKey(node.ticket) === group : null,
     );
     // Paseo refuses an SVG above 64 KiB or one that breaks its rules, and then draws nothing.
     return drawn.svg.length <= PLUGIN_SVG_ICON_MAX_BYTES && findSvgIconProblem(drawn.svg) === null ? drawn : null;
-  }, [graph, selected?.id, c]);
+  }, [graph, selected?.id, group, c]);
 
   if (!graph) {
     return (
@@ -531,12 +559,17 @@ function Dependencies({ run, actions }: { run: Run; actions: TicketActions }) {
     );
   }
   const links = selected ? neighbours(graph, selected.id) : null;
+  const whole = selected ? chain(graph, selected.id) : null;
   const mark = selected?.ticket ? statusMark(selected.ticket) : { icon: "CircleDashed", tone: "muted" as const };
   const agentId = selected?.ticket?.agentId;
+  const counts = new Map<GroupKey, number>();
+  for (const node of graph.nodes) {
+    if (node.ticket) counts.set(groupKey(node.ticket), (counts.get(groupKey(node.ticket)) ?? 0) + 1);
+  }
   return (
     <DetailsSection label="Dependencies">
       <View style={s.graphCaption}>
-        {selected && links ? (
+        {selected && links && whole ? (
           <>
             <View style={s.treeRow}>
               <Icon name={mark.icon} size={14} color={toneColor(c, mark.tone)} />
@@ -556,17 +589,42 @@ function Dependencies({ run, actions }: { run: Run; actions: TicketActions }) {
                 </Pressable>
               ) : null}
             </View>
-            <Text style={s.smallMuted}>
-              {links.blockedBy.length > 0 ? `blocked by ${links.blockedBy.length}` : "nothing blocks it"}
-              {" · "}
-              {links.blocks.length > 0 ? `blocks ${links.blocks.length}` : "blocks nothing"}
+            <Text style={s.smallMuted} numberOfLines={1}>
+              {[
+                links.blockedBy.length > 0 ? `blocked by ${links.blockedBy.length}` : "nothing blocks it",
+                whole.before.size > links.blockedBy.length ? `${whole.before.size} must finish first` : null,
+                links.blocks.length > 0 ? `blocks ${links.blocks.length}` : "blocks nothing",
+                whole.after.size > links.blocks.length ? `${whole.after.size} wait for it` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </Text>
           </>
         ) : (
-          <Text style={s.smallMuted}>
-            Tickets by number, blockers on the left. Tap one to light up its links, then its name to open its agent.
+          <Text style={s.smallMuted} numberOfLines={2}>
+            Blockers on the left. Tap a ticket for its chain, then its name to open its agent.
           </Text>
         )}
+      </View>
+      <View style={s.legend}>
+        {GROUP_ORDER.filter((key) => counts.has(key)).map((key) => (
+          <Pressable
+            key={key}
+            accessibilityRole="button"
+            accessibilityLabel={`Show ${GROUP_LABELS[key]} in the graph`}
+            accessibilityState={{ selected: group === key }}
+            onPress={() => {
+              setGroup(group === key ? null : key);
+              setChosen(null);
+            }}
+            style={(state) => [s.chip, (group === key || isActive(state)) && s.pressed]}
+          >
+            <View style={[s.chipDot, { borderColor: groupColor(c, key) }]} />
+            <Text style={[s.chipText, group === key && { color: c.foreground }]}>
+              {GROUP_LABELS[key]} {counts.get(key)}
+            </Text>
+          </Pressable>
+        ))}
       </View>
       <ScrollView horizontal style={s.graphScroll}>
         <View style={{ width: graph.width, height: graph.height, overflow: "hidden" }}>
@@ -576,15 +634,17 @@ function Dependencies({ run, actions }: { run: Run; actions: TicketActions }) {
               key={node.id}
               accessibilityRole="button"
               accessibilityLabel={`Show the links of ${node.id}`}
-              accessibilityState={{ selected: node.id === selected?.id }}
-              onPress={() => setChosen(node.id === selected?.id ? null : node.id)}
+              accessibilityState={{ selected: node.id === pinned?.id }}
+              onPress={() => setChosen(node.id === pinned?.id ? null : node.id)}
+              onHoverIn={() => setHovered(node.id)}
+              onHoverOut={() => setHovered((now) => (now === node.id ? null : now))}
               style={{ position: "absolute", left: node.x, top: node.y, width: graph.nodeWidth, height: NODE_H }}
             />
           ))}
-          {picture.tag && agentId && actions.open ? (
+          {picture.tag && pinned && pinned.id === selected?.id && agentId && actions.open ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Open the agent of ${selected?.id} from the graph`}
+              accessibilityLabel={`Open the agent of ${pinned.id} from the graph`}
               onPress={() => actions.open?.(agentId)}
               style={{ position: "absolute", left: picture.tag.x, top: picture.tag.y, width: picture.tag.width, height: picture.tag.height }}
             />

@@ -47,6 +47,20 @@ export interface Group {
   startNow: boolean;
 }
 
+/** The group of the main list a ticket belongs to. */
+export function groupKey(ticket: Ticket): GroupKey {
+  if (ticket.state === "waiting") return "soon";
+  if (ticket.state === "working") return "working";
+  return ticket.state === "not_started" ? "blocked" : "needs_you";
+}
+
+export const GROUP_LABELS: Record<GroupKey, string> = {
+  soon: "Starting soon",
+  working: "Working",
+  needs_you: "Needs you",
+  blocked: "Blocked",
+};
+
 /** Order of the reasons inside "Needs you". */
 const NEEDS_YOU_ORDER: readonly Ticket["state"][] = NEEDS_YOU_STATES;
 const BLOCKED_ORDER: readonly Ticket["reason"][] = ["blocked", "sub_tickets", "no_label", "assigned_no_agent"];
@@ -86,17 +100,17 @@ export function groupsOf(run: Run): Group[] {
     .filter((t) => t.state === "not_started")
     .sort((a, b) => BLOCKED_ORDER.indexOf(a.reason) - BLOCKED_ORDER.indexOf(b.reason) || a.id.localeCompare(b.id));
   const groups: Group[] = [
-    { key: "soon", label: "Starting soon", mark: MARKS.waiting, tickets: inState("waiting"), summary: null, startNow: true },
-    { key: "working", label: "Working", mark: MARKS.working, tickets: inState("working"), summary: null, startNow: false },
+    { key: "soon", label: GROUP_LABELS.soon, mark: MARKS.waiting, tickets: inState("waiting"), summary: null, startNow: true },
+    { key: "working", label: GROUP_LABELS.working, mark: MARKS.working, tickets: inState("working"), summary: null, startNow: false },
     {
       key: "needs_you",
-      label: "Needs you",
+      label: GROUP_LABELS.needs_you,
       mark: { icon: "UserRound", tone: "warning" },
       tickets: waiting,
       summary: needsYouSummary(waiting),
       startNow: false,
     },
-    { key: "blocked", label: "Blocked", mark: MARKS.not_started, tickets: blocked, summary: null, startNow: false },
+    { key: "blocked", label: GROUP_LABELS.blocked, mark: MARKS.not_started, tickets: blocked, summary: null, startNow: false },
   ];
   return groups.filter((group) => group.tickets.length > 0);
 }

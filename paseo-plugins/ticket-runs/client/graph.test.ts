@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Run, Ticket } from "../shared/status";
-import { NODE_H, drawGraph, layoutGraph, neighbours } from "./graph.ts";
+import { NODE_H, chain, drawGraph, layoutGraph, neighbours } from "./graph.ts";
 
 function ticket(id: string, blockedBy: string[] = []): Ticket {
   return {
@@ -69,10 +69,27 @@ test("a link that a longer chain implies is not drawn, but still counts", () => 
   assert.equal(drawGraph(graph, colors, "T-4").svg.split("<path").length - 1, 3);
 });
 
+test("a ticket's chain is all that must finish first and all that waits for it", () => {
+  // 2 -> 3 -> 4 -> 6, and 5 -> 6. Ticket 7 hangs off 2 alone.
+  const graph = layoutGraph(run([ticket("T-2"), ticket("T-3", ["T-2"]), ticket("T-4", ["T-3"]), ticket("T-5"), ticket("T-6", ["T-4", "T-5"]), ticket("T-7", ["T-2"])]));
+  assert.ok(graph);
+  const whole = chain(graph, "T-4");
+  assert.deepEqual([...whole.before].sort(), ["T-2", "T-3"]);
+  assert.deepEqual([...whole.after], ["T-6"]);
+  assert.deepEqual([...whole.all].sort(), ["T-2", "T-3", "T-4", "T-6"]);
+  // The chain stays bright; T-5 and T-7 dim.
+  const dimmed = (svg: string) => svg.split('<g opacity="0.3">').length - 1;
+  assert.equal(dimmed(drawGraph(graph, colors, "T-4").svg), 2);
+  assert.equal(dimmed(drawGraph(graph, colors, null).svg), 0);
+  // Without a selection, `show` picks what stays bright.
+  assert.equal(dimmed(drawGraph(graph, colors, null, (node) => node.id === "T-5").svg), 5);
+});
+
 test("two tickets that block each other still draw", () => {
   const graph = layoutGraph(run([ticket("T-2", ["T-3"]), ticket("T-3", ["T-2"])]));
   assert.ok(graph);
   assert.equal(graph.nodes.length, 2);
+  assert.deepEqual([...chain(graph, "T-2").all].sort(), ["T-2", "T-3"]);
 });
 
 test("the picture is a square SVG that escapes titles and tags the selected ticket", () => {

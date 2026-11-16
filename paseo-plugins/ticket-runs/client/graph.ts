@@ -150,6 +150,26 @@ export function neighbours(graph: Graph, id: string): { blockedBy: string[]; blo
   };
 }
 
+/** Everything that must finish before `id` can start, and everything that waits for it, with `id` itself. */
+export function chain(graph: Graph, id: string): { before: Set<string>; after: Set<string>; all: Set<string> } {
+  const walk = (next: (at: string) => string[]) => {
+    const found = new Set<string>();
+    const todo = [id];
+    for (let at = todo.pop(); at !== undefined; at = todo.pop()) {
+      for (const other of next(at)) {
+        if (other !== id && !found.has(other)) {
+          found.add(other);
+          todo.push(other);
+        }
+      }
+    }
+    return found;
+  };
+  const before = walk((at) => graph.edges.filter((e) => e.to === at).map((e) => e.from));
+  const after = walk((at) => graph.edges.filter((e) => e.from === at).map((e) => e.to));
+  return { before, after, all: new Set([id, ...before, ...after]) };
+}
+
 export interface GraphColors {
   /** Node outline by ticket; `null` is a blocker outside the run. */
   outline(ticket: Ticket | null): string;
@@ -167,8 +187,9 @@ function escape(text: string): string {
 /**
  * The graph as one SVG document. Paseo draws an icon square, so the canvas is a square of
  * `size` with the graph in its top left corner; the caller clips it to the graph's size.
- * With a `selected` ticket, every link of that ticket is drawn bright, its neighbours stay
- * bright and the rest dims.
+ * With a `selected` ticket, every link of that ticket is drawn bright, its whole chain (what
+ * must finish before it, what waits for it) stays visible and the rest dims. Without one,
+ * `show` picks the tickets that stay bright, such as those of one group.
  */
 export interface Drawing {
   svg: string;
@@ -177,14 +198,20 @@ export interface Drawing {
   tag: { x: number; y: number; width: number; height: number } | null;
 }
 
-export function drawGraph(graph: Graph, colors: GraphColors, selected: string | null): Drawing {
+export function drawGraph(
+  graph: Graph,
+  colors: GraphColors,
+  selected: string | null,
+  show: ((node: GraphNode) => boolean) | null = null,
+): Drawing {
   const size = Math.ceil(Math.max(graph.width, graph.height));
   const at = new Map(graph.nodes.map((n) => [n.id, n]));
-  const near = new Set<string>(selected ? [selected] : []);
-  if (selected) {
-    const { blockedBy, blocks } = neighbours(graph, selected);
-    for (const id of [...blockedBy, ...blocks]) near.add(id);
-  }
+  // The tickets that stay bright; null when all do.
+  const bright: Set<string> | null = selected
+    ? chain(graph, selected).all
+    : show
+      ? new Set(graph.nodes.filter(show).map((n) => n.id))
+      : null;
   const parts: string[] = [];
   const lit: string[] = [];
   const touching = (edge: GraphEdge) => selected !== null && (edge.from === selected || edge.to === selected);
@@ -198,12 +225,13 @@ export function drawGraph(graph: Graph, colors: GraphColors, selected: string | 
     const y2 = to.y + NODE_H / 2;
     const bend = Math.max(16, (x2 - x1) / 2);
     const d = `M${x1} ${y1}C${x1 + bend} ${y1} ${x2 - bend} ${y2} ${x2} ${y2}`;
+    const inside = bright === null || (bright.has(edge.from) && bright.has(edge.to));
     if (touching(edge)) lit.push(`<path d="${d}" stroke="${escape(colors.highlight)}" stroke-width="1.5" fill="none"/>`);
-    else parts.push(`<path d="${d}" stroke="${escape(colors.edge)}" stroke-opacity="${selected ? 0.15 : 0.5}" fill="none"/>`);
+    else parts.push(`<path d="${d}" stroke="${escape(colors.edge)}" stroke-opacity="${!inside ? 0.12 : bright ? 0.8 : 0.5}" fill="none"/>`);
   }
   parts.push(...lit); // bright links lie over the dim ones
   for (const node of graph.nodes) {
-    const dim = selected !== null && !near.has(node.id);
+    const dim = bright !== null && !bright.has(node.id);
     const chosen = node.id === selected;
     const outline = chosen ? colors.highlight : colors.outline(node.ticket);
     parts.push(
