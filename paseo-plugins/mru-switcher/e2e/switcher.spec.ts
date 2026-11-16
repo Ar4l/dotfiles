@@ -68,6 +68,33 @@ async function clickAgent(page: Page, agent: number): Promise<void> {
   await arrive(page, agent);
 }
 
+/** Closes an agent's tab, which archives the agent, and returns the agent's id. */
+async function closeTab(page: Page, agent: number): Promise<string> {
+  const tab = agentTab(page, agent);
+  const id = (await tab.getAttribute("data-testid"))!.slice("workspace-tab-agent_".length);
+  await tab.hover();
+  await page.getByTestId(`workspace-agent-close-${id}`).filter({ visible: true }).click();
+  await expect(tab).toHaveCount(0);
+  return id;
+}
+
+/** The titles of the closed tabs Cmd+Shift+T can reopen, the one closed last first. */
+const closedTabs = (page: Page) =>
+  page.evaluate(() =>
+    (JSON.parse(localStorage.getItem("mru-switcher:closed") ?? "[]") as { title: string }[]).map(({ title }) => title),
+  );
+
+/** Whether the host holds an agent as archived. */
+const archived = (page: Page, agentId: string) =>
+  page.evaluate(async (id) => {
+    type Host = (serverId: string) => {
+      agents: { ref(id: string): { refresh(): Promise<{ agent: { archivedAt?: unknown } } | null> } };
+    };
+    const [host] = (window as unknown as { __mruSwitcher: { hosts: Set<Host> } }).__mruSwitcher.hosts;
+    const found = await host(location.pathname.split("/")[2]).agents.ref(id).refresh();
+    return Boolean(found?.agent.archivedAt);
+  }, agentId);
+
 /** Holds Ctrl and taps Tab until the overlay is up, with the first entry behind the tab on screen selected. */
 async function openOverlay(page: Page): Promise<void> {
   await page.keyboard.down("Control");
@@ -217,11 +244,7 @@ test("Ctrl+Tab switches between recently viewed tabs", async ({ page }) => {
     await clickAgent(page, 3);
     await clickAgent(page, 4);
     const tab = agentTab(page, 3);
-    const id = (await tab.getAttribute("data-testid"))!.slice("workspace-tab-agent_".length);
-    await tab.hover();
-    // Closing a tab archives its agent.
-    await page.getByTestId(`workspace-agent-close-${id}`).filter({ visible: true }).click();
-    await expect(tab).toHaveCount(0);
+    await closeTab(page, 3);
     mru = mru.filter((stop) => stop !== 3);
     await expect.poll(async () => (await stored(page)).length).toBe(mru.length);
     await ctrlTab(page, 1); // to the tab viewed before Agent 3
@@ -342,6 +365,91 @@ test("Ctrl+Tab switches between recently viewed tabs", async ({ page }) => {
     await expect(page).toHaveURL(new RegExp(`/workspace/${beta}$`));
     await expect(agentTab(page, 6)).toHaveAttribute("aria-selected", "true");
     expect((await stored(page)).map(({ title }) => title)).not.toContain("Agent 1");
+  });
+
+  await test.step("13. Cmd+Shift+T reopens the tabs closed last, one per press", async () => {
+    const terminals = page.locator('[data-testid^="workspace-tab-terminal_"]').filter({ visible: true });
+    const callout = page.getByText("This agent is archived").filter({ visible: true });
+    const reopen = () => page.keyboard.press("Meta+Shift+KeyT");
+    // Agent 3's tab was closed in step 8. Agent 1 was archived by the CLI, which is not a closed tab.
+    expect(await closedTabs(page)).toEqual(["Agent 3"]);
+
+    // The app's New terminal holds the key until it is moved: the plugin leaves it alone.
+    let count = await terminals.count();
+    await reopen();
+    await expect(terminals).toHaveCount(++count);
+    expect(await closedTabs(page)).toEqual(["Agent 3"]);
+
+    // Settings → Shortcuts writes this override. The app reads it when it starts.
+    await page.evaluate(() =>
+      localStorage.setItem(
+        "@paseo:keyboard-shortcut-overrides",
+        JSON.stringify({ "workspace-terminal-new-cmd-shift-t-mac": "Ctrl+Shift+T" }),
+      ),
+    );
+    await page.reload();
+    await pluginStarted(page);
+    await expect(agentTab(page, 6)).toHaveCount(1);
+    const five = await closeTab(page, 5);
+    const seven = await closeTab(page, 7);
+    await expect.poll(() => closedTabs(page)).toEqual(["Agent 7", "Agent 5", "Agent 3"]);
+    await expect.poll(() => archived(page, five)).toBe(true);
+    await expect.poll(() => archived(page, seven)).toBe(true);
+
+    // Two quick presses reopen two tabs and land on the second.
+    await reopen();
+    await reopen();
+    await expect(agentTab(page, 7)).toHaveCount(1);
+    await expect(agentTab(page, 5)).toHaveAttribute("aria-selected", "true");
+    await expect.poll(() => archived(page, five)).toBe(false);
+    await expect.poll(() => archived(page, seven)).toBe(false);
+    await expect(callout).toHaveCount(0);
+    await expect.poll(() => closedTabs(page)).toEqual(["Agent 3"]);
+    await expect(terminals).toHaveCount(count);
+
+    // The third is in the other workspace, which the reload left unmounted.
+    await reopen();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${alpha}$`));
+    await expect(agentTab(page, 3)).toHaveAttribute("aria-selected", "true");
+    const three = (await agentTab(page, 3).getAttribute("data-testid"))!.slice("workspace-tab-agent_".length);
+    await expect.poll(() => archived(page, three)).toBe(false);
+    await expect(callout).toHaveCount(0);
+    expect(await closedTabs(page)).toEqual([]);
+
+    // With nothing left to reopen the key does nothing, and New terminal has its new key.
+    const tabs = page.locator('[data-testid^="workspace-tab-"]').filter({ visible: true });
+    count = await tabs.count();
+    await reopen();
+    await page.waitForTimeout(500);
+    await expect(tabs).toHaveCount(count);
+    await expect(agentTab(page, 3)).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("Control+Shift+KeyT");
+    await expect(tabs).toHaveCount(count + 1);
+
+    // The narrow layout draws a menu in place of the tabs. No tab counts as closed.
+    await page.setViewportSize({ width: 500, height: 900 });
+    await expect(page.getByTestId("workspace-tab-switcher-trigger").filter({ visible: true })).toHaveCount(1);
+    await page.keyboard.press("Shift");
+    await page.waitForTimeout(1200);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await expect(agentTab(page, 3)).toHaveCount(1);
+    await page.keyboard.press("Shift");
+    await page.waitForTimeout(1200);
+    expect(await closedTabs(page)).toEqual([]);
+
+    // The command-center item does what the key does. Alt+Shift+W closes a tab outside Paseo.app.
+    await agentTab(page, 4).click();
+    const four = (await agentTab(page, 4).getAttribute("data-testid"))!.slice("workspace-tab-agent_".length);
+    await page.keyboard.press("Alt+Shift+KeyW");
+    await expect(agentTab(page, 4)).toHaveCount(0);
+    await expect.poll(() => archived(page, four)).toBe(true);
+    await page.getByTestId("sidebar-search").click();
+    const panel = page.getByTestId("command-center-panel");
+    await panel.getByTestId("command-center-input").fill("Reopen closed");
+    await panel.getByRole("button", { name: /^Reopen closed agent tab/ }).click();
+    await expect(agentTab(page, 4)).toHaveAttribute("aria-selected", "true");
+    await expect.poll(() => archived(page, four)).toBe(false);
+    await expect(callout).toHaveCount(0);
   });
 
   expect(errors).toEqual([]);

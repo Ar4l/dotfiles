@@ -18,6 +18,7 @@ import {
   CARDS,
   type Entry,
   type Key,
+  type Place,
   type Selection,
   SHOWN,
   type Status,
@@ -33,11 +34,15 @@ import {
 import { createOverlay } from "./overlay";
 import { type Preview, capture } from "./preview";
 
-/** The part of a host's API the switcher reads agent state from. */
+/** The part of a host's API the switcher uses. */
 export interface Paseo {
   agents: {
-    /** Resolves to null for an agent the host no longer knows. */
-    ref(agentId: string): { refresh(): Promise<{ agent: AgentState } | null> };
+    ref(agentId: string): {
+      /** Reads the agent's state. Resolves to null for an agent the host no longer knows. */
+      refresh(): Promise<{ agent: AgentState } | null>;
+      /** Reopens the agent's session. It unarchives an archived agent and interrupts a running one. */
+      reload(): Promise<unknown>;
+    };
   };
 }
 /** `getPaseoClient` of one installation: the API of an online host, or a throw. */
@@ -60,8 +65,12 @@ const sidebarRowOf = (entry: Entry) => testId(`sidebar-workspace-row-${entry.ser
  */
 const OPEN_AGENT = "paseo:web-notification-click";
 const agentTabOf = (entry: Entry) => `${deckOf(entry)} ${testId(`${TAB_PREFIX}agent_${entry.agentId}`)}`;
+/** The narrow layout draws this menu in place of the tabs. */
+const TAB_MENU = testId(`${TAB_PREFIX}switcher-trigger`);
 
 const STORE = "mru-switcher";
+/** Holds the agent tabs closed in this window, the one closed last first. */
+const CLOSED = "mru-switcher:closed";
 /** Holds `cards` while the experimental layout is on: a row of cards with previews. */
 const LAYOUT = "mru-switcher:layout";
 /** A quick Ctrl+Tab toggle is over before this, and never draws the overlay. */
@@ -92,10 +101,19 @@ export function toggleCards(): void {
   }
 }
 
-interface Shared {
+/** Reopens the agent tab closed last, as Cmd+Shift+T does. */
+export function reopenClosed(): void {
+  (window.__mruSwitcher as Partial<Shared> | undefined)?.reopen?.();
+}
+
+interface Running {
+  stop(): void;
+  reopen(): void;
+}
+
+interface Shared extends Running {
   /** One per host that serves the plugin. Each stops working when its host unloads the plugin. */
   hosts: Set<HostApi>;
-  stop(): void;
 }
 
 /**
@@ -108,7 +126,7 @@ export function start(host: HostApi): () => void {
   previous?.stop?.();
   const hosts = previous?.hosts instanceof Set ? previous.hosts : new Set<HostApi>();
   hosts.add(host);
-  const shared: Shared = { hosts, stop: run(hosts) };
+  const shared: Shared = { hosts, ...run(hosts) };
   window.__mruSwitcher = shared;
   return () => {
     if (!hosts.delete(host) || hosts.size > 0) return;
@@ -129,9 +147,15 @@ interface Pending {
   asked: boolean;
 }
 
-function run(hosts: ReadonlySet<HostApi>): () => void {
-  let list = load();
+function run(hosts: ReadonlySet<HostApi>): Running {
+  let list = load(STORE);
   let saved = JSON.stringify(list);
+  /** The agent tabs closed in this window and not reopened, the one closed last first. */
+  let reopenable = load(CLOSED);
+  /** The agent tabs of the workspace on screen at the last look. */
+  let strip: { deck: string; agents: Entry[] } | null = null;
+  /** Reopens run one at a time, so each press takes the tab closed before the last one. */
+  let reopening: Promise<void> = Promise.resolve();
   /** The entries the open overlay lists, frozen while Ctrl is held. */
   let shown: Entry[] = [];
   let selection: Selection = null;
@@ -186,13 +210,8 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
     // Other workspaces stay mounted while hidden, and the URL can change before the screen does.
     const deck = document.querySelector(deckOf(place));
     if (!deck?.checkVisibility()) return null;
-    const header = (part: string) => deck.querySelector(testId(`workspace-header-${part}`))?.textContent;
-    const workspace = [header("subtitle"), header("title")].filter(Boolean).join(" / ");
     const tabs = [...deck.querySelectorAll(`${PANE} ${SELECTED_TAB}`)].filter((tab) => tab.checkVisibility());
-    const entries = tabs.map((tab) => {
-      const tabId = tab.getAttribute("data-testid")?.slice(TAB_PREFIX.length) ?? null;
-      return entryFor(place, tabId, tab.getAttribute("aria-label") || document.title, workspace);
-    });
+    const entries = entriesOf(place, deck, tabs);
     const focused = tabs.findIndex((tab) => tab.closest(PANE)?.contains(document.activeElement));
     return (
       entries.find((entry) => entry.key === prefer) ??
@@ -207,10 +226,73 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
     const next = JSON.stringify(list);
     if (next === saved) return;
     saved = next;
-    try {
-      localStorage.setItem(STORE, next);
-    } catch {
-      // Storage is full or blocked: the list still works until the window closes.
+    store(STORE, next);
+  }
+
+  /**
+   * Records the agent tabs that left the workspace on screen since the last look. The app
+   * takes a closed tab off the screen before the host has archived its agent, so this asks
+   * no host. An agent archived from elsewhere while its workspace is on screen counts too.
+   *
+   * An early look runs at a pointer press or a modifier key press, before the app acts on
+   * it. It only adds tabs: a tab can appear without a click, and the app takes a tab out
+   * for a moment when it moves it to another pane.
+   */
+  function noteClosed(early = false): void {
+    const place = placeOf(location.pathname);
+    const deck = place && document.querySelector(deckOf(place));
+    if (!place || !deck?.checkVisibility()) {
+      strip = null;
+      return;
+    }
+    // The narrow layout has no tabs to compare.
+    if (deck.querySelector(TAB_MENU)) return;
+    const agents = entriesOf(place, deck, [...deck.querySelectorAll(ANY_TAB)]).filter(
+      (entry) => entry.agentId !== null,
+    );
+    const before = strip?.deck === deckOf(place) ? strip.agents : [];
+    const gone = before.filter((entry) => !agents.some((other) => other.key === entry.key));
+    // Tabs an early look misses come first, so that a later look records them as closed first.
+    strip = { deck: deckOf(place), agents: early ? [...gone, ...agents] : agents };
+    if (early || gone.length === 0) return;
+    for (const entry of gone) reopenable = visit(reopenable, entry);
+    store(CLOSED, JSON.stringify(reopenable));
+  }
+
+  /** Reopens the agent tab closed last. Each further call takes the one closed before it. */
+  function reopen(): void {
+    reopening = reopening.then(reopenNext).catch(() => {
+      // The app or the host failed: the next press starts afresh.
+    });
+  }
+
+  async function reopenNext(): Promise<void> {
+    // A tab closed a moment ago has not been looked at yet.
+    noteClosed();
+    for (const entry of reopenable) {
+      const { agentId, key } = entry;
+      const api = apiOf(entry);
+      // The tabs of an offline host wait for a later press.
+      if (!api || agentId === null) continue;
+      const agent = api.agents.ref(agentId);
+      let state: AgentState | null = null;
+      if (!document.querySelector(agentTabOf(entry))) {
+        try {
+          state = (await agent.refresh())?.agent ?? null;
+        } catch {
+          continue;
+        }
+      }
+      reopenable = drop(reopenable, key);
+      store(CLOSED, JSON.stringify(reopenable));
+      // The tab is open again already, or the agent was deleted.
+      if (!state) continue;
+      statuses.delete(key);
+      jump(entry);
+      // Only an archived agent is reloaded: a reload interrupts a running one. The tab of a
+      // subagent closes without archiving it. When the reload fails, the tab offers Unarchive.
+      if (state.archivedAt) agent.reload().catch(() => {});
+      return;
     }
   }
 
@@ -264,6 +346,7 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
    */
   function track(): void {
     clearTimeout(poll);
+    noteClosed();
     const jumped = pending?.entry;
     const entry = current(pending?.acted ? jumped?.key : undefined);
     if (pending && !arrive(pending, entry)) {
@@ -416,6 +499,16 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
   }
 
   function onKeyDown(event: KeyEvt): void {
+    if (event.metaKey || event.ctrlKey || event.altKey) noteClosed(true);
+    if (event.code === "KeyT" && event.metaKey && event.shiftKey && !event.ctrlKey && !event.altKey) {
+      // The app's shortcuts run first and cancel the key they take. Cmd+Shift+T is the app's
+      // until New terminal is moved off it in Settings → Shortcuts.
+      if (event.defaultPrevented) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!event.repeat) reopen();
+      return;
+    }
     const tab = event.key === "Tab" && event.ctrlKey && !event.metaKey && !event.altKey;
     if (!tab && !(event.key === "Escape" && selection !== null)) return;
     // Capture phase on window: the composer and the terminal never see the key.
@@ -431,6 +524,7 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
   }
 
   function onPointerDown(event: PointerEvt): void {
+    noteClosed(true);
     if (selection !== null && !overlay.contains(event.target)) press("cancel");
   }
 
@@ -449,18 +543,37 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
   for (const [type, listener] of listeners) window.addEventListener(type, listener, true);
   onActivity();
 
-  return () => {
+  function stop(): void {
     for (const [type, listener] of listeners) window.removeEventListener(type, listener, true);
     for (const timer of [soon, late, poll, draw]) clearTimeout(timer);
     overlay.close();
-  };
+  }
+  return { stop, reopen };
 }
 
-function load(): Entry[] {
+/** The entry of each given tab of a workspace. */
+function entriesOf(place: Place, deck: Elem, tabs: readonly Elem[]): Entry[] {
+  const header = (part: string) => deck.querySelector(testId(`workspace-header-${part}`))?.textContent;
+  const workspace = [header("subtitle"), header("title")].filter(Boolean).join(" / ");
+  return tabs.map((tab) => {
+    const tabId = tab.getAttribute("data-testid")?.slice(TAB_PREFIX.length) ?? null;
+    return entryFor(place, tabId, tab.getAttribute("aria-label") || document.title, workspace);
+  });
+}
+
+function load(key: string): Entry[] {
   try {
-    const stored: unknown = JSON.parse(localStorage.getItem(STORE) ?? "[]");
+    const stored: unknown = JSON.parse(localStorage.getItem(key) ?? "[]");
     return Array.isArray(stored) ? stored.filter(isEntry) : [];
   } catch {
     return [];
+  }
+}
+
+function store(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Storage is full or blocked: the lists still work until the window closes.
   }
 }

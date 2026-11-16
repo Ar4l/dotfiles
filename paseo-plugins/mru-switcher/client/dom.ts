@@ -25,6 +25,10 @@ export interface Elem {
 }
 export interface KeyEvt {
   key: string;
+  /** The physical key, as the app's own bindings name it: `KeyT`. */
+  code: string;
+  repeat: boolean;
+  defaultPrevented: boolean;
   ctrlKey: boolean;
   shiftKey: boolean;
   metaKey: boolean;

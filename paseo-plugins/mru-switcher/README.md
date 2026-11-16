@@ -15,6 +15,27 @@ The list holds 20 entries, lives in the window's `localStorage` and survives a r
 An agent tab is one entry. Any other tab (terminal, file, browser) counts as its workspace.
 An agent leaves the list when it is archived or deleted. Closing an agent's tab archives it.
 
+Cmd+Shift+T reopens the agent tab you closed last, like a browser. It needs one setting in
+the app: see below.
+
+## Reopen a closed tab
+
+Cmd+Shift+T reopens the agent tab closed last and unarchives its agent. Each further press
+reopens the tab closed before that one, in any workspace. The command-center item "Reopen
+closed agent tab" does the same.
+
+Paseo binds Cmd+Shift+T to New terminal, and the app's shortcuts run before a plugin's.
+Move New terminal to Ctrl+Shift+T in Settings → Shortcuts. Until then the key opens a
+terminal and the plugin leaves it alone. The app keeps the setting in its own storage, not
+in this repo.
+
+- The plugin keeps the last 20 closed tabs in `localStorage["mru-switcher:closed"]`, across reloads.
+- A closed tab is an agent tab that leaves the workspace on screen. An agent archived while its workspace is hidden is not one.
+- A press skips a tab that is open again and an agent that was deleted. It keeps the tabs of an offline host for later.
+- The tab opens at once and reads "This agent is archived" until the host answers: 21 to 37 ms in the rig below.
+- The plugin unarchives with the request behind the app's Unarchive button, and only an archived agent: it interrupts a running one.
+- A subagent's tab closes without archiving its agent, and reopens without that request.
+
 ## Cost
 
 The list is capped at 20 entries and the overlay at seven, whatever the number of agents,
@@ -27,6 +48,7 @@ workspaces and hosts. The times are from Ctrl up to the tab selected, in the rig
 - A tap asks one host for one agent's status. Drawing the list asks for the other six. No status is asked twice in a second.
 - The plugin reads the DOM 150 ms and 1 s after a pointer release, a history change, or the release of a named or modified key.
 - During a jump it reads the DOM every 30 ms. It runs no timer otherwise.
+- It reads the tabs of the workspace on screen at each pointer press and each key press with Ctrl, Cmd or Alt held.
 - A read is a few selector queries over the document. One took 12 µs with 1,470 elements mounted, and grows with that number.
 - A listed agent whose tab is missing from a mounted workspace costs one status request after each burst of clicks or keys.
 
@@ -76,7 +98,7 @@ no `npm install`. It loads plugins only when `pluginsEnabled` is `true` in
 Paseo 0.15.4 gives plugins no key bindings, tab events or navigation to an agent, so
 `client/web.ts` reads the app's DOM and URL, clicks its tabs and raises one of its window
 events. Rerun `e2e/run.sh` after every Paseo upgrade. It fails when one of these changes.
-In the app, a renamed test id shows as a Ctrl+Tab that does nothing.
+In the app, a renamed test id shows as a Ctrl+Tab or a Cmd+Shift+T that does nothing.
 
 | Internal | Used for |
 | --- | --- |
@@ -89,6 +111,10 @@ In the app, a renamed test id shows as a Ctrl+Tab that does nothing.
 | Styles set by class names (React Native Web) | A copy of a workspace looks the same outside the app's tree |
 | `workspace-header-subtitle`, `workspace-header-title` | The project and workspace names in the list |
 | Path `/h/<server>/agent/<agent>` | The last resort when the app does not take the event |
+| `workspace-tab-switcher-trigger` | The narrow layout's tab menu: while it shows, no tab counts as closed |
+| The app cancels a key it has a shortcut for, before a plugin sees it | Leaving Cmd+Shift+T alone while New terminal holds it |
+| The daemon unarchives an agent on `refreshAgent`, which the SDK calls from `reload()` | Unarchiving a reopened agent |
+| `@paseo:keyboard-shortcut-overrides`, binding `workspace-terminal-new-cmd-shift-t-mac` | The spec moves New terminal the way Settings → Shortcuts does |
 | `deriveAgentStateBucket`, `status-dot-color.ts` | The status rules in `client/mru.ts` and the light and dark dot colours in `client/overlay.ts` are copies |
 
 Agent state comes from the plugin SDK (`getPaseoClient(serverId).agents`), which is public.
@@ -121,7 +147,7 @@ One that leaves while the list is drawn reads Gone, and a jump to it does nothin
 npm install
 npm run typecheck
 npm test      # list and key logic, client/mru.test.ts
-e2e/run.sh    # the released app in headless Chromium, about 50 s
+e2e/run.sh    # the released app in headless Chromium, about 60 s
 ```
 
 `e2e/run.sh` boots a throwaway daemon in a temp home on a free port, installs the plugin,
@@ -138,7 +164,11 @@ seeds seven agents in two workspaces and runs `e2e/switcher.spec.ts`. It never t
 
 ## Not covered
 
-- Paseo.app itself: the rig drives the app's bundle in Chromium, so check Ctrl+Tab by hand after an upgrade.
+- Paseo.app itself: the rig drives the app's bundle in Chromium, so check Ctrl+Tab and Cmd+Shift+T by hand after an upgrade.
+- Unarchiving an agent of a real provider: the rig timed the mock provider only.
+- A tab closed with Cmd+W: that binding exists only in Paseo.app. The spec closes tabs with the pointer and with Alt+Shift+W.
+- Paseo in a browser tab, where the browser keeps Cmd+Shift+T, and Windows and Linux. Use the command-center item there.
+- Where a reopened tab lands in the row of tabs: the app decides.
 - The narrow layout: it has no tab strip, so the plugin records nothing and Ctrl+Tab does nothing.
 - Several hosts: the rig has one. Each host that serves the plugin restarts the switcher when it loads it.
 - An offline host: its agents show no status, and the app decides what a jump to one shows.
@@ -147,5 +177,5 @@ seeds seven agents in two workspaces and runs `e2e/switcher.spec.ts`. It never t
 - Separate entries for terminal and file tabs.
 - A workspace entry opens like its sidebar row, so it lands on the workspace's unread agent when it has one.
 - A tap released before the host answers can reopen an agent archived from another window or the CLI.
-- Two windows share one list in `localStorage`. The window that wrote last wins.
+- Two windows share both lists in `localStorage`. The window that wrote last wins.
 - The cards layout in Paseo.app and in Safari. Each host that serves the plugin adds its own command-center item.
