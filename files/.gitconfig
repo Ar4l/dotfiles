@@ -9,7 +9,7 @@
   defaultBranch = main
 
 [push]
-  default = upstream
+	default = simple
 	autoSetupRemote = true
 
 [color]
