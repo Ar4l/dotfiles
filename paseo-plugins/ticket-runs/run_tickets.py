@@ -37,6 +37,8 @@ from pathlib import Path
 CHECK_MINUTES = 10
 PLUGIN_ID = "ticket-runs"
 CLOSED = ("completed", "canceled", "duplicate")
+# A ticket that comes back gets a fresh agent this many times; after that it waits for you.
+GIVE_BACK_LIMIT = 2
 RUNNING = ("running", "initializing")
 # A caller inside a Paseo agent would make every started agent its own subagent.
 DROP_ENV = ("PASEO_AGENT_ID", "PASEO_AGENT_CWD", "PASEO_WORKSPACE_ID")
@@ -358,7 +360,8 @@ def describe(run: dict) -> list[dict]:
     s = run["settings"]
     label = f" that carries the label {s['label']}" if s["label"] else ""
     lines = [
-        ("Starts", f"Every ready sub-ticket of {run['id']}{label}. A ticket added later waits {span(s['wait_minutes'])}."),
+        ("Starts", f"Every ready sub-ticket of {run['id']}{label}. A ticket added later waits {span(s['wait_minutes'])}. "
+                   f"A ticket given back more than {GIVE_BACK_LIMIT} times waits for you."),
         ("Prompt", "The default brief." if s["prompt"] == DEFAULT_PROMPT else first_line(s["prompt"])),
         ("Agent", f"{run['agentName']}, mode {s['mode']}"),
         ("Folder", tilde(run["runDir"])),
@@ -561,6 +564,8 @@ def check_run(run: dict, *, dry: bool, start_now: str | None = None, keep=lambda
     open_children = [child for child in children if child["state"]["type"] not in CLOSED]
     memory["firstCheckAt"] = memory.get("firstCheckAt") or moment
     memory["firstSeen"] = {t: at for t, at in memory["firstSeen"].items() if t in by_id}
+    open_ids = {child["identifier"] for child in open_children}
+    memory["returns"] = {t: n for t, n in memory.setdefault("returns", {}).items() if t in open_ids}
     for child in open_children:
         memory["firstSeen"].setdefault(child["identifier"], moment)
     if start_now:
@@ -612,6 +617,10 @@ def check_run(run: dict, *, dry: bool, start_now: str | None = None, keep=lambda
         reason = held(child, settings["label"])
         if running:
             row = record(child, "working", agentId=running[-1]["id"], at=since(running[-1]))
+        elif reason is None and mine and memory["returns"].get(ticket, 0) >= GIVE_BACK_LIMIT:
+            # Given back once more than the limit allows: no further agent starts by itself.
+            row = record(child, "idle", agentId=mine[-1]["id"], at=since(mine[-1]), reason="given_back")
+            idle.append((row, mine[-1]))
         elif reason is None:
             first = memory["firstSeen"][ticket]
             starts = parse(first) + timedelta(minutes=settings["wait_minutes"])
@@ -659,6 +668,8 @@ def check_run(run: dict, *, dry: bool, start_now: str | None = None, keep=lambda
             continue
         memory["agents"][agent_id] = {"ticket": ticket, "status": "running", "since": moment, "created": moment}
         row |= {"state": "working", "agentId": agent_id, "at": moment}
+        if of_ticket.get(ticket):
+            memory["returns"][ticket] = memory["returns"].get(ticket, 0) + 1
         run["recent"] = [{"id": ticket, "title": child["title"], "startedAt": moment, "agentId": agent_id}, *run["recent"]][:5]
         started.append(ticket)
         keep()
@@ -770,7 +781,7 @@ def new_run(args, parent: dict, settings: dict, source: str | None) -> dict:
         "what": [],
         "tickets": [],
         "recent": [],
-        "memory": {"firstCheckAt": None, "firstSeen": {}, "assigned": {}, "agents": {}, "workspaces": {}, "errors": {}, "openSeen": False},
+        "memory": {"firstCheckAt": None, "firstSeen": {}, "assigned": {}, "agents": {}, "workspaces": {}, "errors": {}, "returns": {}, "openSeen": False},
     }
 
 

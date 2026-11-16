@@ -228,7 +228,8 @@ class Start(Case):
         self.assertEqual(run[4:8], ["--provider", "mock/two", "--mode", "plan"])
         self.assertEqual(self.world()["agents"][0]["prompt"], "Do TEST-11 of TEST-1: Ticket 11 at https://linear.example/TEST-11.\nSecond line.")
         what = {line["label"]: line["text"] for line in state["what"]}
-        self.assertEqual(what["Starts"], "Every ready sub-ticket of TEST-1 that carries the label go. A ticket added later waits 7 minutes.")
+        self.assertEqual(what["Starts"], "Every ready sub-ticket of TEST-1 that carries the label go. A ticket added later waits 7 minutes. "
+                                         "A ticket given back more than 2 times waits for you.")
         self.assertEqual(what["Prompt"], "Do {id} of {parent}: {title} at {url}. …")
         self.assertEqual(what["Agent"], "second (mock/two), mode plan")
         self.assertEqual(what["After the last ticket"], "One agent starts with: Wrap up {parent}.")
@@ -314,6 +315,31 @@ class Rules(Case):
         self.assertIn("An earlier agent worked on this ticket in this folder.", world["agents"][1]["prompt"])
         self.assertEqual(self.child(world, 11)["assignee"], {"id": "user-me"})
         self.assertEqual(self.row(11)["agentId"], "agent-new2")
+
+    def test_ticket_given_back_a_third_time_waits_for_you(self):
+        self.script("start", "TEST-1")
+
+        def give_back(world):
+            self.child(world, 11)["assignee"] = None
+            for a in world["agents"]:
+                a["status"] = "idle"
+        for minute, agents in ((10, 2), (20, 3), (30, 3), (40, 3)):
+            self.edit(give_back)
+            self.script("check", now=f"2026-03-02T09:{minute}:00Z")
+            self.assertEqual(len(self.world()["agents"]), agents)
+        row = self.row(11)
+        self.assertEqual((row["state"], row["reason"], row["agentId"]), ("idle", "given_back", "agent-new3"))
+        self.assertIsNone(self.child(self.world(), 11)["assignee"])
+        self.assertEqual(self.state()["health"]["lastResult"], "nothing to start")
+        # You decide: "Replace agent" starts another one and takes the ticket again.
+        self.script("replace", "TEST-1", "TEST-11", now="2026-03-02T09:45:00Z")
+        self.assertEqual((len(self.world()["agents"]), self.row(11)["state"]), (4, "working"))
+        self.assertEqual(self.child(self.world(), 11)["assignee"], {"id": "user-me"})
+        # A ticket that closes is forgotten: reopened, it counts from zero.
+        self.close(11)
+        self.edit(lambda w: [a.update(status="idle") for a in w["agents"]])
+        self.script("check", now="2026-03-02T09:50:00Z")
+        self.assertEqual(self.state()["memory"]["returns"], {})
 
     def test_idle_agent_of_an_open_ticket_needs_you(self):
         self.script("start", "TEST-1")

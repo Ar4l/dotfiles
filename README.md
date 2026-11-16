@@ -38,6 +38,11 @@ this machine and on rem-dev. Non-breaking tools update silently; paseo restarts
 always ask first, after showing what's new. `agents-update --help` lists every
 step; `agents-update --check` only prints versions.
 
+#### Paseo plugins
+`paseo-plugins/` holds my plugins for the Paseo app: a Ctrl+Tab tab switcher and the ticket
+runs screen. [`paseo-plugins/README.md`](paseo-plugins/README.md) says how to install,
+update and remove them.
+
 #### TODO: MacOS New Install
 - [x] `kitty` for terminal with GUI capabilities (todo: issues with color scheme & maintaining border colours)
 - [x] `rectangle` for window management (todo: obsolete after Sonoma)

@@ -264,15 +264,22 @@ if ! brew list linear@2.6.0 &> /dev/null; then
   brew install ar4l/pins/linear@2.6.0 || failed+=(linear@2.6.0)
 fi
 
+# Install a Paseo plugin from this checkout, unless the daemon already has it.
+# The daemon runs it from here, and loads it once pluginsEnabled is true.
+paseo_plugin() {
+  paseo plugin ls -q 2> /dev/null | grep -qx "$1" ||
+  paseo plugin install "$(cd "$(dirname "$0")" && pwd)/paseo-plugins/$1" ||
+  failed+=("paseo.$1")
+}
+
 # 3. And, if we're on mac, install the casks and mac-only formulae
 if [[ "$OSTYPE" == "darwin"* ]]; then
   brew install ${casks[*]} ${darwin_programs[*]}
 
-  # Ctrl+Tab switcher for Paseo.app (paseo-plugins/mru-switcher/README.md). The daemon
-  # runs the plugin from this checkout, and loads it once pluginsEnabled is true.
-  paseo plugin ls -q 2> /dev/null | grep -qx mru-switcher ||
-  paseo plugin install "$(cd "$(dirname "$0")" && pwd)/paseo-plugins/mru-switcher" ||
-  failed+=(paseo.mru-switcher)
+  # Paseo plugins (paseo-plugins/README.md): the Ctrl+Tab switcher for Paseo.app, and
+  # the ticket runs screen, which every daemon the app connects to must serve.
+  paseo_plugin mru-switcher
+  paseo_plugin ticket-runs
 else
   # claude-code has no linuxbrew formula; use the native installer
   # (installs to ~/.local/bin, which may not be on PATH mid-install)
@@ -310,7 +317,14 @@ else
     systemctl --user daemon-reload
     systemctl --user enable --now paseo.service &&
     systemctl --user restart paseo.service || failed+=(paseo.service)
+    # ticket runs (paseo-plugins/ticket-runs/README.md): the timer checks every run
+    # each 10 minutes and does nothing while there is none. Enable units by name:
+    # a path makes systemd write an absolute link, which `make restow` refuses.
+    systemctl --user enable --now ticket-runs.timer || failed+=(ticket-runs.timer)
   }
+  # the daemon was just restarted: give it up to 30 s to answer
+  for _ in $(seq 30); do paseo plugin ls -q &> /dev/null && break; sleep 1; done
+  paseo_plugin ticket-runs
 fi
 
 # Surface failures in the summary and exit status, after everything else has run

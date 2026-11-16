@@ -482,7 +482,7 @@ function DetailsSection({ label, children }: { label: string; children: ReactNod
   );
 }
 
-/** Metadata of a run: what unblocks what, what the run does, its checks, and the latest starts. */
+/** Metadata of a run: what it does, its checks, the latest starts, and what unblocks what. */
 function Details({ run, actions }: { run: Run; actions: TicketActions }) {
   const { s, now } = useUi();
   const { health } = run;
@@ -493,15 +493,6 @@ function Details({ run, actions }: { run: Run; actions: TicketActions }) {
   ].filter(Boolean);
   return (
     <>
-      <DetailsSection label="Dependencies">
-        {tree.length > 0 ? (
-          <View>
-            <Tree nodes={tree} />
-          </View>
-        ) : (
-          <Text style={s.smallMuted}>No open ticket blocks another.</Text>
-        )}
-      </DetailsSection>
       <DetailsSection label="What the run does">
         <View style={s.rules}>
           {run.what.map((line) => (
@@ -551,6 +542,15 @@ function Details({ run, actions }: { run: Run; actions: TicketActions }) {
           </View>
         </DetailsSection>
       ) : null}
+      <DetailsSection label="Dependencies">
+        {tree.length > 0 ? (
+          <View>
+            <Tree nodes={tree} />
+          </View>
+        ) : (
+          <Text style={s.smallMuted}>No open ticket blocks another.</Text>
+        )}
+      </DetailsSection>
     </>
   );
 }

@@ -27,8 +27,8 @@ const ticket = z.object({
   at: instant.nullable(),
   /** When a check first saw the ticket. */
   addedAt: instant.nullable(),
-  /** Why an open ticket cannot start yet: `not_started`. */
-  reason: z.enum(["blocked", "sub_tickets", "no_label", "assigned_no_agent"]).nullable(),
+  /** Why an open ticket does not start: `not_started`, and `idle` when its agents gave it back too often. */
+  reason: z.enum(["blocked", "sub_tickets", "no_label", "assigned_no_agent", "given_back"]).nullable(),
   /** Ids of the open tickets that block this one. */
   blockedBy: z.array(z.string()),
   /** Start error: `could_not_start`. */

@@ -137,6 +137,7 @@ export function rowDetail(t: Ticket, { now, at, label, held }: RowContext): Segm
     case "checks_failed":
     case "idle": {
       const after: Segment[] = idle ? [{ text: ` · ${pr ? "" : "idle "}${idle}` }] : [];
+      if (t.reason === "given_back") return [{ text: "given back again", tone: "warning" }, ...after];
       if (!pr) return [{ text: t.linearState }, ...after];
       if (pr.state !== "open") return [{ text: `PR #${pr.number} ${pr.state}` }, ...after];
       if (pr.checks === "passed") return [{ text: `PR #${pr.number} ` }, { text: "passed", tone: "success" }, ...after];

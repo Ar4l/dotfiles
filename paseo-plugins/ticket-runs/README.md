@@ -30,13 +30,15 @@ buttons call the script.
 
 ## Install
 
+[`../README.md`](../README.md) has the steps for any plugin. This one needs two things:
+
 ```sh
-paseo plugin install ~/dotfiles/paseo-plugins/ticket-runs      # on every daemon the app connects to
-systemctl --user enable --now ticket-runs.timer                # on the machine that holds the runs
+paseo plugin install ~/dotfiles/paseo-plugins/ticket-runs   # on every machine the app connects to
+systemctl --user enable --now ticket-runs.timer             # on the machine that holds the runs
 ```
 
-After an edit to the plugin, run `paseo plugin reload ticket-runs`. `journalctl --user -u
-ticket-runs` shows the timer's checks.
+`journalctl --user -u ticket-runs` shows the timer's checks. Until the Paseo schedule it
+replaces is deleted, the timer runs `check --dry-run` and starts nothing.
 
 ## Tests
 

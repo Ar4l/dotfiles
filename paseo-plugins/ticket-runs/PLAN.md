@@ -1,6 +1,7 @@
 # Plan: ticket runs without an agent per tick
 
-Requirements, screen and design agreed on 2026-11-16; nothing is built.
+Requirements, screen and design agreed on 2026-11-16. Steps 1, 2 and 4 are built; step 3
+runs since 2026-11-16; steps 5 and 6 are open.
 
 Goal: a personal tool that works through the sub-tickets of a Linear parent
 ticket with one Paseo agent per ready ticket, without spending an agent session
@@ -48,8 +49,8 @@ Blocked · 30
 - A tap on a row opens that ticket's agent.
 - The three buttons pause the run, run a check at once, and show the details.
 - Details are optional: a right column on desktop, a sheet on the phone. They
-  hold the dependency tree of the run's tickets, what the run does, the last
-  and next check, and the last five starts.
+  hold what the run does, the last and next check, the last five starts, and
+  the dependency tree of the run's tickets.
 - "What the run does" words the run's settings: which tickets it starts, with
   what prompt, agent, folder and branch, and what follows the last ticket.
 - A "Needs you" row shows the pull request of the branch in the ticket's
@@ -92,7 +93,9 @@ State names, ticket titles, teams and labels on the parent play no part.
 - One agent at a time per ticket. The script assigns the ticket to you in
   Linear before it starts the agent, and starts nothing while an agent of
   that ticket runs. The assignee is all it writes in Linear.
-- A ticket that comes back gets a fresh agent in its existing workspace.
+- A ticket that comes back gets a fresh agent in its existing workspace, at
+  most twice. Given back a third time, it waits under "Needs you" until you
+  replace its agent.
 - Every check first compares the script's record with Linear and Paseo. A
   ticket it assigned that has no agent is unassigned again.
 - A failed or unreadable answer from Linear or Paseo starts nothing and shows
@@ -132,6 +135,8 @@ uses the stored values; `start` on the same parent reads them again.
   `settings/` beside the script, with a commented `example.toml`.
 - `start --dry-run` prints what Details would say and the tickets that would
   start.
+- `start --watch` stores a run that only reads: its checks draw the screen and
+  change nothing in Linear or Paseo. A plain `start` makes it real.
 - Fixed for every run: checks every 10 minutes (the timer unit), agent labels
   `run=<PARENT>` and `ticket=<ID>`, worktree name `<id>` in lower case.
 
