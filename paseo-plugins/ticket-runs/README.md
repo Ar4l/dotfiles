@@ -37,8 +37,7 @@ paseo plugin install ~/dotfiles/paseo-plugins/ticket-runs   # on every machine t
 systemctl --user enable --now ticket-runs.timer             # on the machine that holds the runs
 ```
 
-`journalctl --user -u ticket-runs` shows the timer's checks. Until the Paseo schedule it
-replaces is deleted, the timer runs `check --dry-run` and starts nothing.
+`journalctl --user -u ticket-runs` shows the timer's checks.
 
 ## Tests
 

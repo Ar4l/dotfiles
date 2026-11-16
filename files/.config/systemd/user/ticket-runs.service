@@ -6,7 +6,5 @@ Documentation=file://%h/dotfiles/paseo-plugins/ticket-runs/README.md
 Type=oneshot
 # the script calls paseo (nix profile), linear, gh and python3 (linuxbrew)
 Environment=PATH=%h/.local/bin:%h/.nix-profile/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
-# --dry-run: read Linear and Paseo, write the state files, start nothing.
-# Drop it once the Paseo schedule it runs beside is deleted.
-ExecStart=%h/dotfiles/paseo-plugins/ticket-runs/run_tickets.py check --dry-run
+ExecStart=%h/dotfiles/paseo-plugins/ticket-runs/run_tickets.py check
 TimeoutStartSec=8min
