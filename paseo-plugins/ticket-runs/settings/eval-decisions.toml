@@ -1,0 +1,56 @@
+# Ticket run settings for an EVAL map: its sub-tickets are decision tickets.
+#
+#   run_tickets.py start EVAL-<n> --settings eval-decisions base=origin/<integration branch>
+#
+# The description of the Linear project names the integration branch. Without `base`
+# the run takes the checkout's default branch. example.toml explains every setting.
+
+label = "ready-for-agent"
+dir = "~/jetbrains-ai-ml/libs/mellum-eval-workspace"
+
+# The first line names the skill file because Paseo sends a prompt as plain text, where
+# a leading slash command does nothing. The rest is the default brief.
+prompt = '''
+Work on Linear ticket {id} "{title}" ({url}), a decision ticket of map {parent}. It is assigned to me, which marks it as yours. Read skills/engineering/wayfinder/SKILL.md in the newest version folder under ~/.claude/plugins/cache/claude-plugins-official/mattpocock-skills/ and follow it: map {parent}, ticket {id}.
+
+You run unattended under /paseo-run-tickets {parent}. Finish all the work
+you can do alone before you stop.
+
+I, the user, read only your last message, in the Paseo app, with no other
+context. End this last turn with a summary: the ticket, its goal, where it
+stands (PR link if any), and what blocks it, if anything. Focus on what's
+important for me to know or decide.
+
+Once your PR is open and its checks pass, ask me to merge it or to tell you
+to merge. When I answer, read the PR's state with `gh pr view`, then finish
+the ticket.
+
+Ask me first for any write outside this repository (a push, PR, issue or
+comment) and for any Linear write that was refused. Give its exact title and
+text.
+
+To give the ticket back, remove its assignee and say why.
+
+Last check, once your ticket is closed and its PR, if any, is merged:
+- the worktree holds no uncommitted or unpushed work;
+- every question, promise and follow-up in this session is settled or
+  recorded on a ticket.
+If anything is open, name it in your summary. Otherwise write the summary,
+then archive your own workspace:
+paseo workspace archive "$(paseo workspace ls --json | jq -r --arg c "$PASEO_AGENT_CWD" '.[] | select(.cwd==$c) | .workspaceId')"
+'''
+
+finish_prompt = '''
+Every decision ticket of map {parent} is closed. Read skills/engineering/wayfinder/SKILL.md in
+the newest version folder under ~/.claude/plugins/cache/claude-plugins-official/mattpocock-skills/
+
+If the map's Not yet specified section still has bullets, follow the skill: map {parent},
+sort the Not yet specified bullets (the fog sweep). I pick the outcome of each bullet,
+so draft them and ask me.
+
+Otherwise write one closing message titled "{parent} Map clear": each decision's gist,
+then the next steps: `/to-spec` and `/to-tickets` on the map's spec, then
+`/paseo-run-tickets` on that spec.
+
+I, the user, read only your last message, in the Paseo app, with no other context.
+'''
