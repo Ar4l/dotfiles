@@ -24,7 +24,7 @@ import { type Vim, create, moveTo, press, puts, select, selection } from "./vim"
 const COMPOSER = "[data-testid='message-input-root']";
 const AUTOCOMPLETE = "[data-testid='composer-autocomplete-popover']";
 /** Set while the keys are turned off. */
-const OFF = "composer-vim:off";
+const OFF = "vim-keys:off";
 /** Outside insert mode the arrow keys move the block: the browser would only collapse it. */
 const ARROWS: Record<string, string> = { ArrowLeft: "h", ArrowRight: "l", ArrowUp: "k", ArrowDown: "j", Home: "0", End: "$" };
 const METER = "[data-testid='context-window-meter']";
@@ -32,7 +32,7 @@ const LABEL = { insert: "INSERT", normal: "NORMAL", visual: "VISUAL", "visual-li
 // White text reads on each of these in the light and the dark theme.
 const COLOR = { insert: "#15803d", normal: "#2563eb", visual: "#9333ea", "visual-line": "#9333ea" };
 /** The attribute that carries a composer's mode, for the styles below. */
-const MODE = "data-composer-vim";
+const MODE = "data-vim-keys";
 // Normal mode's block is the selected character, in the mode's colour. An empty line has no
 // character to select, so the caret itself is a block there, where the browser can draw one.
 const STYLES =
@@ -60,7 +60,7 @@ interface Running {
 
 /** Turns the keys off or on, as the command-center item does. */
 export function toggle(): void {
-  (window.__composerVim as Partial<Running> | undefined)?.toggle?.();
+  (window.__vimKeys as Partial<Running> | undefined)?.toggle?.();
 }
 
 /**
@@ -69,13 +69,13 @@ export function toggle(): void {
  */
 export function start(): () => void {
   if (Platform.OS !== "web") return () => {};
-  (window.__composerVim as Partial<Running> | undefined)?.stop?.();
+  (window.__vimKeys as Partial<Running> | undefined)?.stop?.();
   const running = run();
-  window.__composerVim = running;
+  window.__vimKeys = running;
   return () => {
-    if (window.__composerVim !== running) return;
+    if (window.__vimKeys !== running) return;
     running.stop();
-    delete window.__composerVim;
+    delete window.__vimKeys;
   };
 }
 
@@ -111,7 +111,7 @@ function run(): Running {
   guard.setAttribute("aria-hidden", "true");
   guard.style.cssText = "position:fixed;width:0;height:0;margin:0;padding:0;border:0;opacity:0;pointer-events:none";
   const badge = document.createElement("div");
-  badge.setAttribute("data-testid", "composer-vim-mode");
+  badge.setAttribute("data-testid", "vim-keys-mode");
   badge.setAttribute("aria-hidden", "true");
   const styles = document.createElement("style");
   styles.textContent = STYLES;

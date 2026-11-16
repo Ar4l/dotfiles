@@ -79,7 +79,7 @@ export type Listener = (event: never) => void;
 
 interface Globals {
   window: {
-    __composerVim?: unknown;
+    __vimKeys?: unknown;
     innerWidth: number;
     innerHeight: number;
     addEventListener(type: string, listener: Listener, capture?: boolean): void;

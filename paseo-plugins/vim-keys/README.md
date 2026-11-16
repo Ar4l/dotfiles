@@ -12,7 +12,7 @@ keys such as `gt` and Ctrl+L move between tabs, panes and workspaces.
 - Each composer keeps its own mode, undo list and place.
 
 The command-center item "Vim keys: turn off or on" switches all of these keys for the
-window. The switch is `localStorage["composer-vim:off"]`.
+window. The switch is `localStorage["vim-keys:off"]`.
 
 Paseo has a setting for the file editor only: Settings → Editor → Vim keybindings. It has
 no setting, issue or pull request for the composer as of 2026-11-16. The discussion
@@ -144,12 +144,12 @@ These follow `files/.vim/common.vim` and the Neovim config, where they apply to 
 ## Install
 
 ```sh
-paseo plugin install ~/dotfiles/paseo-plugins/composer-vim
+paseo plugin install ~/dotfiles/paseo-plugins/vim-keys
 ```
 
 `install.sh` does this on macOS. The daemon runs the plugin from this directory and needs
 no `npm install`. It loads plugins only when `pluginsEnabled` is `true` in
-`~/.paseo/config.json`. After an edit, run `paseo plugin reload composer-vim`.
+`~/.paseo/config.json`. After an edit, run `paseo plugin reload vim-keys`.
 
 ## App internals it leans on
 

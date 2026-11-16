@@ -5,7 +5,7 @@ straight from this checkout, with no build step and no `npm install`.
 
 | Plugin | Does | Install on |
 | --- | --- | --- |
-| [`composer-vim`](composer-vim/README.md) | Vim keys for the composer, the agent thread, and for moving between tabs, panes and workspaces | the Mac |
+| [`vim-keys`](vim-keys/README.md) | Vim keys for the composer, the agent thread, and for moving between tabs, panes and workspaces | the Mac |
 | [`mru-switcher`](mru-switcher/README.md) | Ctrl+Tab switches between the tabs you viewed last | the Mac |
 | [`ticket-runs`](ticket-runs/README.md) | One agent per ready Linear sub-ticket, and a screen that shows them | every machine whose daemon the app connects to |
 

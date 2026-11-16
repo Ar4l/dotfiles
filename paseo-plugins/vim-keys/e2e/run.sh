@@ -62,10 +62,10 @@ curl -sf -o /dev/null "http://127.0.0.1:$port/" || { echo "The daemon did not se
 
 paseo --home "$home" plugin install "$plugin" >/dev/null
 for _ in $(seq 30); do
-  paseo --home "$home" plugin ls | grep -q "composer-vim  *running" && break
+  paseo --home "$home" plugin ls | grep -q "vim-keys  *running" && break
   sleep 1
 done
-paseo --home "$home" plugin ls | grep -q "composer-vim  *running" || { echo "The plugin did not start"; exit 1; }
+paseo --home "$home" plugin ls | grep -q "vim-keys  *running" || { echo "The plugin did not start"; exit 1; }
 
 # A workspace with three agents. "Slow" takes ten seconds per reply, so the spec can
 # interrupt it; "Quick" answers at once.

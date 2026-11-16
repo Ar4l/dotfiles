@@ -14,7 +14,7 @@ const BROKEN = "n.BottomSheetModalInternalProvider,{value:A,children:P}";
 const FIXED = "r(3828).BottomSheetModalInternalProvider,{value:A,children:P}";
 
 const composer = (page: Page) => page.locator("[data-testid='message-input-root'] textarea").filter({ visible: true });
-const badge = (page: Page) => page.getByTestId("composer-vim-mode");
+const badge = (page: Page) => page.getByTestId("vim-keys-mode");
 /** The composer's text with `[` and `]` around its selection: the block, or a visual selection. */
 const text = (page: Page) =>
   composer(page).evaluate((area: HTMLTextAreaElement) => {
@@ -39,15 +39,15 @@ const openAgent = async (page: Page, title: string) => {
 const thread = (page: Page) =>
   page.evaluate(() => {
     const ranges = (name: string) => [...((CSS.highlights.get(name) as Iterable<Range> | undefined) ?? [])];
-    const [block] = ranges("composer-vim-cursor");
+    const [block] = ranges("vim-keys-cursor");
     const node = block?.startContainer as Text | undefined;
     const scroll = [...document.querySelectorAll<HTMLElement>("[data-testid='agent-chat-scroll']")].find((s) => s.checkVisibility())!;
     return {
       /** `[x]` is the character under the block. */
       cursor: block && node ? `${node.data.slice(Math.max(0, block.startOffset - 12), block.startOffset)}[${block}]${node.data.slice(block.endOffset, block.endOffset + 12)}` : null,
       y: block ? Math.round(block.getBoundingClientRect().top) : null,
-      visual: ranges("composer-vim-visual").join("|"),
-      matches: ranges("composer-vim-search").length,
+      visual: ranges("vim-keys-visual").join("|"),
+      matches: ranges("vim-keys-search").length,
       focus: document.activeElement?.getAttribute("data-testid") ?? document.activeElement?.tagName,
       atBottom: scroll.scrollTop >= scroll.scrollHeight - scroll.clientHeight - 2,
       text: scroll.innerText,
@@ -58,7 +58,7 @@ const searched = (page: Page) => expect(badge(page)).not.toContainText("searchin
 /** What the send button offers tells whether the agent is at work. */
 const sendButton = (page: Page, label: string) => page.getByLabel(label, { exact: true }).filter({ visible: true });
 
-test("Vim keys in the composer", async ({ page }) => {
+test("Vim keys", async ({ page }) => {
   await page.route("**/_expo/static/js/web/index-*.js", async (route) => {
     const response = await route.fetch();
     await route.fulfill({ response, body: (await response.text()).replace(BROKEN, FIXED) });
@@ -66,7 +66,7 @@ test("Vim keys in the composer", async ({ page }) => {
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
   // The daemon hands the plugin to the app a moment after the page loads.
-  await page.waitForFunction(() => "__composerVim" in window);
+  await page.waitForFunction(() => "__vimKeys" in window);
   await page.locator(`[data-testid^="sidebar-workspace-row-"][data-testid$=":${workspace}"]`).click();
 
   await test.step("1. a composer starts in insert mode and types as before", async () => {
@@ -175,7 +175,7 @@ test("Vim keys in the composer", async ({ page }) => {
       await panel.getByRole("button", { name: /^Vim keys: turn off or on/ }).click();
     };
     await pick();
-    await expect.poll(() => page.evaluate(() => localStorage.getItem("composer-vim:off"))).toBe("1");
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("vim-keys:off"))).toBe("1");
     await composer(page).click();
     await expect(badge(page)).toBeHidden();
     await composer(page).evaluate((area: HTMLTextAreaElement) => area.setSelectionRange(0, 0));
@@ -186,7 +186,7 @@ test("Vim keys in the composer", async ({ page }) => {
     expect(Date.now() - sent, "the agent was stopped, it did not finish").toBeLessThan(9000);
 
     await pick();
-    await expect.poll(() => page.evaluate(() => localStorage.getItem("composer-vim:off"))).toBe(null);
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("vim-keys:off"))).toBe(null);
     await composer(page).click();
     await expect(badge(page)).toBeVisible();
   });
@@ -224,10 +224,10 @@ test("Vim keys in the composer", async ({ page }) => {
     const caret = () => composer(page).evaluate((area) => getComputedStyle(area).getPropertyValue("caret-shape"));
     await keys(page, "ggdG");
     expect(await text(page)).toBe("|");
-    await expect(composer(page)).toHaveAttribute("data-composer-vim", "normal");
+    await expect(composer(page)).toHaveAttribute("data-vim-keys", "normal");
     expect(await caret()).toBe("block");
     await keys(page, "i");
-    await expect(composer(page)).toHaveAttribute("data-composer-vim", "insert");
+    await expect(composer(page)).toHaveAttribute("data-vim-keys", "insert");
     expect(await caret()).not.toBe("block");
     await keys(page, "<Esc>");
   });
@@ -298,7 +298,7 @@ test("Vim keys in the composer", async ({ page }) => {
     await keys(page, "<C-k>");
     expect((await thread(page)).focus).toBe("TEXTAREA");
     await keys(page, "<Esc><C-k>");
-    await expect.poll(async () => (await thread(page)).focus).toBe("composer-vim-thread");
+    await expect.poll(async () => (await thread(page)).focus).toBe("vim-keys-thread");
     await expect(badge(page)).toHaveText("NORMAL");
     expect((await thread(page)).cursor).not.toBeNull();
     await keys(page, "<C-j>");
@@ -391,7 +391,7 @@ test("Vim keys in the composer", async ({ page }) => {
   await test.step("21. a search upward loads older messages, and Enter unfolds a turn", async () => {
     await openAgent(page, "Pages");
     await keys(page, "<Esc><C-k>");
-    await expect.poll(async () => (await thread(page)).focus).toBe("composer-vim-thread");
+    await expect.poll(async () => (await thread(page)).focus).toBe("vim-keys-thread");
     // The app has loaded the last turns only.
     expect((await thread(page)).text).not.toContain("aardvark");
     await keys(page, "?aardvark<CR>");
@@ -426,7 +426,7 @@ test("Vim keys in the composer", async ({ page }) => {
     await keys(page, "<Esc>ccagain<CR>");
     await expect(sendButton(page, "Stop agent")).toBeVisible();
     await keys(page, "<Esc><C-k>");
-    await expect.poll(async () => (await thread(page)).focus).toBe("composer-vim-thread");
+    await expect.poll(async () => (await thread(page)).focus).toBe("vim-keys-thread");
     await keys(page, "<Esc><Esc>v<Esc>?<Esc> <Esc>");
     await page.waitForTimeout(1500);
     await expect(sendButton(page, "Stop agent")).toBeVisible();
@@ -493,10 +493,10 @@ test("Vim keys in the composer", async ({ page }) => {
     expect(await panes()).toBe("Quick* | New tab");
     expect((await thread(page)).focus).toBe("TEXTAREA");
     await keys(page, "<C-k>");
-    await expect.poll(async () => (await thread(page)).focus).toBe("composer-vim-thread");
+    await expect.poll(async () => (await thread(page)).focus).toBe("vim-keys-thread");
     await keys(page, "<C-h>");
     await page.waitForTimeout(800);
-    expect((await thread(page)).focus).toBe("composer-vim-thread");
+    expect((await thread(page)).focus).toBe("vim-keys-thread");
     await keys(page, "<C-l>");
     await expect.poll(panes).toBe("Quick | New tab*");
     await expect(badge(page)).toBeHidden();

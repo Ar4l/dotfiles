@@ -1,0 +1,7 @@
+{
+  "id": "vim-keys",
+  "name": "Vim keys",
+  "requirements": {
+    "paseo": ">=0.15.4"
+  }
+}

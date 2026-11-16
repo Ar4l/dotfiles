@@ -42,7 +42,7 @@ const SCROLLOFF = 3;
 const ARROWS: Record<string, string> = { ArrowLeft: "h", ArrowRight: "l", ArrowUp: "k", ArrowDown: "j", Home: "0", End: "$" };
 const DIGIT = /^[0-9]$/;
 
-const NAME = { cursor: "composer-vim-cursor", visual: "composer-vim-visual", search: "composer-vim-search", match: "composer-vim-match" };
+const NAME = { cursor: "vim-keys-cursor", visual: "vim-keys-visual", search: "vim-keys-search", match: "vim-keys-match" };
 /** The colours of the thread's cursor, selection and matches. `colors` are the modes' own. */
 export const threadStyles = (colors: { normal: string; visual: string }) =>
   `::highlight(${NAME.search}){background-color:#fde68a;color:#111827}` +
@@ -230,7 +230,7 @@ export function createThread(host: Host): Thread {
   sink.setAttribute("readonly", "");
   sink.setAttribute("tabindex", "-1");
   sink.setAttribute("aria-label", "Agent thread, Vim keys");
-  sink.setAttribute("data-testid", "composer-vim-thread");
+  sink.setAttribute("data-testid", "vim-keys-thread");
   sink.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;margin:0;padding:0;border:0;opacity:0;resize:none;pointer-events:none";
   document.body.append(sink);
 

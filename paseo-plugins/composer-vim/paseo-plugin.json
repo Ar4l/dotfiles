@@ -1,7 +1,0 @@
-{
-  "id": "composer-vim",
-  "name": "Vim keys in the composer",
-  "requirements": {
-    "paseo": ">=0.15.4"
-  }
-}
