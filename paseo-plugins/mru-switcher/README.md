@@ -33,6 +33,7 @@ in this repo.
 - A closed tab is an agent tab that leaves the workspace on screen. An agent archived while its workspace is hidden is not one.
 - A press skips a tab that is open again and an agent that was deleted. It keeps the tabs of an offline host for later.
 - The tab opens at once and reads "This agent is archived" until the host answers: 21 to 37 ms in the rig below.
+- An idle Claude agent with one reply took 2.1 s to unarchive in Paseo.app, in one run. Its tab was back after 235 ms.
 - The plugin unarchives with the request behind the app's Unarchive button, and only an archived agent: it interrupts a running one.
 - A subagent's tab closes without archiving its agent, and reopens without that request.
 
@@ -165,7 +166,8 @@ seeds seven agents in two workspaces and runs `e2e/switcher.spec.ts`. It never t
 ## Not covered
 
 - Paseo.app itself: the rig drives the app's bundle in Chromium, so check Ctrl+Tab and Cmd+Shift+T by hand after an upgrade.
-- Unarchiving an agent of a real provider: the rig timed the mock provider only.
+- Unarchiving an agent with a long history, or of a provider other than Claude: the one run in Paseo.app used a Claude agent with one reply.
+- Physical key presses in Paseo.app: that run sent the keys as events from a script.
 - A tab closed with Cmd+W: that binding exists only in Paseo.app. The spec closes tabs with the pointer and with Alt+Shift+W.
 - Paseo in a browser tab, where the browser keeps Cmd+Shift+T, and Windows and Linux. Use the command-center item there.
 - Where a reopened tab lands in the row of tabs: the app decides.
