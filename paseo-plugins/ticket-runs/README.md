@@ -43,10 +43,17 @@ replaces is deleted, the timer runs `check --dry-run` and starts nothing.
 ## Tests
 
 ```sh
-python3 -m unittest test_run_tickets   # the script against stand-ins for linear, paseo and gh, 30 s
-npm install && npm run typecheck       # the plugin
+npm install && npm run typecheck   # the plugin
+npm test                           # the script against stand-ins for linear, paseo and gh (30 s), and the graph layout
 ```
 
 `testdata/recorded.json` is one parent ticket with 88 sub-tickets and 36 agents as the real
 tools reported it on 2026-11-16, stripped of titles and names. The screen was checked in
 headless Chromium with `prototype/shot.py` against a throwaway daemon.
+
+## The dependency graph
+
+Paseo 0.15.4 gives a plugin no drawing surface. `client/graph.ts` lays the graph out and
+writes it as one SVG document, which Paseo's `Icon` draws; invisible buttons over the nodes
+take the taps. Paseo refuses an SVG above 64 KiB, and a run that large gets a list instead.
+The run of 2026-11-16 had 62 linked tickets and 189 links, and its SVG was 27 KiB.

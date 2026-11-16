@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "python3 -m unittest test_run_tickets"
+    "test": "python3 -m unittest test_run_tickets && node --test client/graph.test.ts"
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.15.4",

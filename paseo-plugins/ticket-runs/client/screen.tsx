@@ -1,4 +1,4 @@
-import type { PluginTheme } from "@getpaseo/plugin";
+import { PLUGIN_SVG_ICON_MAX_BYTES, findSvgIconProblem, type PluginTheme } from "@getpaseo/plugin";
 import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, Loading, Modal, ScrollView, useToast } from "@getpaseo/plugin/client/ui";
@@ -22,6 +22,7 @@ import {
   type Tone,
   type TreeNode,
 } from "./data";
+import { NODE_H, drawGraph, layoutGraph, neighbours } from "./graph";
 import { clock } from "./time";
 
 /** A group with more rows than this starts collapsed. Applies to "Needs you" and "Blocked". */
@@ -116,6 +117,8 @@ function makeStyles(c: Colors, compact: boolean) {
       detailsSheet: { gap: 24 },
       section: { gap: 8 },
       treeRow: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 26 },
+      graphCaption: { gap: 2, minHeight: 50 },
+      graphScroll: { flexGrow: 0 },
       treeChildren: { marginLeft: 7, paddingLeft: 9, borderLeftWidth: 1, borderLeftColor: c.border },
       recentRow: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 30, borderRadius: 6 },
       rules: { gap: 6 },
@@ -482,11 +485,120 @@ function DetailsSection({ label, children }: { label: string; children: ReactNod
   );
 }
 
+type MaybeId = string | null;
+
+/**
+ * What blocks what, as a graph: blockers on the left, the tickets they block to the right.
+ * A tap on a ticket lights up its links. A run too large for one SVG falls back to a list.
+ */
+function Dependencies({ run, actions }: { run: Run; actions: TicketActions }) {
+  const { c, s } = useUi();
+  const [chosen, setChosen] = useState<MaybeId>(null);
+  const graph = useMemo(() => layoutGraph(run), [run]);
+  const selected = graph?.nodes.find((node) => node.id === chosen) ?? null;
+  const picture = useMemo(() => {
+    if (!graph) return null;
+    const drawn = drawGraph(
+      graph,
+      {
+        outline: (ticket) => (ticket ? toneColor(c, statusMark(ticket).tone) : c.foregroundMuted),
+        fill: c.surface1,
+        text: c.foreground,
+        muted: c.foregroundMuted,
+        edge: c.foregroundMuted,
+        highlight: c.foreground,
+      },
+      selected?.id ?? null,
+    );
+    // Paseo refuses an SVG above 64 KiB or one that breaks its rules, and then draws nothing.
+    return drawn.svg.length <= PLUGIN_SVG_ICON_MAX_BYTES && findSvgIconProblem(drawn.svg) === null ? drawn : null;
+  }, [graph, selected?.id, c]);
+
+  if (!graph) {
+    return (
+      <DetailsSection label="Dependencies">
+        <Text style={s.smallMuted}>No open ticket blocks another.</Text>
+      </DetailsSection>
+    );
+  }
+  if (!picture) {
+    return (
+      <DetailsSection label="Dependencies">
+        <View>
+          <Tree nodes={dependencyTree(run)} />
+        </View>
+      </DetailsSection>
+    );
+  }
+  const links = selected ? neighbours(graph, selected.id) : null;
+  const mark = selected?.ticket ? statusMark(selected.ticket) : { icon: "CircleDashed", tone: "muted" as const };
+  const agentId = selected?.ticket?.agentId;
+  return (
+    <DetailsSection label="Dependencies">
+      <View style={s.graphCaption}>
+        {selected && links ? (
+          <>
+            <View style={s.treeRow}>
+              <Icon name={mark.icon} size={14} color={toneColor(c, mark.tone)} />
+              <Text style={s.treeId}>{selected.id}</Text>
+              <Text style={[s.treeTitle, !selected.ticket && { color: c.foregroundMuted }]} numberOfLines={1}>
+                {selected.ticket ? selected.ticket.title : "not in this run"}
+              </Text>
+              {agentId && actions.open ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open the agent of ${selected.id}`}
+                  onPress={() => actions.open?.(agentId)}
+                  hitSlop={6}
+                  style={(state) => [s.textButton, isActive(state) && s.pressed]}
+                >
+                  <Text style={s.textButtonText}>Open</Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <Text style={s.smallMuted}>
+              {links.blockedBy.length > 0 ? `blocked by ${links.blockedBy.length}` : "nothing blocks it"}
+              {" · "}
+              {links.blocks.length > 0 ? `blocks ${links.blocks.length}` : "blocks nothing"}
+            </Text>
+          </>
+        ) : (
+          <Text style={s.smallMuted}>
+            Tickets by number, blockers on the left. Tap one to light up its links, then its name to open its agent.
+          </Text>
+        )}
+      </View>
+      <ScrollView horizontal style={s.graphScroll}>
+        <View style={{ width: graph.width, height: graph.height, overflow: "hidden" }}>
+          <Icon icon={{ svg: picture.svg }} size={picture.size} color={c.foreground} />
+          {graph.nodes.map((node) => (
+            <Pressable
+              key={node.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Show the links of ${node.id}`}
+              accessibilityState={{ selected: node.id === selected?.id }}
+              onPress={() => setChosen(node.id === selected?.id ? null : node.id)}
+              style={{ position: "absolute", left: node.x, top: node.y, width: graph.nodeWidth, height: NODE_H }}
+            />
+          ))}
+          {picture.tag && agentId && actions.open ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Open the agent of ${selected?.id} from the graph`}
+              onPress={() => actions.open?.(agentId)}
+              style={{ position: "absolute", left: picture.tag.x, top: picture.tag.y, width: picture.tag.width, height: picture.tag.height }}
+            />
+          ) : null}
+        </View>
+      </ScrollView>
+    </DetailsSection>
+  );
+}
+
 /** Metadata of a run: what it does, its checks, the latest starts, and what unblocks what. */
 function Details({ run, actions }: { run: Run; actions: TicketActions }) {
   const { s, now } = useUi();
   const { health } = run;
-  const tree = useMemo(() => dependencyTree(run), [run]);
   const checkTimes = [
     health.checkedAt ? `last ${clock(health.checkedAt, now)}` : null,
     health.nextCheckAt ? `next ${clock(health.nextCheckAt, now)}` : null,
@@ -542,15 +654,7 @@ function Details({ run, actions }: { run: Run; actions: TicketActions }) {
           </View>
         </DetailsSection>
       ) : null}
-      <DetailsSection label="Dependencies">
-        {tree.length > 0 ? (
-          <View>
-            <Tree nodes={tree} />
-          </View>
-        ) : (
-          <Text style={s.smallMuted}>No open ticket blocks another.</Text>
-        )}
-      </DetailsSection>
+      <Dependencies run={run} actions={actions} />
     </>
   );
 }

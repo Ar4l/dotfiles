@@ -50,7 +50,11 @@ Blocked · 30
 - The three buttons pause the run, run a check at once, and show the details.
 - Details are optional: a right column on desktop, a sheet on the phone. They
   hold what the run does, the last and next check, the last five starts, and
-  the dependency tree of the run's tickets.
+  the dependency graph of the run's tickets.
+- The graph draws blockers on the left and what they block to the right. A
+  tap on a ticket lights up its links and shows its name; a tap on the name
+  opens its agent. A link that a longer chain implies is drawn only for the
+  tapped ticket.
 - "What the run does" words the run's settings: which tickets it starts, with
   what prompt, agent, folder and branch, and what follows the last ticket.
 - A "Needs you" row shows the pull request of the branch in the ticket's
