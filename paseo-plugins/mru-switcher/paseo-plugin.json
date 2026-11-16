@@ -1,0 +1,7 @@
+{
+  "id": "mru-switcher",
+  "name": "Recent tabs switcher",
+  "requirements": {
+    "paseo": ">=0.15.4"
+  }
+}

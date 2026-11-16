@@ -267,6 +267,12 @@ fi
 # 3. And, if we're on mac, install the casks and mac-only formulae
 if [[ "$OSTYPE" == "darwin"* ]]; then
   brew install ${casks[*]} ${darwin_programs[*]}
+
+  # Ctrl+Tab switcher for Paseo.app (paseo-plugins/mru-switcher/README.md). The daemon
+  # runs the plugin from this checkout, and loads it once pluginsEnabled is true.
+  paseo plugin ls -q 2> /dev/null | grep -qx mru-switcher ||
+  paseo plugin install "$(cd "$(dirname "$0")" && pwd)/paseo-plugins/mru-switcher" ||
+  failed+=(paseo.mru-switcher)
 else
   # claude-code has no linuxbrew formula; use the native installer
   # (installs to ~/.local/bin, which may not be on PATH mid-install)
