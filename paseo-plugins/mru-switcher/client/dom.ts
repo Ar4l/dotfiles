@@ -48,7 +48,8 @@ interface Globals {
     innerHeight: number;
     addEventListener(type: string, listener: Listener, capture?: boolean): void;
     removeEventListener(type: string, listener: Listener, capture?: boolean): void;
-    dispatchEvent(event: unknown): void;
+    /** False when a listener cancelled the event. */
+    dispatchEvent(event: unknown): boolean;
   };
   document: {
     title: string;
@@ -63,6 +64,7 @@ interface Globals {
   location: { pathname: string };
   localStorage: { getItem(key: string): string | null; setItem(key: string, value: string): void };
   PopStateEvent: new (type: string) => unknown;
+  CustomEvent: new (type: string, init: { cancelable: boolean; detail: unknown }) => unknown;
   getComputedStyle(element: Elem): { backgroundColor: string };
   requestAnimationFrame(callback: () => void): number;
   cancelAnimationFrame(handle: number): void;
@@ -79,6 +81,7 @@ export const {
   location,
   localStorage,
   PopStateEvent,
+  CustomEvent,
   getComputedStyle,
   requestAnimationFrame,
   cancelAnimationFrame,

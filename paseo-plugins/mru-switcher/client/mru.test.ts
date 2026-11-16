@@ -142,6 +142,15 @@ test("an agent's status follows the app's own rules, most urgent first", () => {
   assert.equal(statusOf({ status: "idle" }), "done");
 });
 
+test("an archived or deleted agent is gone, unless its tab is open", () => {
+  const archived = { status: "closed", archivedAt: "2026-11-16T05:49:03.938Z" };
+  assert.equal(statusOf(null), "gone");
+  assert.equal(statusOf(null, true), "gone");
+  assert.equal(statusOf(archived), "gone");
+  assert.equal(statusOf(archived, true), "done");
+  assert.equal(statusOf({ status: "running", archivedAt: null }), "running");
+});
+
 test("cards share the window's width, and a few cards stay narrow", () => {
   for (const width of [600, 1400, 2560]) {
     const row = 7 * cardWidth(7, width) + 6 * 6 + 12;

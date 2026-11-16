@@ -13,17 +13,22 @@ the app's own words and colours: Needs input, Failed, Working, Ready to review, 
 
 The list holds 20 entries, lives in the window's `localStorage` and survives a reload.
 An agent tab is one entry. Any other tab (terminal, file, browser) counts as its workspace.
+An agent leaves the list when it is archived or deleted. Closing an agent's tab archives it.
 
 ## Cost
 
-Nothing the switcher does grows with the number of agents or workspaces. The times are
-from Ctrl up to the tab selected, in the rig below.
+The list is capped at 20 entries and the overlay at seven, whatever the number of agents,
+workspaces and hosts. The times are from Ctrl up to the tab selected, in the rig below.
 
-- A jump inside a workspace clicks the tab: 6 ms.
-- A jump to another workspace clicks its sidebar row and the tab: 9 ms while the app has that workspace mounted.
-- The app keeps the last 10 workspaces mounted. A jump to one outside those took 100 to 130 ms.
-- Opening the list asks each listed agent's host for its status: at most seven requests.
-- The plugin reads the DOM twice after a click or a shortcut, and every 30 ms during a jump. It runs no timer otherwise.
+- A jump inside a workspace clicks the tab: 4 to 6 ms.
+- A jump to another workspace asks the app to open the agent: 3 to 9 ms while the app has that workspace mounted.
+- The app keeps a workspace mounted for 10 minutes after you leave it, and at most 10 of them.
+- A jump to a workspace the app has dropped took 42 to 49 ms.
+- A tap asks one host for one agent's status. Drawing the list asks for the other six. No status is asked twice in a second.
+- The plugin reads the DOM 150 ms and 1 s after a pointer release, a history change, or the release of a named or modified key.
+- During a jump it reads the DOM every 30 ms. It runs no timer otherwise.
+- A read is a few selector queries over the document. One took 12 µs with 1,470 elements mounted, and grows with that number.
+- A listed agent whose tab is missing from a mounted workspace costs one status request after each burst of clicks or keys.
 
 ## Cards layout (experimental, off by default)
 
@@ -69,44 +74,46 @@ no `npm install`. It loads plugins only when `pluginsEnabled` is `true` in
 ## App internals it leans on
 
 Paseo 0.15.4 gives plugins no key bindings, tab events or navigation to an agent, so
-`client/web.ts` reads the app's DOM and URL and clicks its controls. Rerun `e2e/run.sh`
-after every Paseo upgrade; it fails when one of these changes.
+`client/web.ts` reads the app's DOM and URL, clicks its tabs and raises one of its window
+events. Rerun `e2e/run.sh` after every Paseo upgrade. It fails when one of these changes.
+In the app, a renamed test id shows as a Ctrl+Tab that does nothing.
 
 | Internal | Used for |
 | --- | --- |
 | Path `/h/<server>/workspace/<workspace>` | Knowing which workspace is on screen |
 | `workspace-tab-<tab>` with `aria-selected` and `aria-label` | The selected tab and its title; `agent_<id>` marks an agent tab; clicked to jump |
-| `sidebar-workspace-row-<server>:<workspace>` | Clicked to jump to another workspace |
+| Window event `paseo:web-notification-click` with `{ serverId, agentId }` | Opening an agent: the app raises it for a click on a notification |
+| `sidebar-workspace-row-<server>:<workspace>` | Clicked to jump to a workspace entry |
 | `workspace-deck-entry-<server>:<workspace>` | Finding a workspace's tabs, mounted or on screen; copied for a card's picture |
-| `workspace-pane-*` | Picking the focused pane when panes are split; dimming the other panes in a picture |
+| `workspace-pane-*` | Telling the panes of a split apart; dimming the other panes in a picture |
 | Styles set by class names (React Native Web) | A copy of a workspace looks the same outside the app's tree |
 | `workspace-header-subtitle`, `workspace-header-title` | The project and workspace names in the list |
-| Path `/h/<server>/agent/<agent>` | The fallback jump: the app redirects it to the agent's workspace and selects its tab |
-| `deriveAgentStateBucket`, `status-dot-color.ts` | The status rules in `client/mru.ts` and the colours in `client/overlay.ts` are copies |
+| Path `/h/<server>/agent/<agent>` | The last resort when the app does not take the event |
+| `deriveAgentStateBucket`, `status-dot-color.ts` | The status rules in `client/mru.ts` and the light and dark dot colours in `client/overlay.ts` are copies |
 
 Agent state comes from the plugin SDK (`getPaseoClient(serverId).agents`), which is public.
 Drop the internals when Paseo ships a built-in switcher or plugin key bindings.
 
 ## How a jump works
 
-A jump clicks what you would click. Inside a workspace that is the tab. For another
-workspace it is the sidebar row and the tab in the same tick, so the app renders once.
+A jump to a tab of the workspace on screen clicks that tab.
 
-A sidebar row opens its workspace on an unread agent when it has one, and showing an agent
-marks it read. The tab click in the same tick keeps a mounted workspace from showing that
-agent. A workspace that is not mounted has no tab to click yet, so the plugin first asks
-the host for its unread agents (one request, 33 ms in the rig).
+Any other jump to an agent dispatches `paseo:web-notification-click` on `window`. The app
+shows the agent's workspace, selects its tab and focuses its pane. The other workspaces
+stay mounted and their unread agents stay unread. The app cancels the event when it takes
+it. When it does not, the plugin pushes the agent's URL (`history.pushState` plus a
+`popstate` event, which Expo Router follows). The URL route is slower and unmounts every
+other workspace.
 
-The jump falls back to the entry's URL (`history.pushState` plus a `popstate` event, which
-Expo Router follows) in four cases:
+A jump to a workspace entry clicks its sidebar row, or pushes the workspace URL when the
+sidebar has no row for it.
 
-- The tab was closed. The URL reopens it.
-- The sidebar has no row for the workspace, for example while it is hidden.
-- The workspace is not mounted and holds another unread agent, or its host does not answer in 250 ms.
-- The click has not landed after 1.2 s.
+With split panes, the tab on screen is the selected tab of the pane that holds the keyboard
+focus. When the focus is outside the panes, it is the tab the plugin recorded last.
 
-The URL route took 125 ms in the rig and about a second in Paseo.app with 30 agents. It
-unmounts every other workspace, so the next jump to each of them is slow once.
+The plugin asks the host about an agent before it draws the list, and when the agent's tab
+is missing from a mounted workspace. An agent that is archived or deleted leaves the list.
+One that leaves while the list is drawn reads Gone, and a jump to it does nothing.
 
 ## Tests
 
@@ -119,22 +126,26 @@ e2e/run.sh    # the released app in headless Chromium, about 50 s
 
 `e2e/run.sh` boots a throwaway daemon in a temp home on a free port, installs the plugin,
 seeds seven agents in two workspaces and runs `e2e/switcher.spec.ts`. It never touches
-`~/.paseo` or the live daemon. It needs Paseo.app, and Playwright's Chromium
+`~/.paseo` or the live daemon. The spec covers one host at desktop width. It needs Paseo.app, and Playwright's Chromium
 (`npx playwright install chromium`).
 
 - The agents use the mock provider, which costs no tokens and exists only in development mode.
 - Agent 2 takes ten seconds per reply, so the spec can catch it working and then unread.
 - The `paseo` launcher pins `PASEO_NODE_ENV=production`, so the script starts the app's CLI entrypoint itself.
 - The script starts the daemon with `nohup` and stops it on exit.
+- The spec archives an agent with the rig's own CLI, to play a change made outside the window.
 - `e2e/run.sh --keep` leaves the daemon up and prints its URL and the command that stops it.
 
 ## Not covered
 
 - Paseo.app itself: the rig drives the app's bundle in Chromium, so check Ctrl+Tab by hand after an upgrade.
+- The narrow layout: it has no tab strip, so the plugin records nothing and Ctrl+Tab does nothing.
+- Several hosts: the rig has one. Each host that serves the plugin restarts the switcher when it loads it.
+- An offline host: its agents show no status, and the app decides what a jump to one shows.
 - Focus inside an embedded browser tab: the webview keeps its own key events.
 - Mobile clients: the plugin does nothing there.
 - Separate entries for terminal and file tabs.
 - A workspace entry opens like its sidebar row, so it lands on the workspace's unread agent when it has one.
-- An agent that turns unread between the host's answer and the jump is shown for a moment and marked read.
-- An agent on an offline host shows no status.
-- The cards layout in Paseo.app, in Safari, and with several hosts serving the plugin (the command-center item would appear once per host).
+- A tap released before the host answers can reopen an agent archived from another window or the CLI.
+- Two windows share one list in `localStorage`. The window that wrote last wins.
+- The cards layout in Paseo.app and in Safari. Each host that serves the plugin adds its own command-center item.

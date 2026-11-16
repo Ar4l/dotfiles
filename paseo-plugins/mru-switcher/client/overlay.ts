@@ -10,13 +10,17 @@ import {
 import { type Entry, type Status, cardWidth } from "./mru";
 import type { Preview } from "./preview";
 
-/** The app's own status words and dot colours (sidebar.statusBucket, status-dot-color.ts). */
-const STATUS: Record<Status, { label: string; colour: string }> = {
-  needs_input: { label: "Needs input", colour: "#f59e0b" },
-  failed: { label: "Failed", colour: "#ef4444" },
-  running: { label: "Working", colour: "#3b82f6" },
-  attention: { label: "Ready to review", colour: "#22c55e" },
-  done: { label: "Done", colour: "" },
+/**
+ * The app's own status words (sidebar.statusBucket) and the dot colours of its light and
+ * dark themes (status-dot-color.ts). `gone` is this plugin's.
+ */
+const STATUS: Record<Status, { label: string; colours?: [light: string, dark: string] }> = {
+  needs_input: { label: "Needs input", colours: ["#b37824", "#db932e"] },
+  failed: { label: "Failed", colours: ["#f12e2f", "#f7796d"] },
+  running: { label: "Working", colours: ["#268ae0", "#5caaf6"] },
+  attention: { label: "Ready to review", colours: ["#299f51", "#35c264"] },
+  done: { label: "Done" },
+  gone: { label: "Gone" },
 };
 
 export interface Overlay {
@@ -38,6 +42,7 @@ interface Row {
   key: string;
   element: Elem;
   dot: Elem;
+  title: Elem;
   state: Elem;
   /** Where a card draws its preview. */
   box?: Elem;
@@ -52,6 +57,7 @@ export function createOverlay(onHover: (index: number) => void, onPick: (index: 
   root.setAttribute("data-testid", "mru-switcher");
   let rows: Row[] = [];
   let foreground = "";
+  let dark = false;
   /** The style of a row or card that is not selected. */
   let rowCss = "";
   let frame = 0;
@@ -85,6 +91,7 @@ export function createOverlay(onHover: (index: number) => void, onPick: (index: 
     return element;
   };
   const clip = "min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+  const titleCss = `flex:1 1 auto;${clip}`;
   const line = (...children: Elem[]): Elem => {
     const element = document.createElement("div");
     element.style.cssText = "display:flex;align-items:center;gap:6px;min-width:0";
@@ -93,18 +100,21 @@ export function createOverlay(onHover: (index: number) => void, onPick: (index: 
   };
 
   function paintStatus(row: Row, status: Status | undefined): void {
-    const { label, colour } = status ? STATUS[status] : { label: "", colour: "transparent" };
-    const fill = colour || `color-mix(in srgb,${foreground} 30%,transparent)`;
+    const { label, colours } = status ? STATUS[status] : { label: "", colours: undefined };
+    const colour = colours?.[dark ? 1 : 0] ?? "";
+    const fill = !status ? "transparent" : colour || `color-mix(in srgb,${foreground} 30%,transparent)`;
     row.dot.style.cssText = `flex:none;width:8px;height:8px;border-radius:50%;background:${fill}`;
     row.state.style.cssText = `flex:none;font-size:11px;${colour ? `color:${colour}` : "opacity:.55"}`;
     row.state.textContent = label;
     if (status) row.element.setAttribute("data-status", status);
+    row.title.style.cssText = titleCss + (status === "gone" ? "opacity:.45;text-decoration:line-through" : "");
   }
 
   return {
     open(entries, selection, statuses, previews) {
       const colours = sample();
       foreground = colours.foreground;
+      dark = colours.dark;
       rest = null;
       const width = cardWidth(entries.length, window.innerWidth);
       root.setAttribute("data-layout", previews ? "cards" : "list");
@@ -120,9 +130,9 @@ export function createOverlay(onHover: (index: number) => void, onPick: (index: 
       rows = entries.map((entry, index) => {
         const element = document.createElement("div");
         element.setAttribute("data-index", String(index));
-        const row: Row = { key: entry.key, element, dot: span(""), state: span("") };
-        const title = span(`flex:1 1 auto;${clip}`, entry.title);
+        const title = span(titleCss, entry.title);
         title.setAttribute("data-part", "title");
+        const row: Row = { key: entry.key, element, dot: span(""), title, state: span("") };
         const workspace = span(`flex:${previews ? "1 1 0" : "0 1 auto;max-width:45%"};opacity:.55;${clip}`, entry.workspace);
         workspace.setAttribute("data-part", "workspace");
         row.state.setAttribute("data-part", "status");
@@ -185,7 +195,7 @@ export function createOverlay(onHover: (index: number) => void, onPick: (index: 
 }
 
 /** The opaque surface behind the middle of the window, and black or white text to go on it. */
-function sample(): { background: string; foreground: string } {
+function sample(): { background: string; foreground: string; dark: boolean } {
   let background = "rgb(255, 255, 255)";
   let element = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
   for (; element; element = element.parentElement) {
@@ -198,5 +208,5 @@ function sample(): { background: string; foreground: string } {
   }
   const [red, green, blue] = (background.match(/\d+/g) ?? []).map(Number);
   const dark = red * 0.299 + green * 0.587 + blue * 0.114 < 128;
-  return { background, foreground: dark ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)" };
+  return { background, foreground: dark ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)", dark };
 }

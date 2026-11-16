@@ -4,6 +4,7 @@ import {
   type KeyEvt,
   type Listener,
   type PointerEvt,
+  CustomEvent,
   PopStateEvent,
   document,
   history,
@@ -35,11 +36,8 @@ import { type Preview, capture } from "./preview";
 /** The part of a host's API the switcher reads agent state from. */
 export interface Paseo {
   agents: {
+    /** Resolves to null for an agent the host no longer knows. */
     ref(agentId: string): { refresh(): Promise<{ agent: AgentState } | null> };
-    list(options: { includeBackground: boolean; filter: { requiresAttention: boolean } }): Promise<{
-      entries: readonly { agent: { id: string; workspaceId?: string | null } }[];
-      pageInfo: { hasMore: boolean };
-    }>;
   };
 }
 /** `getPaseoClient` of one installation: the API of an online host, or a throw. */
@@ -47,12 +45,20 @@ export type HostApi = (serverId: string) => Paseo;
 
 // App internals this plugin leans on; README.md lists them.
 const TAB_PREFIX = "workspace-tab-";
-const SELECTED_TAB = `[data-testid^="${TAB_PREFIX}"][aria-selected="true"]`;
+const ANY_TAB = `[data-testid^="${TAB_PREFIX}"]`;
+const SELECTED_TAB = `${ANY_TAB}[aria-selected="true"]`;
+const DECK_PREFIX = "workspace-deck-entry-";
 const PANE = '[data-testid^="workspace-pane-"]';
 const testId = (id: string) => `[data-testid=${JSON.stringify(id)}]`;
 const deckOf = (place: { serverId: string; workspaceId: string }) =>
-  testId(`workspace-deck-entry-${place.serverId}:${place.workspaceId}`);
+  testId(`${DECK_PREFIX}${place.serverId}:${place.workspaceId}`);
 const sidebarRowOf = (entry: Entry) => testId(`sidebar-workspace-row-${entry.serverId}:${entry.workspaceId}`);
+/**
+ * The app opens an agent on this window event, which it raises itself for a click on a
+ * notification. It shows the agent's workspace, selects or reopens its tab and focuses its
+ * pane, and it cancels the event to say so.
+ */
+const OPEN_AGENT = "paseo:web-notification-click";
 const agentTabOf = (entry: Entry) => `${deckOf(entry)} ${testId(`${TAB_PREFIX}agent_${entry.agentId}`)}`;
 
 const STORE = "mru-switcher";
@@ -62,12 +68,12 @@ const LAYOUT = "mru-switcher:layout";
 const SHOW_MS = 150;
 /** How often a jump on its way is looked at. */
 const POLL_MS = 30;
-/** How long clicking the tab may take before the jump goes through the entry's URL instead. */
-const CLICK_MS = 1200;
-/** How long a jump waits for a host to say whether a workspace holds unread agents. */
-const ASK_MS = 250;
+/** How long a click on a tab may take to land before the app is asked to open the agent. */
+const RETRY_MS = 400;
 /** How long a jump may take to land before its entry counts as gone. */
-const LAND_MS = 5000;
+const LAND_MS = 3000;
+/** A status this recent is not requested again. */
+const FRESH_MS = 1000;
 
 function cards(): boolean {
   try {
@@ -92,19 +98,21 @@ interface Shared {
   stop(): void;
 }
 
-/** Starts the switcher once per window, however many hosts evaluate the bundle. */
+/**
+ * Starts the switcher once per window, however many hosts evaluate the bundle. The bundle
+ * evaluated last runs it: after `paseo plugin reload` on one host, that is the new code.
+ */
 export function start(host: HostApi): () => void {
   if (Platform.OS !== "web") return () => {};
-  let shared = window.__mruSwitcher as Shared | undefined;
-  if (!shared) {
-    const hosts = new Set<HostApi>();
-    shared = window.__mruSwitcher = { hosts, stop: run(hosts) };
-  }
-  const { hosts, stop } = shared;
+  const previous = window.__mruSwitcher as Partial<Shared> | undefined;
+  previous?.stop?.();
+  const hosts = previous?.hosts instanceof Set ? previous.hosts : new Set<HostApi>();
   hosts.add(host);
+  const shared: Shared = { hosts, stop: run(hosts) };
+  window.__mruSwitcher = shared;
   return () => {
     if (!hosts.delete(host) || hosts.size > 0) return;
-    stop();
+    (window.__mruSwitcher as Shared | undefined)?.stop();
     delete window.__mruSwitcher;
   };
 }
@@ -112,17 +120,13 @@ export function start(host: HostApi): () => void {
 /** A jump that has not landed yet. Its entry is already at the front of the list. */
 interface Pending {
   entry: Entry;
-  /** When the jump began. */
-  startedAt: number;
-  /** When the jump stops clicking and pushes the entry's URL. 0 once it has. */
-  urlAt: number;
   /** When the entry counts as gone. */
   until: number;
-  /** The sidebar row of the entry's workspace was clicked. */
-  opened: boolean;
-  nextClick: number;
-  /** Whether the entry's workspace holds another unread agent: undefined before asking, null while asking. */
-  unread?: boolean | null;
+  /** When the app is asked to open the entry, unless the jump can ask or click at once. */
+  askAt: number;
+  /** The tab was clicked or the app was asked: the entry's tab, once selected, is the tab on screen. */
+  acted: boolean;
+  asked: boolean;
 }
 
 function run(hosts: ReadonlySet<HostApi>): () => void {
@@ -136,6 +140,10 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
   let pending: Pending | null = null;
   /** Last known status per entry key, shown at once while a fresh one is fetched. */
   const statuses = new Map<string, Status>();
+  /** When each entry's status was last requested. */
+  const asked = new Map<string, number>();
+  /** Key of the tab last recorded as on screen. */
+  let last: string | null = null;
   /** With the cards layout on: what each listed entry's workspace looked like, at most SHOWN of them. */
   const previews = new Map<string, Preview>();
   let soon = 0;
@@ -167,21 +175,32 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
     return null;
   }
 
-  /** The tab on screen. Null outside a workspace route and while that workspace is not shown yet. */
-  function current(): Entry | null {
+  /**
+   * The tab on screen. Null outside a workspace route and while that workspace is not shown
+   * yet. With split panes every pane has a selected tab. The one named `prefer` wins, then
+   * the one in the pane with the keyboard focus, then the one recorded last.
+   */
+  function current(prefer?: string): Entry | null {
     const place = placeOf(location.pathname);
     if (!place) return null;
     // Other workspaces stay mounted while hidden, and the URL can change before the screen does.
     const deck = document.querySelector(deckOf(place));
     if (!deck?.checkVisibility()) return null;
-    const tabs = [...document.querySelectorAll(`${deckOf(place)} ${SELECTED_TAB}`)];
-    // With split panes every pane has a selected tab; the focused pane wins.
-    const tab = tabs.find((candidate) => candidate.closest(PANE)?.contains(document.activeElement)) ?? tabs[0];
-    if (!tab) return null;
-    const tabId = tab.getAttribute("data-testid")?.slice(TAB_PREFIX.length) ?? null;
     const header = (part: string) => deck.querySelector(testId(`workspace-header-${part}`))?.textContent;
     const workspace = [header("subtitle"), header("title")].filter(Boolean).join(" / ");
-    return entryFor(place, tabId, tab.getAttribute("aria-label") || document.title, workspace);
+    const tabs = [...deck.querySelectorAll(`${PANE} ${SELECTED_TAB}`)].filter((tab) => tab.checkVisibility());
+    const entries = tabs.map((tab) => {
+      const tabId = tab.getAttribute("data-testid")?.slice(TAB_PREFIX.length) ?? null;
+      return entryFor(place, tabId, tab.getAttribute("aria-label") || document.title, workspace);
+    });
+    const focused = tabs.findIndex((tab) => tab.closest(PANE)?.contains(document.activeElement));
+    return (
+      entries.find((entry) => entry.key === prefer) ??
+      entries[focused] ??
+      entries.find((entry) => entry.key === last) ??
+      entries[0] ??
+      null
+    );
   }
 
   function save(): void {
@@ -196,9 +215,8 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
   }
 
   /**
-   * Moves a jump along and reports whether it is over. Clicking is what the app does fastest:
-   * a tab of the workspace on screen, or the workspace's sidebar row and then the tab. The
-   * entry's URL is slower and unmounts the other workspaces, and it reopens a closed tab.
+   * Moves a jump along and reports whether it is over. A click on a tab of the workspace on
+   * screen is what the app does fastest. Everything else goes through `open`.
    */
   function arrive(jump: Pending, entry: Entry | null): boolean {
     const target = jump.entry;
@@ -207,63 +225,37 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
     const here = place?.serverId === target.serverId && place.workspaceId === target.workspaceId;
     if (here && entry && (target.agentId === null || entry.key === target.key)) return true;
     if (now >= jump.until) return true;
-    if (jump.urlAt === 0) return false;
-
-    const url = () => {
-      jump.urlAt = 0;
-      // Expo Router follows the URL on popstate, and the agent route opens the tab itself.
-      history.pushState(null, "", target.path);
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    };
-    const tab = target.agentId === null ? null : document.querySelector(agentTabOf(target));
-    if (now >= jump.urlAt) {
-      url();
-    } else if (here) {
-      // Without an entry the URL has changed and the screen has not. Without the tab, it was closed.
-      if (entry && !tab) url();
-      else if (entry && tab && now >= jump.nextClick) {
-        jump.nextClick = now + 200;
-        if (tab.getAttribute("aria-selected") !== "true") tab.click();
-        // Selected already, in a split pane without the focus: focusing its composer moves the focus there.
-        else [...(tab.closest(PANE)?.querySelectorAll("textarea") ?? [])].find((input) => input.checkVisibility())?.focus();
-      }
-    } else if (!jump.opened) {
-      const row = document.querySelector(sidebarRowOf(target));
-      // The row opens the workspace on its unread agent, if it has one, and that marks the agent
-      // as read. Clicking the tab in the same tick keeps a mounted workspace from ever showing
-      // that agent. A workspace that is not mounted has no tab to click yet, so its host is
-      // asked first, and the URL is the way in when another agent there is unread.
-      if (row && (tab || target.agentId === null || jump.unread === false)) {
-        jump.opened = true;
-        row.click();
-        tab?.click();
-      } else if (!row || jump.unread || now >= jump.startedAt + ASK_MS) {
-        url();
-      } else if (jump.unread === undefined) {
-        const api = apiOf(target);
-        if (api) ask(api, jump);
-        else url();
-      }
+    if (jump.asked) return false;
+    const tab = here && entry && target.agentId !== null ? document.querySelector(agentTabOf(target)) : null;
+    if (tab && !jump.acted && tab.getAttribute("aria-selected") !== "true") {
+      jump.acted = true;
+      jump.askAt = now + RETRY_MS;
+      tab.click();
+    } else if (now >= jump.askAt || !(jump.acted || (here && !entry))) {
+      // Not waiting for a click to land, nor for the screen to catch up with the URL: the tab
+      // is in another workspace, closed, or selected in a pane without the focus.
+      jump.acted = jump.asked = true;
+      open(target);
     }
     return false;
   }
 
-  /** Asks the host whether the workspace of a jump holds an unread agent other than its target. */
-  function ask(api: Paseo, jump: Pending): void {
-    jump.unread = null;
-    const target = jump.entry;
-    Promise.resolve()
-      .then(() => api.agents.list({ includeBackground: true, filter: { requiresAttention: true } }))
-      .then(({ entries, pageInfo }) => {
-        if (pending !== jump) return;
-        jump.unread =
-          pageInfo.hasMore ||
-          entries.some(({ agent }) => agent.workspaceId === target.workspaceId && agent.id !== target.agentId);
-        track();
-      })
-      .catch(() => {
-        // The host went offline: the jump goes through the URL once ASK_MS has passed.
-      });
+  /**
+   * Has the app open an entry. An agent goes through the app's own event, which leaves the
+   * other workspaces mounted and the other agents unread. A workspace has only its sidebar
+   * row. The entry's URL is the last resort: it is slower and unmounts the other workspaces.
+   */
+  function open(target: Entry): void {
+    if (target.agentId !== null) {
+      const detail = { data: { serverId: target.serverId, agentId: target.agentId } };
+      if (!window.dispatchEvent(new CustomEvent(OPEN_AGENT, { cancelable: true, detail }))) return;
+    } else {
+      const row = document.querySelector(sidebarRowOf(target));
+      if (row) return row.click();
+    }
+    // Expo Router follows the URL on popstate.
+    history.pushState(null, "", target.path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
   }
 
   /**
@@ -272,22 +264,51 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
    */
   function track(): void {
     clearTimeout(poll);
-    const entry = current();
-    const landing = pending !== null;
-    if (pending) {
-      if (!arrive(pending, entry)) {
-        poll = setTimeout(track, POLL_MS);
-        return;
-      }
-      // Gone, or a workspace jump that landed on an agent tab with its own entry.
-      if (entry?.key !== pending.entry.key) list = drop(list, pending.entry.key);
-      pending = null;
+    const jumped = pending?.entry;
+    const entry = current(pending?.acted ? jumped?.key : undefined);
+    if (pending && !arrive(pending, entry)) {
+      poll = setTimeout(track, POLL_MS);
+      return;
     }
+    pending = null;
+    // Gone, or a workspace jump that landed on an agent tab with its own entry.
+    if (jumped && entry?.key !== jumped.key) list = drop(list, jumped.key);
     const front = list[0];
     const recorded =
-      !landing && front?.key === entry?.key && front?.title === entry?.title && front?.workspace === entry?.workspace;
+      !jumped && front?.key === entry?.key && front?.title === entry?.title && front?.workspace === entry?.workspace;
     if (entry && !recorded) list = visit(drop(list, workspaceKey(entry)), entry);
+    if (entry) last = entry.key;
     save();
+    refresh(closed());
+  }
+
+  /**
+   * The agents among the listed entries whose tab was closed: their workspace is mounted and
+   * shows tabs, and theirs is not one. Closing a tab archives its agent, except for a subagent.
+   */
+  function closed(): Entry[] {
+    const decks = new Map<string | null, Elem>();
+    for (const deck of document.querySelectorAll(`[data-testid^="${DECK_PREFIX}"]`)) {
+      if (deck.querySelector(ANY_TAB)) decks.set(deck.getAttribute("data-testid"), deck);
+    }
+    return list.slice(0, SHOWN).filter((entry) => {
+      const deck = decks.get(`${DECK_PREFIX}${entry.serverId}:${entry.workspaceId}`);
+      return entry.agentId !== null && deck && !deck.querySelector(testId(`${TAB_PREFIX}agent_${entry.agentId}`));
+    });
+  }
+
+  /** Takes an archived or deleted agent off the list, and off an overlay that is not drawn yet. */
+  function forget(key: string): void {
+    list = drop(list, key);
+    save();
+    const index = shown.findIndex((entry) => entry.key === key);
+    // A drawn overlay keeps its rows: this one now reads Gone.
+    if (selection === null || drawn || index < 0) return;
+    shown = drop(shown, key);
+    if (shown.length === 0) return press("cancel");
+    // A selection on the entry that left moves to the one behind it.
+    if (index < selection) selection -= 1;
+    selection %= shown.length;
   }
 
   /** Looks again once the app has settled: a click or a shortcut changes the tab a little later. */
@@ -322,25 +343,34 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
   }
 
   function jump(entry: Entry): void {
+    if (statuses.get(entry.key) === "gone") return;
     if (entry.key === (pending?.entry.key ?? current()?.key)) return;
     list = visit(list, entry);
     const now = Date.now();
-    pending = { entry, startedAt: now, urlAt: now + CLICK_MS, until: now + LAND_MS, opened: false, nextClick: 0 };
+    pending = { entry, until: now + LAND_MS, askAt: now + RETRY_MS, acted: false, asked: false };
     track();
   }
 
-  /** Asks each listed agent's host for its status, and repaints the overlay as answers arrive. */
+  /**
+   * Asks each agent's host for its status, at most once a second, and repaints the overlay
+   * as answers arrive. An agent that was archived or deleted leaves the list.
+   */
   function refresh(entries: readonly Entry[]): void {
-    for (const key of statuses.keys()) if (!list.some((entry) => entry.key === key)) statuses.delete(key);
+    const listed = (key: string) => [...list, ...shown].some((entry) => entry.key === key);
+    for (const key of statuses.keys()) if (!listed(key)) statuses.delete(key);
+    for (const key of asked.keys()) if (!listed(key)) asked.delete(key);
+    const now = Date.now();
     for (const entry of entries) {
       const { agentId, key } = entry;
-      const api = agentId === null ? null : apiOf(entry);
-      if (agentId === null || !api) continue;
+      if (agentId === null || now < (asked.get(key) ?? 0) + FRESH_MS) continue;
+      const api = apiOf(entry);
+      if (!api) continue;
+      asked.set(key, now);
       Promise.resolve()
         .then(() => api.agents.ref(agentId).refresh())
         .then((result) => {
-          if (!result) return;
-          const status = statusOf(result.agent);
+          const status = statusOf(result?.agent ?? null, document.querySelector(agentTabOf(entry)) !== null);
+          if (status === "gone") forget(key);
           if (statuses.get(key) === status) return;
           statuses.set(key, status);
           overlay.update(statuses);
@@ -356,6 +386,7 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
     if (selection === null || drawn) return;
     drawn = true;
     overlay.open(shown, selection, statuses, cards() ? previews : undefined);
+    refresh(shown);
   }
 
   function press(key: Key): void {
@@ -365,7 +396,8 @@ function run(hosts: ReadonlySet<HostApi>): () => void {
       shown = list.slice(0, SHOWN);
       // Skip entry 0 only when it is the tab on screen.
       first = pending || current()?.key === shown[0]?.key ? 1 : 0;
-      refresh(shown);
+      // A quick toggle never draws the list, and needs to know only whether its target still exists.
+      refresh(shown.slice(first, first + 1));
     }
     const next = step(selection, key, shown.length, first);
     selection = next.selection;

@@ -84,5 +84,7 @@ paseo --home "$home" wait "$slow" --timeout 60 >/dev/null
 
 cd "$plugin"
 [[ -d node_modules/@playwright/test ]] || npm install
+# The spec archives an agent with the same CLI.
+MRU_PASEO=$(python3 -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "${cli[@]}" --home "$home") \
 MRU_BASE="http://127.0.0.1:$port" MRU_WORKSPACES="${workspaces[0]},${workspaces[1]}" \
   MRU_OUTPUT="$home/test-results" npx playwright test -c e2e/playwright.config.ts

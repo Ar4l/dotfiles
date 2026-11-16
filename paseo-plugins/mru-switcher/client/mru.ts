@@ -119,8 +119,8 @@ export function step(selection: Selection, key: Key, count: number, start = 1): 
   return { selection: (selection + (back ? count - 1 : 1)) % count, jump: null };
 }
 
-/** The app's five agent states, in the order its sidebar ranks them. */
-export type Status = "needs_input" | "failed" | "running" | "attention" | "done";
+/** The app's five agent states, in the order its sidebar ranks them, and `gone` for an agent that was archived or deleted. */
+export type Status = "needs_input" | "failed" | "running" | "attention" | "done" | "gone";
 
 /** The fields of an agent snapshot that decide its status. */
 export interface AgentState {
@@ -128,10 +128,16 @@ export interface AgentState {
   requiresAttention?: boolean;
   attentionReason?: string | null;
   pendingPermissions?: readonly unknown[];
+  archivedAt?: string | null;
 }
 
-/** Same rules as the app's own status dots (`deriveAgentStateBucket` in @getpaseo/protocol). */
-export function statusOf(agent: AgentState): Status {
+/**
+ * Same rules as the app's own status dots (`deriveAgentStateBucket` in @getpaseo/protocol).
+ * `agent` is null once its host no longer knows it. An archived agent is gone unless its
+ * tab is open: the app lets you reopen one.
+ */
+export function statusOf(agent: AgentState | null, tabOpen = false): Status {
+  if (!agent || (agent.archivedAt && !tabOpen)) return "gone";
   if ((agent.pendingPermissions?.length ?? 0) > 0 || agent.attentionReason === "permission") return "needs_input";
   if (agent.status === "error" || agent.attentionReason === "error") return "failed";
   if (agent.status === "running") return "running";

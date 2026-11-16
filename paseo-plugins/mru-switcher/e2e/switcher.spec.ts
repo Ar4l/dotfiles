@@ -1,8 +1,14 @@
+import { execFileSync } from "node:child_process";
 import { type Page, expect, test } from "@playwright/test";
 
 // The fixture from run.sh: agents 1 to 4 in workspace alpha, agents 5 to 7 in workspace beta.
 // Agent 2 takes ten seconds to answer a prompt; the others answer at once.
 const [alpha, beta] = (process.env.MRU_WORKSPACES ?? "").split(",");
+/** Runs the rig's `paseo` CLI. */
+const paseo = (...args: string[]) => {
+  const [command, ...prefix] = JSON.parse(process.env.MRU_PASEO ?? "[]") as string[];
+  return execFileSync(command, [...prefix, ...args], { encoding: "utf8" });
+};
 
 /** A place the switcher can land on: an agent by number, or beta's terminal tab. */
 type Stop = number | "terminal";
@@ -160,8 +166,8 @@ test("Ctrl+Tab switches between recently viewed tabs", async ({ page }) => {
 
   await test.step("5. ten jumps leave floating panels in place", async () => {
     for (let i = 0; i < 10; i++) await ctrlTab(page, 3);
-    // A jump clicks the app's own controls, so both workspaces stay mounted and one is on
-    // screen. The URL route would have unmounted the other.
+    // A jump clicks a tab or asks the app to open the agent, so both workspaces stay mounted
+    // and one is on screen. The URL route would have unmounted the other.
     const decks = page.locator('[data-testid^="workspace-deck-entry-"]');
     await expect(decks).toHaveCount(2);
     await expect(decks.filter({ visible: true })).toHaveCount(1);
@@ -207,16 +213,19 @@ test("Ctrl+Tab switches between recently viewed tabs", async ({ page }) => {
     await arrive(page, target);
   });
 
-  await test.step("8. a closed tab reopens", async () => {
+  await test.step("8. a closed tab leaves the list", async () => {
     await clickAgent(page, 3);
     await clickAgent(page, 4);
     const tab = agentTab(page, 3);
     const id = (await tab.getAttribute("data-testid"))!.slice("workspace-tab-agent_".length);
     await tab.hover();
+    // Closing a tab archives its agent.
     await page.getByTestId(`workspace-agent-close-${id}`).filter({ visible: true }).click();
     await expect(tab).toHaveCount(0);
-    await ctrlTab(page, 1);
-    expect(mru[0]).toBe(3);
+    mru = mru.filter((stop) => stop !== 3);
+    await expect.poll(async () => (await stored(page)).length).toBe(mru.length);
+    await ctrlTab(page, 1); // to the tab viewed before Agent 3
+    await expect(tab).toHaveCount(0);
   });
 
   await test.step("9. the list shows what each agent is doing", async () => {
@@ -235,17 +244,19 @@ test("Ctrl+Tab switches between recently viewed tabs", async ({ page }) => {
     // Opening alpha from its sidebar row would show Agent 2, its unread agent, and mark it read.
     await clickAgent(page, 6);
     await ctrlTab(page, mru.indexOf(4));
-    await expect(decks).toHaveCount(2); // through the clicks, not the URL
+    await expect(decks).toHaveCount(2); // not through the URL
     expect(await statusOf(page, 2)).toBe("attention: Ready to review");
 
-    // After a reload alpha is not mounted, so its tab cannot be clicked together with its row.
+    // After a reload alpha is not mounted.
     await ctrlTab(page, 1);
     expect(mru[0]).toBe(6);
     await page.reload();
     await pluginStarted(page);
     await expect(agentTab(page, 6)).toHaveAttribute("aria-selected", "true");
+    await expect(decks).toHaveCount(1);
     await ctrlTab(page, 1);
     expect(mru[0]).toBe(4);
+    await expect(decks).toHaveCount(2);
     expect(await statusOf(page, 2)).toBe("attention: Ready to review");
   });
 
@@ -276,7 +287,7 @@ test("Ctrl+Tab switches between recently viewed tabs", async ({ page }) => {
       cards.filter({ has: page.locator(`[data-part="title"]:text-is("Agent ${agent}")`) });
     await openOverlay(page);
     await expect(overlay).toHaveAttribute("data-layout", "cards");
-    await expect(cards).toHaveCount(7);
+    await expect(cards).toHaveCount(6); // Agent 3 was archived
     await expect(cardOf(4)).toHaveAttribute("aria-selected", "true");
     for (const [agent, focused] of [[1, 0], [4, 1]]) {
       const copied = cardOf(agent).locator('[data-part="preview"] [data-pane]');
@@ -289,6 +300,13 @@ test("Ctrl+Tab switches between recently viewed tabs", async ({ page }) => {
     await page.keyboard.up("Control");
     await expect(overlay).toHaveCount(0);
     await expect.poll(async () => (await stored(page))[0]?.title).toBe("Agent 4");
+    await expect(panes.last().locator("textarea").filter({ visible: true })).toBeFocused();
+
+    // With the focus outside both panes, the tab recorded last still counts as the one on screen.
+    await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+    await page.keyboard.press("Shift");
+    await page.waitForTimeout(500);
+    expect((await stored(page))[0]?.title).toBe("Agent 4");
 
     // A press on a card's preview jumps, here to the other workspace.
     await openOverlay(page);
@@ -301,6 +319,29 @@ test("Ctrl+Tab switches between recently viewed tabs", async ({ page }) => {
     await expect(page).toHaveURL(new RegExp(`/workspace/${beta}$`));
     await expect(agentTab(page, 6)).toHaveAttribute("aria-selected", "true");
     await expect.poll(async () => (await stored(page))[0]?.title).toBe("Agent 6");
+  });
+
+  await test.step("12. an agent archived elsewhere reads Gone and cannot be jumped to", async () => {
+    // After a reload alpha is not mounted, so only its host knows that Agent 1 was archived.
+    await page.reload();
+    await pluginStarted(page);
+    await expect(agentTab(page, 6)).toHaveAttribute("aria-selected", "true");
+    const entry = (await stored(page)).find(({ title }) => title === "Agent 1")!;
+    paseo("archive", entry.key.split("/")[1]);
+
+    await openOverlay(page);
+    const card = overlay.locator("> div").filter({ hasText: "Agent 1" });
+    await expect(card).toHaveAttribute("data-status", "gone");
+    const box = (await card.boundingBox())!;
+    await page.mouse.move(box.x + 20, box.y + 20);
+    await page.mouse.down();
+    await expect(overlay).toHaveCount(0);
+    await page.mouse.up();
+    await page.keyboard.up("Control");
+    await page.waitForTimeout(500);
+    await expect(page).toHaveURL(new RegExp(`/workspace/${beta}$`));
+    await expect(agentTab(page, 6)).toHaveAttribute("aria-selected", "true");
+    expect((await stored(page)).map(({ title }) => title)).not.toContain("Agent 1");
   });
 
   expect(errors).toEqual([]);
