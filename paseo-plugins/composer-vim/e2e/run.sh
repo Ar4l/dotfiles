@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end check of the Vim keys: the released app bundle in headless Chromium against a
-# throwaway daemon with three mock agents. The live daemon and ~/.paseo are never touched.
+# throwaway daemon with mock agents in two workspaces. The live daemon and ~/.paseo are never touched.
 #
 #   e2e/run.sh          run the spec, then stop the daemon and delete its home
 #   e2e/run.sh --keep   leave the daemon running afterwards, to open the rig in a browser
@@ -67,7 +67,7 @@ for _ in $(seq 30); do
 done
 paseo --home "$home" plugin ls | grep -q "composer-vim  *running" || { echo "The plugin did not start"; exit 1; }
 
-# One workspace with three agents. "Slow" takes ten seconds per reply, so the spec can
+# A workspace with three agents. "Slow" takes ten seconds per reply, so the spec can
 # interrupt it; "Quick" answers at once.
 repo="$home/repos/alpha"
 mkdir -p "$repo"
@@ -86,6 +86,16 @@ pages=$(paseo --home "$home" run --provider mock --mode load-test --model e2e-fa
 for word in badger cougar dingo egret; do
   paseo --home "$home" send "$pages" "emit 30 assistant messages before synthetic user message $word" >/dev/null
 done
+
+# A second workspace, for the keys that move between workspaces.
+other="$home/repos/beta"
+mkdir -p "$other"
+git -C "$other" init -q
+git -C "$other" -c user.name=e2e -c user.email=e2e@example.invalid -c commit.gpgsign=false \
+  commit -q --allow-empty -m init
+beta=$(paseo --home "$home" workspace create --isolation local --path "$other" -q)
+paseo --home "$home" run --provider mock --mode load-test --model e2e-fast-stream \
+  --workspace "$beta" --title Other -q hello >/dev/null
 
 cd "$plugin"
 [[ -d node_modules/@playwright/test ]] || npm install

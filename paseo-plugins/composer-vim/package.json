@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
-    "test": "node --test client/vim.test.ts",
+    "test": "node --test client/vim.test.ts client/keys.test.ts",
     "e2e": "e2e/run.sh"
   },
   "devDependencies": {

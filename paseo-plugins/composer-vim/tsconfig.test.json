@@ -8,7 +8,9 @@
   },
   "include": [
     "client/vim.ts",
-    "client/vim.test.ts"
+    "client/vim.test.ts",
+    "client/keys.ts",
+    "client/keys.test.ts"
   ],
   "exclude": []
 }

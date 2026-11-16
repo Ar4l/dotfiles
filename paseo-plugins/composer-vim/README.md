@@ -1,7 +1,8 @@
-# Vim keys in the composer and the thread for Paseo
+# Vim keys for Paseo: the composer, the thread and the app
 
 The box you write a message in takes Vim's keys: insert, normal and visual mode. From normal
-mode Ctrl+K moves the keys to the agent thread above it, which Vim reads and searches.
+mode Ctrl+K moves the keys to the agent thread above it, which Vim reads and searches, and
+keys such as `gt` and Ctrl+L move between tabs, panes and workspaces.
 
 - A composer starts in insert mode and types as before. Escape or Ctrl+[ enters normal mode.
 - A label left of the context window meter names the mode: green INSERT, blue NORMAL, purple VISUAL.
@@ -10,8 +11,8 @@ mode Ctrl+K moves the keys to the agent thread above it, which Vim reads and sea
 - Enter sends in every mode. After a message is sent from normal mode the composer is back in insert mode.
 - Each composer keeps its own mode, undo list and place.
 
-The command-center item "Vim keys in the composer: turn off or on" switches the keys for
-the window, the thread's too. The switch is `localStorage["composer-vim:off"]`.
+The command-center item "Vim keys: turn off or on" switches all of these keys for the
+window. The switch is `localStorage["composer-vim:off"]`.
 
 Paseo has a setting for the file editor only: Settings → Editor → Vim keybindings. It has
 no setting, issue or pull request for the composer as of 2026-11-16. The discussion
@@ -92,6 +93,29 @@ found" took three.
 - A count applies to matches on the page: `3n` past the page finds the next one.
 - Cmd+F is still the app's Find, for plain text in user and assistant messages.
 
+## Around the app
+
+In normal mode, in a composer or a thread, these keys move around the app. Each presses the
+app's own shortcut for it, so it does what that shortcut does.
+
+| Keys | Does | The app's shortcut in Paseo.app |
+| --- | --- | --- |
+| Ctrl+H, Ctrl+J, Ctrl+K, Ctrl+L, or Ctrl+W then `h j k l` | Focus the pane on that side | Cmd+Shift+Arrow |
+| `gt`, `gT`, Space `n`, Space `p` | The next and the previous tab | Alt+Shift+] and Alt+Shift+[ |
+| `3gt` | Tab 3 | Cmd+Alt+3 |
+| `]w`, `[w` | The next and the previous workspace | Cmd+] and Cmd+[ |
+| Ctrl+W `v`, Ctrl+W `s` | Split the pane to the right, and down | Cmd+\ and Cmd+Shift+\ |
+| Space `b` | The left sidebar | Cmd+B |
+| Space Space | The command center | Cmd+K |
+
+- The thread is the window above its composer: Ctrl+K from a composer goes to its thread, and from there to the pane above. Ctrl+J from a thread goes to its composer.
+- Normal mode comes along: a composer that gets the focus this way is in normal mode.
+- With no pane on that side nothing moves.
+- A pane without a composer, such as a new tab, still takes Ctrl+H, J, K, L and Ctrl+W. A terminal keeps every key: leave it with the app's own shortcut.
+- The label shows a command that waits for its next key: `NORMAL <Space>`.
+- A shortcut changed in Settings → Shortcuts is pressed as changed, and one that was cleared there does nothing.
+- Closing a tab or a pane has no key here: closing a tab archives its agent.
+
 ## What it takes from the Vim config
 
 These follow `files/.vim/common.vim` and the Neovim config, where they apply to one box of text.
@@ -100,7 +124,10 @@ These follow `files/.vim/common.vim` and the Neovim config, where they apply to 
 | --- | --- |
 | `clipboard^=unnamed,unnamedplus` | A yank or a delete lands on the system clipboard, and `p` puts what the clipboard holds |
 | `j` and `k` as `gj` and `gk` without a count | They move by the lines the composer wraps; with a count, by lines of text |
-| `<C-h> <C-j> <C-k> <C-l>` move between windows | Ctrl+K moves to the thread and Ctrl+J back to the composer |
+| `<C-h> <C-j> <C-k> <C-l>` move between windows | They move between panes, and between a composer and its thread |
+| `<leader>n` and `<leader>p` are the next and the previous buffer | The next and the previous tab |
+| `<leader>b` toggles the file tree | The left sidebar |
+| `<leader><leader>` lists the buffers in Telescope | The command center |
 | `incsearch`, `hlsearch`, `ignorecase`, `smartcase`, `scrolloff=3` | The thread's search and scrolling follow them |
 | Escape clears the matches (Neovim), as vim-cool does | Escape in normal mode hides the thread's matches |
 | Space is the leader | Space moves nowhere |
@@ -145,6 +172,10 @@ after every Paseo upgrade. It fails when one of these changes.
 | `load-older-history-spinner` | Waiting for the older messages a search asked for |
 | The app stops following a reply after a `wheel` event upward on the thread | A scroll upward comes with such an event, or the app scrolls back down |
 | A button around "View turn details" and around a tool call | Enter |
+| The app's key listener answers a key event a script made (`dispatchEvent`) | Every key in "Around the app" |
+| The ids and keys of the app's shortcuts (`keyboard/keyboard-shortcuts.ts`), listed in `client/app.ts` | Pressing the shortcut of a pane, tab or workspace action |
+| `localStorage["@paseo:keyboard-shortcut-overrides"]` | Pressing a shortcut as it was changed in Settings |
+| The app moves between panes only while no text field has the focus, then focuses the pane it chose | The focus leaves the composer before the shortcut is pressed |
 
 The browser does the rest: `caret-shape: block` draws the block on an empty line,
 `Selection.modify` finds the wrapped lines, and `navigator.clipboard` is the clipboard. The
@@ -162,14 +193,16 @@ e2e/run.sh    # the released app in headless Chromium, about a minute
 ```
 
 `e2e/run.sh` boots a throwaway daemon in a temp home on a free port, installs the plugin,
-starts three agents and runs `e2e/keys.spec.ts`. It never touches `~/.paseo` or the live
+starts four agents in two workspaces and runs `e2e/keys.spec.ts`. It never touches `~/.paseo` or the live
 daemon. It uses Paseo.app when it is installed and the `paseo` on the path otherwise, and
 needs Playwright's Chromium (`npx playwright install chromium`).
 
 - The agents use the mock provider, which costs no tokens and exists only in development mode.
 - The agent Slow takes ten seconds per reply, so the spec can press Escape while it works.
 - The agent Pages has five turns of thirty messages. The app loads its last turns only, so the spec's search has to fetch the first.
-- The spec's browser says it is a Mac, because the app binds Ctrl+K off a Mac.
+- The spec's browser says it is a Mac: off a Mac the app binds Ctrl+K and has no shortcut for a pane.
+- In a browser the app's shortcuts for a workspace and a numbered tab are Alt+], Alt+[ and Alt+Shift+3. The spec presses those. Paseo.app's Cmd+], Cmd+[ and Cmd+Alt+3 are not pressed by any test.
+- Paseo 0.16.0 was not run. Its source has the same test ids, shortcut ids and key listener (read on 2026-11-16).
 - A thread long enough for the app to draw it in part was searched by hand on 2026-11-16: 70 turns, up and down through every match. The spec has no such thread, as it takes three minutes to build.
 - The spec ran against the nix build of Paseo 0.15.4 on Linux on 2026-11-16, in Chromium 151, and not yet against Paseo.app.
 - That build's web UI crashes at the root, so the spec rewrites one reference in the bundle the browser receives.
@@ -179,16 +212,17 @@ needs Playwright's Chromium (`npx playwright install chromium`).
 ## Not covered
 
 - Paseo.app itself and physical key presses: check Escape, `dw`, `p` after a copy elsewhere, and Enter by hand after an install or an upgrade.
-- The rest of the config: mappings on the leader, `<C-h>` and `<C-l>`, buffers, and plugins for files, Git, completion and search.
+- Paseo.app's own workspace and numbered-tab shortcuts: check `]w`, `[w` and `3gt` by hand.
+- A shortcut changed in Settings → Shortcuts: the code reads it, and no test has changed one.
+- The rest of the config: the other mappings on the leader, and plugins for files, Git, completion and search.
 - `:` commands, macros, marks, named registers, `>` and `<`, `gu`, `gU`, `g~`, `ge`, block-wise visual mode, replace mode.
 - A search's offset (`/foo/e`), its history, and Vim's pattern atoms beyond those listed above.
 - In the thread: a click or a drag does not move the cursor, it leaves the thread.
 - In the thread: the cursor is not drawn on an empty line, where visual mode can put it after `}`.
 - In the thread: a reply with a fenced code block or a table. The mock agent writes none, so the rig has not shown one.
 - The thread of a terminal, a file or a browser tab: only an agent's thread is read.
-- Windows and Linux desktops: there the app binds Ctrl+K, Ctrl+D, Ctrl+B, Ctrl+E and Ctrl+F, and those keys stay the app's.
+- Windows and Linux desktops: there the app binds Ctrl+K, Ctrl+D, Ctrl+B, Ctrl+E and Ctrl+F, and those keys stay the app's. It has no shortcut for a pane there, so Ctrl+H and Ctrl+L do nothing.
 - A browser without the CSS Custom Highlight API: the thread's keys work and nothing is drawn.
-- Paseo 0.16.0, released on 2026-11-16.
 - vim-surround's tags (`t`), its word and sentence targets, and `ySS`.
 - A count before `i`, `a`, `o` and `.` repeats nothing.
 - `j` and `k` count their column in characters, so in a proportional font the block shifts sideways between lines.

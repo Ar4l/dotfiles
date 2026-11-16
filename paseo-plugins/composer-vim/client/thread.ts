@@ -209,6 +209,8 @@ export interface Thread {
   leave(): void;
   /** The composer the keys came from, while they are the thread's. */
   area(): Area | null;
+  /** The thread's Vim, while the keys are the thread's. */
+  vim(): Vim | null;
   /** Gives the focus back to a composer. */
   compose(area: Area, key?: string): void;
   /** Takes one key. False when the key is the app's or the browser's. */
@@ -753,6 +755,7 @@ export function createThread(host: Host): Thread {
     enter,
     leave,
     area: () => current?.area ?? null,
+    vim: () => current?.reading.vim ?? null,
     compose: (area, key) => host.compose(area, key),
     key,
     redraw,

@@ -1,6 +1,7 @@
 import { type Page, expect, test } from "@playwright/test";
 
-// The fixture from run.sh: one workspace with the agents Quick, Slow and Pages. Slow takes
+// The fixture from run.sh: a workspace with the agents Quick, Slow and Pages, and a second
+// workspace with the agent Other. Slow takes
 // ten seconds to answer a prompt. Pages has five turns of thirty messages each, more than the
 // app loads at once, and each turn is folded behind "View turn details".
 const workspace = process.env.VIM_WORKSPACE ?? "";
@@ -171,7 +172,7 @@ test("Vim keys in the composer", async ({ page }) => {
       await page.getByTestId("sidebar-search").click();
       const panel = page.getByTestId("command-center-panel");
       await panel.getByTestId("command-center-input").fill("Vim keys");
-      await panel.getByRole("button", { name: /^Vim keys in the composer/ }).click();
+      await panel.getByRole("button", { name: /^Vim keys: turn off or on/ }).click();
     };
     await pick();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("composer-vim:off"))).toBe("1");
@@ -426,14 +427,103 @@ test("Vim keys in the composer", async ({ page }) => {
     await expect(sendButton(page, "Stop agent")).toBeVisible();
     await keys(page, "<Esc><C-k>");
     await expect.poll(async () => (await thread(page)).focus).toBe("composer-vim-thread");
-    await keys(page, "<Esc><Esc>v<Esc>?<Esc> k");
+    await keys(page, "<Esc><Esc>v<Esc>?<Esc> <Esc>");
     await page.waitForTimeout(1500);
     await expect(sendButton(page, "Stop agent")).toBeVisible();
     await expect(page.getByTestId("keyboard-shortcuts-dialog")).toHaveCount(0);
-    // The cursor moved up, so the app no longer pulls the view down as the reply grows.
+    // The cursor moves up to the prompt, so the app no longer pulls the view down as the reply grows.
+    await keys(page, "?again\\><CR>");
+    await searched(page);
     const { y, cursor } = await thread(page);
+    expect(cursor).toContain("[a]gain");
     await page.waitForTimeout(1200);
     expect(await thread(page)).toMatchObject({ y, cursor, atBottom: false });
     await keys(page, "G<C-j>");
+  });
+
+  /** The panes on screen: the tab each shows, with `*` on the pane that has the focus. */
+  const panes = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid^="workspace-pane-"]')]
+        .filter((pane) => pane.checkVisibility())
+        .map((pane) => {
+          const tab = [...pane.querySelectorAll('[data-testid^="workspace-tab-"][aria-selected="true"]')].find((t) => t.checkVisibility());
+          return `${tab?.getAttribute("aria-label") ?? "-"}${pane.contains(document.activeElement) ? "*" : ""}`;
+        })
+        .join(" | "),
+    );
+
+  await test.step("23. gt, gT, a count and the leader move between tabs, and normal mode comes along", async () => {
+    await openAgent(page, "Quick");
+    const tabs = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid^="workspace-tab-agent_"]')].filter((t) => t.checkVisibility()).map((t) => t.getAttribute("aria-label")),
+    );
+    const at = tabs.indexOf("Quick");
+    const next = tabs[(at + 1) % tabs.length];
+    const previous = tabs[(at + tabs.length - 1) % tabs.length];
+    // In insert mode the keys are text.
+    await keys(page, "<Esc>ggdGigt");
+    expect(await panes()).toBe("Quick*");
+    expect(await text(page)).toBe("gt|");
+    await keys(page, "<Esc>u");
+    for (const [command, tab] of [["gt", next], ["gT", "Quick"], ["gT", previous], [" n", "Quick"], [" p", previous], [`${at + 1}gt`, "Quick"]]) {
+      await keys(page, command);
+      await expect.poll(panes, command).toBe(`${tab}*`);
+      await expect(badge(page)).toHaveText("NORMAL");
+    }
+    // A command for the app shows while it waits, and Escape drops it.
+    await keys(page, " ");
+    await expect(badge(page)).toHaveText("NORMAL <Space>");
+    await keys(page, "<Esc>");
+    await expect(badge(page)).toHaveText("NORMAL");
+    expect(await text(page)).toBe("|");
+  });
+
+  await test.step("24. Ctrl+W v splits, and Ctrl+H and Ctrl+L move between the panes, from the thread too", async () => {
+    await keys(page, "<C-w>v");
+    await expect.poll(panes).toBe("Quick | New tab*");
+    await expect(badge(page)).toBeHidden();
+    // The new pane has no composer: Ctrl+H works there all the same.
+    await keys(page, "<C-h>");
+    await expect.poll(panes).toBe("Quick* | New tab");
+    await expect(badge(page)).toHaveText("NORMAL");
+    // No pane to the left: the keys stay.
+    await keys(page, "<C-h>");
+    await page.waitForTimeout(800);
+    expect(await panes()).toBe("Quick* | New tab");
+    expect((await thread(page)).focus).toBe("TEXTAREA");
+    await keys(page, "<C-k>");
+    await expect.poll(async () => (await thread(page)).focus).toBe("composer-vim-thread");
+    await keys(page, "<C-h>");
+    await page.waitForTimeout(800);
+    expect((await thread(page)).focus).toBe("composer-vim-thread");
+    await keys(page, "<C-l>");
+    await expect.poll(panes).toBe("Quick | New tab*");
+    await expect(badge(page)).toBeHidden();
+    await keys(page, "<C-w>h");
+    await expect.poll(panes).toBe("Quick* | New tab");
+  });
+
+  await test.step("25. ]w and [w move between workspaces, and the leader opens the sidebar and the command center", async () => {
+    const shown = () => page.evaluate(() => [...document.querySelectorAll('[data-testid^="workspace-deck-entry-"]')].find((d) => d.checkVisibility())?.getAttribute("data-testid"));
+    const here = await shown();
+    await keys(page, "]w");
+    await expect.poll(shown).not.toBe(here);
+    await expect.poll(panes).toBe("Other*");
+    await expect(badge(page)).toHaveText("NORMAL");
+    await keys(page, "[w");
+    await expect.poll(shown).toBe(here);
+    await expect.poll(panes).toBe("Quick* | New tab");
+
+    const sidebar = page.locator(`[data-testid^="sidebar-workspace-row-"][data-testid$=":${workspace}"]`);
+    await expect(sidebar).toBeVisible();
+    await keys(page, " b");
+    await expect(sidebar).toBeHidden();
+    await keys(page, " b");
+    await expect(sidebar).toBeVisible();
+    await keys(page, "  ");
+    await expect(page.getByTestId("command-center-panel")).toBeVisible();
+    await keys(page, "<Esc>");
+    await expect(page.getByTestId("command-center-panel")).toBeHidden();
   });
 });

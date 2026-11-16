@@ -38,6 +38,7 @@ export interface Elem extends DomNode {
   removeEventListener(type: string, listener: () => void): void;
   getBoundingClientRect(): Rect;
   focus(options?: { preventScroll: boolean }): void;
+  blur(): void;
   click(): void;
   setAttribute(name: string, value: string): void;
   removeAttribute(name: string): void;

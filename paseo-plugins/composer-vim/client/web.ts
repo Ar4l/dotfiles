@@ -15,6 +15,8 @@ import {
   navigator,
   window,
 } from "./dom";
+import { hasPane, isReplay, replay } from "./app";
+import { type Move, isPrefix, navigate } from "./keys";
 import { createThread, threadStyles } from "./thread";
 import { type Vim, create, moveTo, press, puts, select, selection } from "./vim";
 
@@ -40,6 +42,14 @@ const STYLES =
   threadStyles(COLOR);
 /** The composers of a pane: one per tab, and only the tab on top is visible. */
 const PANE = "[data-testid^='workspace-pane-']";
+/** How long a composer that gets the focus after a key for the app is still put in normal mode. */
+const ARRIVE_MS = 1000;
+/** How long the app may take to focus the pane a key asked for, before the keys return to where they were. */
+const RETURN_MS = 600;
+/** How long a command begun outside a composer and a thread waits for its next key. */
+const STRAY_MS = 2000;
+/** Where plain keys are text, or a program's: Ctrl+H there is not a key for the app. */
+const TYPING = "input,textarea,select,[contenteditable='true'],.xterm,[data-testid='terminal-surface']";
 /** How long a put waits for the system clipboard before it uses what Vim yanked last. */
 const CLIPBOARD_WAIT = 300;
 
@@ -270,30 +280,101 @@ function run(): Running {
     yank: (text) => void navigator.clipboard?.writeText(text).catch(() => {}),
   });
 
+  /** The name the app's keys know a key by: `<C-h>`, `<Space>`, or the key itself. Null with other modifiers. */
+  const named = (event: KeyEvt): string | null => {
+    if (event.metaKey || event.altKey) return null;
+    if (!event.ctrlKey) return event.key === " " ? "<Space>" : event.key;
+    const letter = event.key.toLowerCase();
+    // The app's shortcuts run first and cancel the key they take.
+    return !event.defaultPrevented && letter.length === 1 && "hjklw".includes(letter) ? `<C-${letter}>` : null;
+  };
+
+  /** Until when a composer that gets the focus is put in normal mode: a key for the app moved the focus there. */
+  let arriving = 0;
+  /** The keys of a command for the app, pressed where no Vim holds them. */
+  const stray: string[] = [];
+  let strayUntil = 0;
+
+  /**
+   * Goes where a key asked. The thread is the window above its composer, so Ctrl+K and
+   * Ctrl+J move between those two first. Every other move is a shortcut of the app's.
+   */
+  const go = (move: Move, from: { area: Area | null; reading: boolean; target: Elem | null }) => {
+    const { area, reading } = from;
+    arriving = Date.now() + ARRIVE_MS;
+    if (reading && area && move.action === "pane-down") {
+      thread.leave();
+      return thread.compose(area);
+    }
+    if (!reading && area && move.action === "pane-up" && thread.enter(area)) return;
+    if (!move.action.startsWith("pane-")) return void replay(move);
+    const origin = area ?? from.target;
+    const pane = origin?.closest(PANE);
+    if (pane && !hasPane(pane, move.action)) return;
+    // The app moves between panes only while no text field has the focus. It then focuses
+    // the pane it chose. When it chose none, the keys return to where they were.
+    if (reading) thread.leave();
+    document.activeElement?.blur();
+    show(null);
+    replay(move);
+    setTimeout(() => {
+      const active = document.activeElement;
+      if (active && active !== document.body) return;
+      if (!reading || !area || !thread.enter(area)) origin?.focus();
+    }, RETURN_MS);
+  };
+
+  /** Gives a key to the commands for the app. `pending` holds the keys of a command under way. True when the key was theirs. */
+  const steer = (pending: string[], name: string, from: Parameters<typeof go>[1]): boolean => {
+    const move = navigate([...pending, name]);
+    if (move === "more") pending.push(name);
+    else if (move) {
+      pending.length = 0;
+      go(move, from);
+    } else if (pending.some(isPrefix)) {
+      // A command that ends in a key it does not know is dropped. After the leader, which
+      // by itself does nothing, the key then counts as usual.
+      const leader = pending[pending.length - 1] === "<Space>";
+      pending.length = 0;
+      return !leader;
+    } else return false;
+    return true;
+  };
+
   const onKey = (event: KeyEvt) => {
+    if (isReplay() || off() || event.isComposing) return;
     const take = () => {
       event.preventDefault();
       event.stopImmediatePropagation();
     };
+    const name = named(event);
     if (event.target === thread.sink) {
-      // Ctrl+J, the window below: the composer.
-      const down = event.ctrlKey && !event.metaKey && !event.altKey && !event.defaultPrevented && event.key.toLowerCase() === "j";
-      if (down || !thread.active()) {
-        const from = thread.area();
-        thread.leave();
-        if (from) thread.compose(from);
-        if (down) take();
-      } else if (thread.key(event)) take();
+      const vim = thread.vim();
+      const from = { area: thread.area(), reading: vim !== null, target: event.target };
+      // A pattern being typed and a selection keep their keys.
+      if (name && (!vim || (vim.mode === "normal" && !vim.prompt)) && steer(vim?.pending ?? stray, name, from)) {
+        take();
+        thread.redraw();
+      } else if (vim && thread.key(event)) take();
       return;
     }
     const area = composerOf(event.target);
-    if (!area || off() || event.isComposing || event.metaKey || event.altKey) return;
+    if (!area) {
+      // Outside a text field Ctrl+H, J, K, L and Ctrl+W still move between panes: a pane
+      // may hold no composer. The key after Ctrl+W has to follow soon.
+      if (Date.now() > strayUntil) stray.length = 0;
+      const ours = name !== null && (stray.length > 0 || /^<C-[hjklw]>$/.test(name));
+      if (ours && !event.target?.closest(TYPING) && steer(stray, name, { area: null, reading: false, target: event.target })) take();
+      strayUntil = Date.now() + STRAY_MS;
+      return;
+    }
+    if (event.metaKey || event.altKey) return;
     let key = event.key;
     if (event.ctrlKey) {
       // Ctrl+[ is Escape, unless the app has it: its shortcuts run first and cancel the key.
       if (key === "[" && !event.defaultPrevented) key = "Escape";
       else if (key.toLowerCase() === "r") key = "<C-r>";
-      else if (key.toLowerCase() === "k" && !event.defaultPrevented) key = "<C-k>";
+      else if (name) key = name;
       else return;
     }
     if (waiting) {
@@ -304,11 +385,15 @@ function run(): Running {
     const vim = pull(area);
     if (vim.mode === "insert" && key.startsWith("<C-")) return;
     const normal = vim.mode !== "insert";
-    if (key === "<C-k>") {
-      // The window above the composer is the thread, as `<C-w>k` in the Vim config. With no
-      // thread to read the key still does nothing: on a Mac it would cut the line.
+    if (vim.mode === "normal" && name && steer(vim.pending, name, { area, reading: false, target: area })) {
       take();
-      if (vim.pending.length === 0) thread.enter(area);
+      // The keys may have gone to the thread, which then drew the label.
+      if (document.activeElement === area) show(area);
+      return;
+    }
+    if (key.startsWith("<C-") && key !== "<C-r>") {
+      // In visual mode these do nothing: on a Mac the browser would cut text.
+      take();
       return;
     }
     // While the app lists commands or files, the arrows walk that list.
@@ -340,6 +425,8 @@ function run(): Running {
     const area = composerOf(event.target);
     if (!area || off()) return;
     const vim = pull(area);
+    // A key for the app brought the focus here from normal mode: the mode comes along.
+    if (Date.now() < arriving && vim.mode === "insert") press(vim, "Escape");
     if (vim.mode !== "insert") push(area, vim);
     show(area);
   };

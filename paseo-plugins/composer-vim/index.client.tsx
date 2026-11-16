@@ -6,7 +6,7 @@ export default function contribute(client: PluginClientContext) {
   if (Platform.OS === "web") {
     client.addCommandCenterItem({
       id: "toggle",
-      title: "Vim keys in the composer: turn off or on",
+      title: "Vim keys: turn off or on",
       icon: "Keyboard",
       context: "global",
       onSelect: toggle,
