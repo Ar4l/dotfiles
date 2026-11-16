@@ -1,6 +1,6 @@
 import { Platform } from "react-native";
 import { type Area, type Elem, type KeyEvt, type Listener, type TargetEvt, Event, document, getComputedStyle, localStorage, window } from "./dom";
-import { type Vim, create, ownsEscape, press, select, selection } from "./vim";
+import { type Vim, create, press, select, selection } from "./vim";
 
 // App internals this plugin leans on; README.md lists them.
 const COMPOSER = "[data-testid='message-input-root']";
@@ -61,8 +61,9 @@ function run(): Running {
   const composerOf = (target: Elem | null) =>
     target?.tagName === "TEXTAREA" && target.closest(COMPOSER) ? (target as Area) : null;
 
-  // The app leaves Escape alone while a popover is open (its `keyBelongsToDomPopover`), so
-  // this empty one is open whenever Escape is Vim's. Otherwise Escape interrupts the agent.
+  // The app binds Escape in the composer to Interrupt agent, and leaves Escape alone while a
+  // popover is open (its `keyBelongsToDomPopover`). This empty one is open while a composer
+  // with the keys on has the focus, so Escape there is Vim's in every mode.
   const guard = document.createElement("div");
   guard.setAttribute("popover", "manual");
   guard.setAttribute("aria-hidden", "true");
@@ -77,14 +78,14 @@ function run(): Running {
     try {
       if (open !== guarded()) (open ? guard.showPopover : guard.hidePopover)?.call(guard);
     } catch {
-      // No Popover API: Escape leaves insert mode and also interrupts a running agent.
+      // No Popover API: Escape is Vim's and also interrupts a running agent.
     }
   };
 
-  /** Draws the mode by the composer that has the focus, and opens or closes the guard. */
+  /** Draws the mode by the composer that has the focus, and opens the guard while it has it. */
   const show = (area: Area | null) => {
     const vim = area && !off() && document.activeElement === area ? vims.get(area) : undefined;
-    setGuard(Boolean(vim && ownsEscape(vim)));
+    setGuard(Boolean(vim));
     if (!area || !vim) {
       badge.style.cssText = "display:none";
       return;

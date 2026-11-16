@@ -18,14 +18,10 @@ is about moving between panes, and leaves the composer out.
 
 ## Escape and a running agent
 
-Paseo binds Escape in the composer to Interrupt agent. With this plugin Escape interrupts
-the agent from normal mode only, as in Claude Code's Vim mode:
-
-- In insert mode, in visual mode, and while an operator waits for its motion, Escape is Vim's.
-- In normal mode with no command under way, Escape interrupts the agent.
-
-So a running agent takes two presses from insert mode. To keep Escape for Vim alone, move
-Interrupt agent to another key in Settings → Shortcuts.
+Paseo binds Escape to Interrupt agent. With this plugin Escape in the composer is Vim's in
+every mode and never interrupts. The stop button still does, and so does Escape while the
+focus is outside the composer or the keys are off. To free Escape everywhere, clear
+Interrupt agent in Settings → Shortcuts.
 
 ## Keys
 
@@ -67,7 +63,7 @@ Paseo 0.15.4 gives plugins no key bindings and no access to the composer's text,
 | Internal | Used for |
 | --- | --- |
 | `message-input-root` around a `<textarea>` | Telling the composer from every other text field |
-| The app skips its Escape shortcut while an element is `:popover-open` (`keyBelongsToDomPopover`) | Keeping Escape from the agent: the plugin holds an empty popover open while Escape is Vim's |
+| The app skips its Escape shortcut while an element is `:popover-open` (`keyBelongsToDomPopover`) | Keeping Escape from the agent: the plugin holds an empty popover open while a composer has the focus |
 | The composer follows `input` events from `document.execCommand("insertText")` | Writing an edit so that the app's draft and the browser's undo follow |
 | `composer-autocomplete-popover` | Leaving the arrows to the list of commands or files |
 | The composer empties its text after a send | Returning to insert mode |
@@ -90,7 +86,7 @@ daemon. It uses Paseo.app when it is installed and the `paseo` on the path other
 needs Playwright's Chromium (`npx playwright install chromium`).
 
 - The agents use the mock provider, which costs no tokens and exists only in development mode.
-- The agent Slow takes ten seconds per reply, so the spec can interrupt it with Escape.
+- The agent Slow takes ten seconds per reply, so the spec can press Escape while it works.
 - The spec ran against the nix build of Paseo 0.15.4 on Linux on 2026-11-16, and not yet against Paseo.app.
 - That build's web UI crashes at the root, so the spec rewrites one reference in the bundle the browser receives.
 - `e2e/run.sh --keep` leaves the daemon up and prints its URL and the command that stops it.
@@ -102,9 +98,9 @@ needs Playwright's Chromium (`npx playwright install chromium`).
 - A count before `i`, `a`, `o` and `.` repeats nothing.
 - An emoji counts as two characters for `h`, `l` and `x`.
 - Input methods (Chinese, Japanese, dead keys): keys pressed while one composes are left alone, also in normal mode.
-- Dictation: Escape cancels it from normal mode only, like the interrupt. Dictated text can replace the block.
+- Dictation: Escape does not cancel it while the composer has the focus. Dictated text can replace the block.
 - Ctrl+[ on Windows and Linux desktops, where the app binds it to Previous workspace.
-- A browser without the Popover API (before Safari 17, Firefox 125): Escape leaves insert mode and also interrupts.
+- A browser without the Popover API (before Safari 17, Firefox 125): Escape in the composer also interrupts.
 - Mobile clients and touch keyboards: a composer never leaves insert mode there.
 - The fullscreen composer and the New workspace composer: they use the same textarea, and the spec does not open them.
 - Other text fields: the terminal, search boxes, the file editor.

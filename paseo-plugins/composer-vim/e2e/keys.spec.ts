@@ -123,25 +123,22 @@ test("Vim keys in the composer", async ({ page }) => {
     expect(await text(page)).toBe("|");
   });
 
-  await test.step("9. Escape interrupts a running agent from normal mode only", async () => {
+  let sent = 0;
+  await test.step("9. Escape in the composer leaves a running agent alone, in every mode", async () => {
     await openAgent(page, "Slow");
     await keys(page, "go<CR>");
     await expect(sendButton(page, "Stop agent")).toBeVisible();
-    const sent = Date.now();
+    sent = Date.now();
     await keys(page, "next thing");
     await expect(sendButton(page, "Send and steer")).toBeVisible();
 
-    // Insert mode, an operator that waits and visual mode each take one Escape for themselves.
+    // Insert mode, an operator that waits, visual mode, and normal mode twice.
     await keys(page, "<Esc>");
     await expect(badge(page)).toHaveText("NORMAL");
-    await keys(page, "d<Esc>v<Esc>");
+    await keys(page, "d<Esc>v<Esc><Esc><Esc>");
     await expect(badge(page)).toHaveText("NORMAL");
     await page.waitForTimeout(1500);
     await expect(sendButton(page, "Send and steer")).toBeVisible();
-
-    await keys(page, "<Esc>");
-    await expect(sendButton(page, "Send message")).toBeVisible();
-    expect(Date.now() - sent, "the agent was stopped, it did not finish").toBeLessThan(8000);
     expect(await text(page)).toBe("next thin[g]");
   });
 
@@ -159,6 +156,9 @@ test("Vim keys in the composer", async ({ page }) => {
     await composer(page).evaluate((area: HTMLTextAreaElement) => area.setSelectionRange(0, 0));
     await keys(page, "<Esc>dw ");
     expect(await text(page)).toBe("dw |next thing");
+    // With the keys off Escape is the app's again, and stops Slow before its ten seconds are up.
+    await expect(sendButton(page, "Send message")).toBeVisible();
+    expect(Date.now() - sent, "the agent was stopped, it did not finish").toBeLessThan(9000);
 
     await pick();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("composer-vim:off"))).toBe(null);

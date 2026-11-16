@@ -36,9 +36,6 @@ export interface Vim {
   changed: boolean;
 }
 
-/** The modes the app's Escape shortcut must stay out of: Escape there belongs to Vim. */
-export const ownsEscape = (vim: Vim) => vim.mode !== "normal" || vim.pending.length > 0;
-
 export function create(text = "", cursor = text.length): Vim {
   return {
     mode: "insert",
@@ -800,11 +797,10 @@ export function press(vim: Vim, key: string): boolean {
   }
 
   if (key === "Escape") {
-    const mine = ownsEscape(vim);
     vim.pending = [];
     vim.mode = "normal";
     vim.cursor = clamp(vim.text, vim.cursor);
-    return mine;
+    return true;
   }
 
   vim.cursor = vim.mode === "normal" ? clamp(vim.text, vim.cursor) : Math.min(vim.cursor, vim.text.length);

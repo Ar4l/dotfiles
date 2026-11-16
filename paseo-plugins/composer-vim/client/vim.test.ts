@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Vim, create, ownsEscape, press, select, selection } from "./vim.ts";
+import { type Vim, create, press, select, selection } from "./vim.ts";
 
 /** Splits `dw<Esc>` into keys: one per character, and `<Esc>`, `<CR>`, `<C-r>` as one. */
 const keysOf = (keys: string) =>
@@ -247,19 +247,16 @@ test("a modifier key leaves an unfinished command alone", () => {
   assert.equal(vim.text, "");
 });
 
-test("Escape is Vim's except in normal mode with no command under way", () => {
+test("Escape is Vim's in every mode", () => {
   const vim = create("foo");
-  assert.equal(ownsEscape(vim), true, "insert");
-  assert.equal(press(vim, "Escape"), true);
-  assert.equal(ownsEscape(vim), false, "normal");
-  assert.equal(press(vim, "Escape"), false, "the app interrupts the agent");
+  assert.equal(press(vim, "Escape"), true, "insert");
+  assert.equal(vim.mode, "normal");
+  assert.equal(press(vim, "Escape"), true, "normal");
   press(vim, "d");
-  assert.equal(ownsEscape(vim), true, "an operator waits for its motion");
-  assert.equal(press(vim, "Escape"), true);
-  assert.equal(ownsEscape(vim), false);
+  assert.equal(press(vim, "Escape"), true, "an operator waits for its motion");
+  assert.deepEqual(vim.pending, []);
   press(vim, "v");
-  assert.equal(ownsEscape(vim), true, "visual");
-  assert.equal(press(vim, "Escape"), true);
+  assert.equal(press(vim, "Escape"), true, "visual");
   assert.equal(vim.mode, "normal");
 });
 
