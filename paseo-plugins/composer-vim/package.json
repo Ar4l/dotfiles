@@ -1,0 +1,27 @@
+{
+  "name": "composer-vim",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "files": [
+    "paseo-plugin.json",
+    "index.client.tsx",
+    "client/"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "node --test client/vim.test.ts",
+    "e2e": "e2e/run.sh"
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "0.15.4",
+    "@playwright/test": "1.62.0",
+    "@tanstack/react-query": "^5.90.11",
+    "@types/node": "^24.0.0",
+    "@types/react": "~19.2.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3"
+  }
+}

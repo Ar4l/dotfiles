@@ -276,9 +276,11 @@ paseo_plugin() {
 if [[ "$OSTYPE" == "darwin"* ]]; then
   brew install ${casks[*]} ${darwin_programs[*]}
 
-  # Paseo plugins (paseo-plugins/README.md): the Ctrl+Tab switcher for Paseo.app, and
-  # the ticket runs screen, which every daemon the app connects to must serve.
+  # Paseo plugins (paseo-plugins/README.md): the Ctrl+Tab switcher and the composer's Vim
+  # keys for Paseo.app, and the ticket runs screen, which every daemon the app connects
+  # to must serve.
   paseo_plugin mru-switcher
+  paseo_plugin composer-vim
   paseo_plugin ticket-runs
 else
   # claude-code has no linuxbrew formula; use the native installer
