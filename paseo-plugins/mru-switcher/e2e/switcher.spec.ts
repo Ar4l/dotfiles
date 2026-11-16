@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { type Page, expect, test } from "@playwright/test";
 
 // The fixture from run.sh: agents 1 to 4 in workspace alpha, agents 5 to 7 in workspace beta.
@@ -91,7 +92,9 @@ const archived = (page: Page, agentId: string) =>
       agents: { ref(id: string): { refresh(): Promise<{ agent: { archivedAt?: unknown } } | null> } };
     };
     const [host] = (window as unknown as { __mruSwitcher: { hosts: Set<Host> } }).__mruSwitcher.hosts;
-    const found = await host(location.pathname.split("/")[2]).agents.ref(id).refresh();
+    // The rig has one host, and the list always holds an entry of it. The URL names no host on /new.
+    const [{ serverId }] = JSON.parse(localStorage.getItem("mru-switcher") ?? "[]") as { serverId: string }[];
+    const found = await host(serverId).agents.ref(id).refresh();
     return Boolean(found?.agent.archivedAt);
   }, agentId);
 
@@ -453,6 +456,72 @@ test("Ctrl+Tab switches between recently viewed tabs", async ({ page }) => {
     await expect(agentTab(page, 4)).toHaveAttribute("aria-selected", "true");
     await expect.poll(() => archived(page, four)).toBe(false);
     await expect(callout).toHaveCount(0);
+  });
+
+  await test.step("14. Cmd+Shift+T restores an archived workspace, then reopens its tabs", async () => {
+    const callout = page.getByText("This agent is archived").filter({ visible: true });
+    const reopen = () => page.keyboard.press("Meta+Shift+KeyT");
+    const front = async () => (await stored(page))[0]?.title;
+    // Archiving a worktree workspace removes its directory and keeps its branch.
+    const workspaces = () => JSON.parse(paseo("workspace", "ls", "--json")) as { workspaceId: string; cwd: string }[];
+    const repo = workspaces().find(({ workspaceId }) => workspaceId === alpha)!.cwd;
+    const gamma = paseo("workspace", "create", "--isolation", "worktree", "--path", repo, "--title", "gamma", "-q").trim();
+    const mock = ["--provider", "mock", "--mode", "load-test", "--model", "e2e-fast-stream", "--workspace", gamma];
+    const eight = paseo("run", ...mock, "--title", "Agent 8", "-q", "hello").trim();
+    const nine = paseo("run", ...mock, "--title", "Agent 9", "-q", "hello").trim();
+    const worktree = workspaces().find(({ workspaceId }) => workspaceId === gamma)!.cwd;
+    const row = page.locator(`[data-testid^="sidebar-workspace-row-"][data-testid$=":${gamma}"]`);
+    const archive = async () => {
+      await row.click({ button: "right" });
+      await page.getByTestId(new RegExp(`^sidebar-workspace-menu-archive-.*:${gamma}$`)).click();
+      await expect(row).toHaveCount(0);
+    };
+
+    // The plugin records a workspace's tabs when it records the tab on screen.
+    await row.click();
+    await agentTab(page, 8).click();
+    await agentTab(page, 9).click();
+    await expect.poll(front).toBe("Agent 9");
+    await archive();
+    await expect(page).toHaveURL(/\/new(\?|$)/);
+    await expect.poll(() => closedTabs(page)).toEqual(["Agent 9", "Agent 8"]);
+    await expect.poll(() => existsSync(worktree)).toBe(false);
+
+    // The first press restores the workspace and reopens the tab that was selected in it.
+    await reopen();
+    await expect(agentTab(page, 9)).toHaveAttribute("aria-selected", "true");
+    await expect(page).toHaveURL(new RegExp(`/workspace/${gamma}$`));
+    await expect(row).toHaveCount(1);
+    await expect(agentTab(page, 8)).toHaveCount(0);
+    await expect.poll(() => archived(page, nine)).toBe(false);
+    expect(await archived(page, eight)).toBe(true);
+    await expect(callout).toHaveCount(0);
+    expect(existsSync(worktree)).toBe(true);
+    expect(await closedTabs(page)).toEqual(["Agent 8"]);
+
+    await reopen();
+    await expect(agentTab(page, 8)).toHaveAttribute("aria-selected", "true");
+    await expect.poll(() => archived(page, eight)).toBe(false);
+    await expect(callout).toHaveCount(0);
+    await expect.poll(() => closedTabs(page)).toEqual([]);
+
+    // A workspace archived from the sidebar while another one is on screen.
+    await expect.poll(front).toBe("Agent 8");
+    await page.locator(`[data-testid^="sidebar-workspace-row-"][data-testid$=":${beta}"]`).click();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${beta}$`));
+    await expect.poll(front).not.toBe("Agent 8");
+    await archive();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${beta}$`));
+    await expect.poll(() => closedTabs(page)).toEqual(["Agent 8", "Agent 9"]);
+    await reopen();
+    await expect(agentTab(page, 8)).toHaveAttribute("aria-selected", "true");
+    await expect(page).toHaveURL(new RegExp(`/workspace/${gamma}$`));
+    await expect.poll(() => archived(page, eight)).toBe(false);
+    await reopen();
+    await expect(agentTab(page, 9)).toHaveAttribute("aria-selected", "true");
+    await expect.poll(() => archived(page, nine)).toBe(false);
+    await expect(callout).toHaveCount(0);
+    await expect.poll(() => closedTabs(page)).toEqual([]);
   });
 
   expect(errors).toEqual([]);

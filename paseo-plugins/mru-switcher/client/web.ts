@@ -11,6 +11,7 @@ import {
   idle,
   localStorage,
   location,
+  sessionStorage,
   window,
 } from "./dom";
 import {
@@ -45,6 +46,12 @@ export interface Paseo {
       reload(): Promise<unknown>;
     };
   };
+  workspaces: {
+    ref(workspaceId: string): {
+      /** Resolves to null for a workspace that is archived, or that the host no longer knows. */
+      refresh(): Promise<unknown>;
+    };
+  };
 }
 /** `getPaseoClient` of one installation: the API of an online host, or a throw. */
 export type HostApi = (serverId: string) => Paseo;
@@ -53,6 +60,7 @@ export type HostApi = (serverId: string) => Paseo;
 const TAB_PREFIX = "workspace-tab-";
 const ANY_TAB = `[data-testid^="${TAB_PREFIX}"]`;
 const SELECTED_TAB = `${ANY_TAB}[aria-selected="true"]`;
+const AGENT_TAB = `[data-testid^="${TAB_PREFIX}agent_"]`;
 const DECK_PREFIX = "workspace-deck-entry-";
 const PANE = '[data-testid^="workspace-pane-"]';
 const testId = (id: string) => `[data-testid=${JSON.stringify(id)}]`;
@@ -68,9 +76,16 @@ const OPEN_AGENT = "paseo:web-notification-click";
 const agentTabOf = (entry: Entry) => `${deckOf(entry)} ${testId(`${TAB_PREFIX}agent_${entry.agentId}`)}`;
 /** The narrow layout draws this menu in place of the tabs. */
 const TAB_MENU = testId(`${TAB_PREFIX}switcher-trigger`);
+/** An archived workspace shows this button in place of its tabs, when the app reaches it by an agent's URL. */
+const RESTORE = testId("workspace-recovery-action");
 
 const STORE = "mru-switcher";
 /** Holds the agent tabs closed in this window, the one closed last first. */
+/**
+ * The jump that is restoring an archived workspace, in `sessionStorage`. The app restarts its
+ * plugins when it follows a pushed URL, and the switcher that starts next takes the jump over.
+ */
+const RESTORING = "mru-switcher:restoring";
 const CLOSED = "mru-switcher:closed";
 /** Holds `cards` while the experimental layout is on: a row of cards with previews. */
 const LAYOUT = "mru-switcher:layout";
@@ -82,6 +97,8 @@ const POLL_MS = 30;
 const RETRY_MS = 400;
 /** How long a jump may take to land before its entry counts as gone. */
 const LAND_MS = 3000;
+/** How long the host may take to restore an archived workspace: it checks the worktree out again. */
+const RESTORE_MS = 60_000;
 /** A status this recent is not requested again. */
 const FRESH_MS = 1000;
 
@@ -146,6 +163,10 @@ interface Pending {
   /** The tab was clicked or the app was asked: the entry's tab, once selected, is the tab on screen. */
   acted: boolean;
   asked: boolean;
+  /** The entry's workspace is archived: the jump goes by URL and presses the app's Restore button. */
+  restore: boolean;
+  /** Told whether the jump landed on its entry. */
+  done(landed: boolean): void;
 }
 
 function run(hosts: ReadonlySet<HostApi>): Running {
@@ -155,6 +176,8 @@ function run(hosts: ReadonlySet<HostApi>): Running {
   let reopenable = load(CLOSED);
   /** The agent tabs of the workspace on screen at the last look. */
   let strip: { deck: string; agents: Entry[] } | null = null;
+  /** The agent tabs of each mounted workspace at the last settled look, by deck test id. */
+  let mounted = new Map<string, Entry[]>();
   /** Reopens run one at a time, so each press takes the tab closed before the last one. */
   let reopening: Promise<void> = Promise.resolve();
   /** The entries the open overlay lists, frozen while Ctrl is held. */
@@ -163,6 +186,7 @@ function run(hosts: ReadonlySet<HostApi>): Running {
   let first = 1;
   let drawn = false;
   let pending: Pending | null = null;
+  let stopped = false;
   /** Last known status and prompt time per entry key, shown at once while fresh ones are fetched. */
   const statuses = new Map<string, RowState>();
   /** When each entry's status was last requested. */
@@ -260,6 +284,38 @@ function run(hosts: ReadonlySet<HostApi>): Running {
     store(CLOSED, JSON.stringify(reopenable));
   }
 
+  /**
+   * Records the agent tabs of a workspace that was archived while this window had it mounted,
+   * on screen or not: its deck is gone and its host no longer lists it. The tab selected in
+   * it is recorded last, so it reopens first. The app also drops a workspace it has not shown
+   * for a while. That costs the same request and records nothing.
+   */
+  function noteArchived(): void {
+    const now = new Map<string, Entry[]>();
+    const selected = (tab: Elem) => Number(tab.getAttribute("aria-selected") === "true");
+    for (const deck of document.querySelectorAll(`[data-testid^="${DECK_PREFIX}"]`)) {
+      const id = deck.getAttribute("data-testid") ?? "";
+      const [serverId, workspaceId] = id.slice(DECK_PREFIX.length).split(":");
+      const tabs = [...deck.querySelectorAll(AGENT_TAB)].sort((a, b) => selected(a) - selected(b));
+      if (workspaceId && tabs.length > 0) now.set(id, entriesOf({ serverId, workspaceId }, deck, tabs));
+    }
+    for (const [id, agents] of mounted) {
+      const api = apiOf(agents[0]);
+      if (!api || document.querySelector(testId(id))) continue;
+      Promise.resolve()
+        .then(() => api.workspaces.ref(agents[0].workspaceId).refresh())
+        .then((workspace) => {
+          if (workspace || stopped) return;
+          for (const entry of agents) reopenable = visit(reopenable, entry);
+          store(CLOSED, JSON.stringify(reopenable));
+        })
+        .catch(() => {
+          // The host went offline: the workspace's tabs are not recorded.
+        });
+    }
+    mounted = now;
+  }
+
   /** Reopens the agent tab closed last. Each further call takes the one closed before it. */
   function reopen(): void {
     reopening = reopening.then(reopenNext).catch(() => {
@@ -268,6 +324,7 @@ function run(hosts: ReadonlySet<HostApi>): Running {
   }
 
   async function reopenNext(): Promise<void> {
+    if (stopped) return;
     // A tab closed a moment ago has not been looked at yet.
     noteClosed();
     for (const entry of reopenable) {
@@ -277,23 +334,59 @@ function run(hosts: ReadonlySet<HostApi>): Running {
       if (!api || agentId === null) continue;
       const agent = api.agents.ref(agentId);
       let state: AgentState | null = null;
+      let archived = false;
       if (!document.querySelector(agentTabOf(entry))) {
         try {
           state = (await agent.refresh())?.agent ?? null;
+          // A workspace that is mounted with tabs is not archived, and needs no request.
+          const mountedHere = document.querySelector(`${deckOf(entry)} ${ANY_TAB}`) !== null;
+          archived = state !== null && !mountedHere && (await api.workspaces.ref(entry.workspaceId).refresh()) === null;
         } catch {
           continue;
         }
       }
+      if (stopped) return;
       reopenable = drop(reopenable, key);
       store(CLOSED, JSON.stringify(reopenable));
       // The tab is open again already, or the agent was deleted.
       if (!state) continue;
       statuses.delete(key);
+      if (archived) return restore(entry);
       jump(entry);
       // Only an archived agent is reloaded: a reload interrupts a running one. The tab of a
       // subagent closes without archiving it. When the reload fails, the tab offers Unarchive.
       if (state.archivedAt) agent.reload().catch(() => {});
       return;
+    }
+  }
+
+  /**
+   * Reopens an agent tab of an archived workspace: the app restores the workspace, then the
+   * host unarchives the agent. The next press waits for the workspace. `until` is set when
+   * this switcher takes the jump over from the one before it.
+   */
+  async function restore(entry: Entry, until?: number): Promise<void> {
+    if (!(await jump(entry, true, until)) || entry.agentId === null) return;
+    const agent = apiOf(entry)?.agents.ref(entry.agentId);
+    if ((await agent?.refresh())?.agent.archivedAt) agent?.reload().catch(() => {});
+  }
+
+  /** Keeps a jump that restores a workspace for the switcher that starts next, or forgets it. */
+  function hand(jump: Pending | null): void {
+    try {
+      if (jump) sessionStorage.setItem(RESTORING, JSON.stringify({ entry: jump.entry, until: jump.until }));
+      else sessionStorage.removeItem(RESTORING);
+    } catch {
+      // Storage is blocked: a restore stops at the app's Restore button.
+    }
+  }
+
+  function handed(): { entry: Entry; until: number } | null {
+    try {
+      const { entry, until } = JSON.parse(sessionStorage.getItem(RESTORING) ?? "{}") as Record<string, unknown>;
+      return isEntry(entry) && typeof until === "number" && Date.now() < until ? { entry, until } : null;
+    } catch {
+      return null;
     }
   }
 
@@ -308,17 +401,28 @@ function run(hosts: ReadonlySet<HostApi>): Running {
     const here = place?.serverId === target.serverId && place.workspaceId === target.workspaceId;
     if (here && entry && (target.agentId === null || entry.key === target.key)) return true;
     if (now >= jump.until) return true;
-    if (jump.asked) return false;
+    if (jump.asked) {
+      // The app's recovery screen. The button is disabled and reads "Restoring..." once pressed.
+      const button = jump.restore && here ? document.querySelector(`${deckOf(target)} ${RESTORE}`) : null;
+      if (button?.checkVisibility()) {
+        jump.restore = false;
+        jump.until = now + RESTORE_MS;
+        hand(jump);
+        if (button.getAttribute("aria-disabled") !== "true") button.click();
+      }
+      return false;
+    }
     const tab = here && entry && target.agentId !== null ? document.querySelector(agentTabOf(target)) : null;
     if (tab && !jump.acted && tab.getAttribute("aria-selected") !== "true") {
       jump.acted = true;
       jump.askAt = now + RETRY_MS;
       tab.click();
-    } else if (now >= jump.askAt || !(jump.acted || (here && !entry))) {
+    } else if (jump.restore || now >= jump.askAt || !(jump.acted || (here && !entry))) {
       // Not waiting for a click to land, nor for the screen to catch up with the URL: the tab
       // is in another workspace, closed, or selected in a pane without the focus.
       jump.acted = jump.asked = true;
-      open(target);
+      if (jump.restore) hand(jump);
+      open(target, jump.restore);
     }
     return false;
   }
@@ -327,14 +431,16 @@ function run(hosts: ReadonlySet<HostApi>): Running {
    * Has the app open an entry. An agent goes through the app's own event, which leaves the
    * other workspaces mounted and the other agents unread. A workspace has only its sidebar
    * row. The entry's URL is the last resort: it is slower and unmounts the other workspaces.
+   * It is also the only way to an agent of an archived workspace (`byUrl`): the app takes the
+   * event for one and shows nothing, and at the agent's URL it offers to restore the workspace.
    */
-  function open(target: Entry): void {
-    if (target.agentId !== null) {
-      const detail = { data: { serverId: target.serverId, agentId: target.agentId } };
-      if (!window.dispatchEvent(new CustomEvent(OPEN_AGENT, { cancelable: true, detail }))) return;
-    } else {
+  function open(target: Entry, byUrl = false): void {
+    if (target.agentId === null) {
       const row = document.querySelector(sidebarRowOf(target));
       if (row) return row.click();
+    } else if (!byUrl) {
+      const detail = { data: { serverId: target.serverId, agentId: target.agentId } };
+      if (!window.dispatchEvent(new CustomEvent(OPEN_AGENT, { cancelable: true, detail }))) return;
     }
     // Expo Router follows the URL on popstate.
     history.pushState(null, "", target.path);
@@ -354,7 +460,10 @@ function run(hosts: ReadonlySet<HostApi>): Running {
       poll = setTimeout(track, POLL_MS);
       return;
     }
+    pending?.done(entry?.key === jumped?.key);
+    if (pending) hand(null);
     pending = null;
+    noteArchived();
     // Gone, or a workspace jump that landed on an agent tab with its own entry.
     if (jumped && entry?.key !== jumped.key) list = drop(list, jumped.key);
     const front = list[0];
@@ -426,13 +535,21 @@ function run(hosts: ReadonlySet<HostApi>): Running {
     );
   }
 
-  function jump(entry: Entry): void {
-    if (statuses.get(entry.key)?.status === "gone") return;
-    if (entry.key === (pending?.entry.key ?? current()?.key)) return;
-    list = visit(list, entry);
-    const now = Date.now();
-    pending = { entry, until: now + LAND_MS, askAt: now + RETRY_MS, acted: false, asked: false };
-    track();
+  /**
+   * Jumps to an entry. Resolves once the jump is over, to whether the entry is on screen.
+   * `restore` is for an agent of an archived workspace. With `until`, the app was asked already.
+   */
+  function jump(entry: Entry, restore = false, until?: number): Promise<boolean> {
+    return new Promise((done) => {
+      if (statuses.get(entry.key)?.status === "gone") return done(false);
+      if (entry.key === (pending?.entry.key ?? current()?.key)) return done(pending === null);
+      pending?.done(false);
+      list = visit(list, entry);
+      const now = Date.now();
+      const asked = until !== undefined;
+      pending = { entry, until: until ?? now + LAND_MS, askAt: now + RETRY_MS, acted: asked, asked, restore, done };
+      track();
+    });
   }
 
   /**
@@ -545,8 +662,12 @@ function run(hosts: ReadonlySet<HostApi>): Running {
   ];
   for (const [type, listener] of listeners) window.addEventListener(type, listener, true);
   onActivity();
+  const taken = handed();
+  if (taken) reopening = restore(taken.entry, taken.until).catch(() => {});
 
   function stop(): void {
+    stopped = true;
+    pending?.done(false);
     for (const [type, listener] of listeners) window.removeEventListener(type, listener, true);
     for (const timer of [soon, late, poll, draw]) clearTimeout(timer);
     overlay.close();

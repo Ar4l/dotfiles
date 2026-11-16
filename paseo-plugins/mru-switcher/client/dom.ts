@@ -67,6 +67,11 @@ interface Globals {
   history: { pushState(data: unknown, unused: string, url: string): void };
   location: { pathname: string };
   localStorage: { getItem(key: string): string | null; setItem(key: string, value: string): void };
+  sessionStorage: {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+    removeItem(key: string): void;
+  };
   PopStateEvent: new (type: string) => unknown;
   CustomEvent: new (type: string, init: { cancelable: boolean; detail: unknown }) => unknown;
   getComputedStyle(element: Elem): { backgroundColor: string };
@@ -84,6 +89,7 @@ export const {
   history,
   location,
   localStorage,
+  sessionStorage,
   PopStateEvent,
   CustomEvent,
   getComputedStyle,

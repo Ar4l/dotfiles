@@ -16,8 +16,8 @@ The list holds 20 entries, lives in the window's `localStorage` and survives a r
 An agent tab is one entry. Any other tab (terminal, file, browser) counts as its workspace.
 An agent leaves the list when it is archived or deleted. Closing an agent's tab archives it.
 
-Cmd+Shift+T reopens the agent tab you closed last, like a browser. It needs one setting in
-the app: see below.
+Cmd+Shift+T reopens the agent tab you closed last, like a browser. It also brings back the
+tabs of a workspace you archived. It needs one setting in the app: see below.
 
 ## Reopen a closed tab
 
@@ -38,6 +38,16 @@ in this repo.
 - The plugin unarchives with the request behind the app's Unarchive button, and only an archived agent: it interrupts a running one.
 - A subagent's tab closes without archiving its agent, and reopens without that request.
 
+Archiving a workspace closes all its agent tabs, the selected one last. The first press
+restores the workspace with the app's own Restore button and reopens that tab. Each further
+press reopens one more.
+
+- The workspace must be mounted in this window when you archive it: on screen, or left less than 10 minutes ago.
+- The tab was back 0.9 s after the press in the rig, in three runs. The plugin waits up to 60 s for the app.
+- The app checks the worktree out again from its branch, at the same path.
+- Archiving deletes the worktree without asking. An untracked file in it was gone after the restore, in one run in the rig.
+- Press again once the workspace shows. A press in the first moment after the first one is lost.
+
 ## Cost
 
 The list is capped at 20 entries and the overlay at seven, whatever the number of agents,
@@ -53,6 +63,9 @@ workspaces and hosts. The times are from Ctrl up to the tab selected, in the rig
 - It reads the tabs of the workspace on screen at each pointer press and each key press with Ctrl, Cmd or Alt held.
 - A read is a few selector queries over the document. One took 12 µs with 1,470 elements mounted, and grows with that number.
 - A listed agent whose tab is missing from a mounted workspace costs one status request after each burst of clicks or keys.
+- Once the app has settled after a click or a key, the plugin also reads the agent tabs of every mounted workspace.
+- A workspace that leaves the window, archived or dropped by the app, costs one request for its host's workspaces.
+- Reopening a tab whose workspace is not mounted costs the same request. The SDK fetches workspaces 200 at a time.
 
 ## Cards layout (experimental, off by default)
 
@@ -112,11 +125,14 @@ In the app, a renamed test id shows as a Ctrl+Tab or a Cmd+Shift+T that does not
 | `workspace-pane-*` | Telling the panes of a split apart; dimming the other panes in a picture |
 | Styles set by class names (React Native Web) | A copy of a workspace looks the same outside the app's tree |
 | `workspace-header-subtitle`, `workspace-header-title` | The project and workspace names in the list |
-| Path `/h/<server>/agent/<agent>` | The last resort when the app does not take the event |
+| Path `/h/<server>/agent/<agent>` | The last resort when the app does not take the event; the way to an archived workspace's Restore button |
+| `workspace-recovery-action` in the workspace's deck, with `aria-disabled` | The app's Restore button for an archived workspace: clicked once |
+| The app restarts its plugins when it follows a pushed URL | `sessionStorage["mru-switcher:restoring"]` hands a restore to the switcher that starts next |
 | `workspace-tab-switcher-trigger` | The narrow layout's tab menu: while it shows, no tab counts as closed |
 | The app cancels a key it has a shortcut for, before a plugin sees it | Leaving Cmd+Shift+T alone while New terminal holds it |
 | The daemon unarchives an agent on `refreshAgent`, which the SDK calls from `reload()` | Unarchiving a reopened agent |
 | `@paseo:keyboard-shortcut-overrides`, binding `workspace-terminal-new-cmd-shift-t-mac` | The spec moves New terminal the way Settings → Shortcuts does |
+| `sidebar-workspace-menu-archive-<server>:<workspace>` | The spec archives a workspace from its sidebar row's menu |
 | `deriveAgentStateBucket`, `status-dot-color.ts` | The status rules in `client/mru.ts` and the light and dark dot colours in `client/overlay.ts` are copies |
 
 Agent state comes from the plugin SDK (`getPaseoClient(serverId).agents`), which is public.
@@ -136,6 +152,11 @@ other workspace.
 A jump to a workspace entry clicks its sidebar row, or pushes the workspace URL when the
 sidebar has no row for it.
 
+A workspace is archived when its host no longer lists it. The app takes the event for an
+agent of an archived workspace and shows nothing, so a reopen pushes the agent's URL at
+once. The app then shows its Restore button in place of the tabs. The plugin clicks it and
+waits for the agent's tab, then unarchives the agent.
+
 With split panes, the tab on screen is the selected tab of the pane that holds the keyboard
 focus. When the focus is outside the panes, it is the tab the plugin recorded last.
 
@@ -153,7 +174,8 @@ e2e/run.sh    # the released app in headless Chromium, about 60 s
 ```
 
 `e2e/run.sh` boots a throwaway daemon in a temp home on a free port, installs the plugin,
-seeds seven agents in two workspaces and runs `e2e/switcher.spec.ts`. It never touches
+seeds seven agents in two workspaces and runs `e2e/switcher.spec.ts`. The spec adds a
+worktree workspace with two agents, and archives and restores it twice. It never touches
 `~/.paseo` or the live daemon. The spec covers one host at desktop width. It needs Paseo.app, and Playwright's Chromium
 (`npx playwright install chromium`).
 
@@ -172,6 +194,8 @@ seeds seven agents in two workspaces and runs `e2e/switcher.spec.ts`. It never t
 - A tab closed with Cmd+W: that binding exists only in Paseo.app. The spec closes tabs with the pointer and with Alt+Shift+W.
 - Paseo in a browser tab, where the browser keeps Cmd+Shift+T, and Windows and Linux. Use the command-center item there.
 - Where a reopened tab lands in the row of tabs: the app decides.
+- A workspace archived while this window does not have it mounted: its tabs are not recorded.
+- Restoring a workspace in Paseo.app, a local workspace, or a large repository: the rig restores a worktree of an empty one.
 - The narrow layout: it has no tab strip, so the plugin records nothing and Ctrl+Tab does nothing.
 - Several hosts: the rig has one. Each host that serves the plugin restarts the switcher when it loads it.
 - An offline host: its agents show no status, and the app decides what a jump to one shows.
