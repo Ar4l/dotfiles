@@ -39,7 +39,7 @@ below and nothing else, and reads no vimrc.
 | Text objects | `iw aw iW aW`, `i" a" i' a'` and backticks, `i( a( ib`, `i[ a[`, `i{ a{ iB`, `i< a<`, `ip ap` |
 | Insert | `i a I A o O` |
 | Changes | `p P`, `r`, `~`, `J`, `u`, Ctrl+R, `.` |
-| Visual | `v V`, `o`, every motion and text object, `d x c s y p ~ u U J S` |
+| Visual | `v V`, Space as `v`, `o`, every motion and text object, `d x c s y p ~ u U J S` |
 | Surround | `ds`, `cs`, `ys` with a motion or a text object, `yss`, `S` in visual mode |
 
 A count works before a command, a motion and an operator: `3w`, `d2w`, `2dd`.
@@ -48,6 +48,8 @@ A count works before a command, a motion and an operator: `3w`, `d2w`, `2dd`.
 - `.` repeats the last change made in normal mode. A change made in visual mode is not repeated.
 - While the app lists commands or files, the arrows and Enter are the list's. Escape leaves insert mode and keeps the text.
 - A click moves the block. A drag, or Shift with an arrow, starts visual mode.
+- Space in normal mode starts visual mode, unlike the Vim config, where it is the leader. After an operator, `f`, `t` or `r` it is a space.
+- Space in visual mode does nothing, as in the config.
 - Cmd+V in normal mode lands before the block.
 - A search in the composer moves the block and draws no matches. Enter ends the pattern and sends nothing.
 
@@ -63,7 +65,7 @@ context window meter keeps naming the mode.
 | Move | `h l`, `w b e W B E`, `0 ^ $`, `gg G`, `f F t T ; ,`, `%`, and `j k` by the lines of the page |
 | Between messages | `{ }` move to the next paragraph, list, tool call or message |
 | Scroll | Ctrl+D, Ctrl+U, Ctrl+F, Ctrl+B, Ctrl+E, Ctrl+Y, `zt zz zb`, `H M L` |
-| Select and yank | `v V`, `o`, the text objects, `y` with a motion, `yy`, `Y`, and Cmd+C in visual mode |
+| Select and yank | `v V`, Space, `o`, the text objects, `y` with a motion, `yy`, `Y`, and Cmd+C in visual mode |
 | Search | `/ ? n N * #` |
 | Open | Enter presses what the cursor is on: "View turn details", a tool call, a link |
 
@@ -101,18 +103,16 @@ app's own shortcut for it, so it does what that shortcut does.
 | Keys | Does | The app's shortcut in Paseo.app |
 | --- | --- | --- |
 | Ctrl+H, Ctrl+J, Ctrl+K, Ctrl+L, or Ctrl+W then `h j k l` | Focus the pane on that side | Cmd+Shift+Arrow |
-| `gt`, `gT`, Space `n`, Space `p` | The next and the previous tab | Alt+Shift+] and Alt+Shift+[, from Paseo 0.16.0 Cmd+Shift+] and Cmd+Shift+[ |
+| `gt`, `gT` | The next and the previous tab | Alt+Shift+] and Alt+Shift+[, from Paseo 0.16.0 Cmd+Shift+] and Cmd+Shift+[ |
 | `3gt` | Tab 3 | Cmd+Alt+3 |
 | `]w`, `[w` | The next and the previous workspace | Cmd+] and Cmd+[ |
 | Ctrl+W `v`, Ctrl+W `s` | Split the pane to the right, and down | Cmd+\ and Cmd+Shift+\ |
-| Space `b` | The left sidebar | Cmd+B |
-| Space Space | The command center | Cmd+K |
 
 - The thread is the window above its composer: Ctrl+K from a composer goes to its thread, and from there to the pane above. Ctrl+J from a thread goes to its composer.
 - Normal mode comes along: a composer that gets the focus this way is in normal mode.
 - With no pane on that side nothing moves.
 - A pane without a composer, such as a new tab, still takes Ctrl+H, J, K, L and Ctrl+W. A terminal keeps every key: leave it with the app's own shortcut.
-- The label shows a command that waits for its next key: `NORMAL <Space>`.
+- The label shows a command that waits for its next key: `NORMAL ]`.
 - A shortcut changed in Settings → Shortcuts is pressed as changed, and one that was cleared there does nothing.
 - Closing a tab or a pane has no key here: closing a tab archives its agent.
 
@@ -125,12 +125,8 @@ These follow `files/.vim/common.vim` and the Neovim config, where they apply to 
 | `clipboard^=unnamed,unnamedplus` | A yank or a delete lands on the system clipboard, and `p` puts what the clipboard holds |
 | `j` and `k` as `gj` and `gk` without a count | They move by the lines the composer wraps; with a count, by lines of text |
 | `<C-h> <C-j> <C-k> <C-l>` move between windows | They move between panes, and between a composer and its thread |
-| `<leader>n` and `<leader>p` are the next and the previous buffer | The next and the previous tab |
-| `<leader>b` toggles the file tree | The left sidebar |
-| `<leader><leader>` lists the buffers in Telescope | The command center |
 | `incsearch`, `hlsearch`, `ignorecase`, `smartcase`, `scrolloff=3` | The thread's search and scrolling follow them |
 | Escape clears the matches (Neovim), as vim-cool does | Escape in normal mode hides the thread's matches |
-| Space is the leader | Space moves nowhere |
 | Shift+Enter is `O<Esc>j` | An empty line above, the cursor stays on its line |
 | vim-surround, with vim-repeat | `ds"`, `cs"'`, `ysiw)`, `yss]`, visual `S`, and `.` repeats them |
 | Neovim's `Y` | `y$` |
@@ -220,7 +216,7 @@ needs Playwright's Chromium (`npx playwright install chromium`).
 - Paseo.app itself and physical key presses: check Escape, `dw`, `p` after a copy elsewhere, and Enter by hand after an install or an upgrade.
 - Pressing Paseo.app's own shortcuts in the app: `e2e/bindings.mjs` checks them against the app's code only. Check `gt`, `]w` and `3gt` by hand after an upgrade.
 - A shortcut changed in Settings → Shortcuts: the code reads it, and no test has changed one.
-- The rest of the config: the other mappings on the leader, and plugins for files, Git, completion and search.
+- The rest of the config: every mapping on the leader, and plugins for files, Git, completion and search.
 - `:` commands, macros, marks, named registers, `>` and `<`, `gu`, `gU`, `g~`, `ge`, block-wise visual mode, replace mode.
 - A search's offset (`/foo/e`), its history, and Vim's pattern atoms beyond those listed above.
 - In the thread: a click or a drag does not move the cursor, it leaves the thread.

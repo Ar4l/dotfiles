@@ -22,8 +22,6 @@ const WANT = {
   "workspace-previous": ["workspace.navigate.relative", { delta: -1 }],
   "split-right": ["workspace.pane.split.right"],
   "split-down": ["workspace.pane.split.down"],
-  "command-center": ["command-center.toggle"],
-  sidebar: ["sidebar.toggle.left"],
 };
 const say = (action, payload) => (payload ? `${action} ${JSON.stringify(payload)}` : action);
 

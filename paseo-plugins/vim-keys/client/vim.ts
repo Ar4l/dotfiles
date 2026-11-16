@@ -1097,6 +1097,8 @@ export function press(vim: Vim, key: string): boolean {
       return true;
     }
   }
+  // Space starts a selection, as `v` does. After an operator, `f` or `r` it is a space.
+  if (key === " " && vim.mode === "normal" && vim.pending.length === 0) key = "v";
   if (!vim.prompt || key !== "Backspace") vim.pending.push(key);
   vim.prompt = null;
   vim.changed = false;

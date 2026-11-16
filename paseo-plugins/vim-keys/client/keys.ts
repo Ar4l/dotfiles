@@ -12,9 +12,7 @@ export type Action =
   | "workspace-next"
   | "workspace-previous"
   | "split-right"
-  | "split-down"
-  | "command-center"
-  | "sidebar";
+  | "split-down";
 export interface Move {
   action: Action;
   /** The tab to go to, counted from 1, for `tab-index`. */
@@ -57,14 +55,12 @@ export const BINDINGS: Record<Action, [id: string, keys: string][]> = {
   ],
   "split-right": [["workspace-pane-split-right-cmd-backslash", "Cmd+\\"]],
   "split-down": [["workspace-pane-split-down-cmd-shift-backslash", "Cmd+Shift+\\"]],
-  "command-center": [["command-center-toggle-cmd-k-mac", "Cmd+K"]],
-  sidebar: [["sidebar-toggle-left-mac-cmd-b", "Cmd+B"]],
 };
 
 const PANES: Record<string, Action> = { h: "pane-left", j: "pane-down", k: "pane-up", l: "pane-right" };
 const DIGIT = /^[0-9]$/;
 /** The keys that start a command here and mean nothing to the editor. `g` is the editor's too. */
-const PREFIXES = ["<Space>", "<C-w>", "]", "["];
+const PREFIXES = ["<C-w>", "]", "["];
 export const isPrefix = (key: string) => PREFIXES.includes(key);
 
 /**
@@ -89,12 +85,6 @@ export function navigate(keys: string[]): Move | "more" | null {
     case "g":
       if (second === "t") return count === null ? { action: "tab-next" } : { action: "tab-index", index: count };
       return second === "T" ? { action: "tab-previous" } : null;
-    case "<Space>":
-      // `<leader>n` and `<leader>p` are the next and the previous buffer in the Vim config.
-      if (second === "n") return { action: "tab-next" };
-      if (second === "p") return { action: "tab-previous" };
-      if (second === "b") return { action: "sidebar" };
-      return second === "<Space>" ? { action: "command-center" } : null;
     case "]":
       return second === "w" ? { action: "workspace-next" } : null;
     case "[":

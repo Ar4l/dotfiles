@@ -332,11 +332,8 @@ function run(): Running {
       pending.length = 0;
       go(move, from);
     } else if (pending.some(isPrefix)) {
-      // A command that ends in a key it does not know is dropped. After the leader, which
-      // by itself does nothing, the key then counts as usual.
-      const leader = pending[pending.length - 1] === "<Space>";
+      // A command that ends in a key it does not know is dropped.
       pending.length = 0;
-      return !leader;
     } else return false;
     return true;
   };

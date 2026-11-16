@@ -427,7 +427,11 @@ test("Vim keys", async ({ page }) => {
     await expect(sendButton(page, "Stop agent")).toBeVisible();
     await keys(page, "<Esc><C-k>");
     await expect.poll(async () => (await thread(page)).focus).toBe("vim-keys-thread");
-    await keys(page, "<Esc><Esc>v<Esc>?<Esc> <Esc>");
+    await keys(page, "<Esc><Esc>v<Esc>?<Esc> ");
+    // Space starts a selection here too.
+    await expect(badge(page)).toHaveText("VISUAL");
+    await keys(page, "<Esc>");
+    await expect(badge(page)).toHaveText("NORMAL");
     await page.waitForTimeout(1500);
     await expect(sendButton(page, "Stop agent")).toBeVisible();
     await expect(page.getByTestId("keyboard-shortcuts-dialog")).toHaveCount(0);
@@ -453,7 +457,7 @@ test("Vim keys", async ({ page }) => {
         .join(" | "),
     );
 
-  await test.step("23. gt, gT, a count and the leader move between tabs, and normal mode comes along", async () => {
+  await test.step("23. gt, gT and a count move between tabs, normal mode comes along, and Space selects", async () => {
     await openAgent(page, "Quick");
     const tabs = await page.evaluate(() =>
       [...document.querySelectorAll('[data-testid^="workspace-tab-agent_"]')].filter((t) => t.checkVisibility()).map((t) => t.getAttribute("aria-label")),
@@ -466,17 +470,23 @@ test("Vim keys", async ({ page }) => {
     expect(await panes()).toBe("Quick*");
     expect(await text(page)).toBe("gt|");
     await keys(page, "<Esc>u");
-    for (const [command, tab] of [["gt", next], ["gT", "Quick"], ["gT", previous], [" n", "Quick"], [" p", previous], [`${at + 1}gt`, "Quick"]]) {
+    for (const [command, tab] of [["gt", next], ["gT", "Quick"], ["gT", previous], [`${at + 1}gt`, "Quick"]]) {
       await keys(page, command);
       await expect.poll(panes, command).toBe(`${tab}*`);
       await expect(badge(page)).toHaveText("NORMAL");
     }
     // A command for the app shows while it waits, and Escape drops it.
-    await keys(page, " ");
-    await expect(badge(page)).toHaveText("NORMAL <Space>");
+    await keys(page, "]");
+    await expect(badge(page)).toHaveText("NORMAL ]");
     await keys(page, "<Esc>");
     await expect(badge(page)).toHaveText("NORMAL");
     expect(await text(page)).toBe("|");
+    // Space starts a selection, as `v` does.
+    await keys(page, "ione two<Esc>0 e");
+    await expect(badge(page)).toHaveText("VISUAL");
+    expect(await text(page)).toBe("[one] two");
+    await keys(page, "<Esc>ggdG");
+    await expect(badge(page)).toHaveText("NORMAL");
   });
 
   await test.step("24. Ctrl+W v splits, and Ctrl+H and Ctrl+L move between the panes, from the thread too", async () => {
@@ -504,7 +514,7 @@ test("Vim keys", async ({ page }) => {
     await expect.poll(panes).toBe("Quick* | New tab");
   });
 
-  await test.step("25. ]w and [w move between workspaces, and the leader opens the sidebar and the command center", async () => {
+  await test.step("25. ]w and [w move between workspaces", async () => {
     const shown = () => page.evaluate(() => [...document.querySelectorAll('[data-testid^="workspace-deck-entry-"]')].find((d) => d.checkVisibility())?.getAttribute("data-testid"));
     const here = await shown();
     await keys(page, "]w");
@@ -514,16 +524,5 @@ test("Vim keys", async ({ page }) => {
     await keys(page, "[w");
     await expect.poll(shown).toBe(here);
     await expect.poll(panes).toBe("Quick* | New tab");
-
-    const sidebar = page.locator(`[data-testid^="sidebar-workspace-row-"][data-testid$=":${workspace}"]`);
-    await expect(sidebar).toBeVisible();
-    await keys(page, " b");
-    await expect(sidebar).toBeHidden();
-    await keys(page, " b");
-    await expect(sidebar).toBeVisible();
-    await keys(page, "  ");
-    await expect(page.getByTestId("command-center-panel")).toBeVisible();
-    await keys(page, "<Esc>");
-    await expect(page.getByTestId("command-center-panel")).toBeHidden();
   });
 });

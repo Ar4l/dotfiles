@@ -213,6 +213,11 @@ cases("small changes", [
 ]);
 
 cases("visual mode", [
+  // Space is `v` in normal mode, and a space where a command waits for a character.
+  ["|foo bar baz", " ed", "| bar baz"],
+  ["foo |bar baz", " iwd", "foo | baz"],
+  ["|foo bar baz", "f x", "foo|bar baz"],
+  ["|foo bar baz", "r ", "| oo bar baz"],
   ["|foo bar baz", "vd", "|oo bar baz"],
   ["|foo bar baz", "ved", "| bar baz"],
   ["foo |bar baz", "vbd", "|ar baz"],
