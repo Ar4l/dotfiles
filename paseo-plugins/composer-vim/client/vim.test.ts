@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Vim, create, press, select, selection } from "./vim.ts";
+import { type Vim, create, moveTo, press, puts, select, selection } from "./vim.ts";
 
 /** Splits `dw<Esc>` into keys: one per character, and `<Esc>`, `<CR>`, `<C-r>` as one. */
 const keysOf = (keys: string) =>
-  (keys.match(/<Esc>|<CR>|<BS>|<C-r>|[^]/g) ?? []).map((k) => ({ "<Esc>": "Escape", "<CR>": "Enter", "<BS>": "Backspace" })[k] ?? k);
+  (keys.match(/<Esc>|<CR>|<S-CR>|<BS>|<C-r>|[^]/g) ?? []).map((k) => ({ "<Esc>": "Escape", "<CR>": "Enter", "<BS>": "Backspace" })[k] ?? k);
 
 /** A composer in normal mode. `|` in `text` marks the character under the cursor. */
 function at(text: string): Vim {
@@ -124,7 +124,10 @@ cases("delete, change and yank", [
   ["foo |bar baz", "ywp", "foo bbar| ar baz"],
   ["one\nt|wo", "yyp", "one\ntwo\n|two"],
   ["one\nt|wo", "yyP", "one\n|two\ntwo"],
-  ["one\nt|wo", "Y2p", "one\ntwo\n|two\ntwo"],
+  ["one |two three", "YP", "one two thre|etwo three"],
+  ["on|e\ntwo", "<S-CR>", "\n|one\ntwo"],
+  ["one\n  t|wo", "<S-CR>", "one\n\n|  two"],
+  ["|foo bar", "l l", "fo|o bar"],
   ["one\nt|wo\nthree", "ddp", "one\nthree\n|two"],
   ["|ab", "xp", "b|a"],
 ]);
@@ -151,6 +154,37 @@ cases("text objects", [
   ["a\n\nb|1\nb2\n\nc", "dip", "a\n\n|\nc"],
   ["a\n\nb|1\nb2\n\nc", "dap", "a\n\n|c"],
   ["no |pair", "di(", "no |pair"],
+]);
+
+cases("surround", [
+  ['say "he|llo" now', 'ds"', "say |hello now"],
+  ["f(a, |b) c", "ds(", "f|a, b c"],
+  ["f( a, |b ) c", "ds(", "f|a, b c"],
+  ["f( a, |b ) c", "ds)", "f| a, b  c"],
+  ["f(a, |b) c", "dsb", "f|a, b c"],
+  ['say "he|llo" now', "cs\"'", "say |'hello' now"],
+  ['say "he|llo" now', 'cs")', "say |(hello) now"],
+  ['say "he|llo" now', 'cs"(', "say |( hello ) now"],
+  ["x [a |b] y", "cs]}", "x |{a b} y"],
+  ["x [a |b] y", "csr>", "x |<a b> y"],
+  ["a *b|old* c", "ds*", "a |bold c"],
+  ["a *b|old* c", "cs*_", "a |_bold_ c"],
+  ["say he|llo now", 'ysiw"', 'say |"hello" now'],
+  ["say he|llo now", "ysiw)", "say |(hello) now"],
+  ["say he|llo now", "ysiw(", "say |( hello ) now"],
+  ["say he|llo now", "ysiw`", "say |`hello` now"],
+  ["say he|llo now", "ysiwb", "say |(hello) now"],
+  ["say |hello now", "ysw]", "say |[hello] now"],
+  ["say |hello now", "ys2w*", "say |*hello now*"],
+  ["say |hello now", "ys$'", "say |'hello now'"],
+  ["  say hel|lo", "yss)", "  |(say hello)"],
+  ["a (b|) c", 'ysi("', 'a (|"b") c'],
+  ["say |hello now", 'veS"', 'say |"hello" now'],
+  ["one\nt|wo\nthree", "VS}", "one\n|{\ntwo\n}\nthree"],
+  ["one |two three four", 'ysiw"3w.', 'one "two" |"three" four'],
+  ['say "he|llo" now', 'ds"u', 'say |"hello" now'],
+  ["no |pair", 'ds"', "no |pair"],
+  ["say he|llo", "ysiwx", "say he|llo"],
 ]);
 
 cases("insert mode", [
@@ -294,6 +328,24 @@ test("a selection made with the pointer becomes the cursor or a visual selection
   assert.deepEqual([vim.mode, vim.anchor, vim.cursor], ["visual", 2, 0], "a drag to the left");
   select(vim, 1, 1, false);
   assert.equal(vim.mode, "normal", "a click ends the selection");
+});
+
+test("a put after nothing but a count waits for the clipboard", () => {
+  const vim = at("|foo");
+  assert.equal(puts(vim, "p"), true);
+  assert.equal(puts(type(at("|foo"), "3"), "P"), true);
+  assert.equal(puts(type(at("|foo"), "v"), "p"), true);
+  assert.equal(puts(type(at("|foo"), "d"), "p"), false, "dp is no put");
+  assert.equal(puts(type(at("|foo"), "f"), "p"), false, "fp finds a p");
+  assert.equal(puts(create("foo"), "p"), false, "insert mode types it");
+});
+
+test("a move the textarea measured lands on a character", () => {
+  const vim = at("|one\ntwo");
+  moveTo(vim, 3);
+  assert.equal(vim.cursor, 2, "not on the line break");
+  moveTo(vim, 99);
+  assert.equal(vim.cursor, 6);
 });
 
 test("j and k keep their column through a selection that did not move", () => {

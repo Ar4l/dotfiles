@@ -271,6 +271,62 @@ function textObject(t: string, p: number, around: boolean, key: string): Range |
   return pair ? bracketObject(t, p, pair[0], pair[1], around) : null;
 }
 
+// vim-surround. An opening bracket puts a space inside; a closing one, or its letter, does not.
+const SURROUND: Record<string, [string, string]> = {
+  "(": ["( ", " )"],
+  ")": ["(", ")"],
+  b: ["(", ")"],
+  "[": ["[ ", " ]"],
+  "]": ["[", "]"],
+  r: ["[", "]"],
+  "{": ["{ ", " }"],
+  "}": ["{", "}"],
+  B: ["{", "}"],
+  "<": ["<", ">"],
+  ">": ["<", ">"],
+  a: ["<", ">"],
+};
+const PLAIN = /^[^\p{L}\p{N}\s]$/u;
+/** What `char` puts around a text: a bracket pair, or any other punctuation mark twice. */
+const surroundWith = (char: string): [string, string] | null => SURROUND[char] ?? (PLAIN.test(char) ? [char, char] : null);
+
+/** The delimiters around the cursor that `char` names: where the opening and the closing one are. */
+function surrounding(t: string, p: number, char: string): [number, number] | null {
+  const pair = SURROUND[char];
+  if (pair) {
+    const found = bracketObject(t, p, pair[0][0], pair[1].slice(-1), true);
+    return found && [found.start, found.end - 1];
+  }
+  const found = PLAIN.test(char) ? quoteObject(t, p, char, false) : null;
+  return found && [found.start - 1, found.end];
+}
+
+/** `ds` with no `by`, `cs` with one. */
+function resurround(vim: Vim, char: string, by: string | null): void {
+  const at = surrounding(vim.text, vim.cursor, char);
+  const pair = by === null ? ["", ""] : surroundWith(by);
+  if (!at || !pair) return;
+  checkpoint(vim);
+  const t = vim.text;
+  const inner = t.slice(at[0] + 1, at[1]);
+  vim.text = t.slice(0, at[0]) + pair[0] + ("([{".includes(char) ? inner.trim() : inner) + pair[1] + t.slice(at[1] + 1);
+  vim.cursor = clamp(vim.text, at[0]);
+}
+
+/** `ys` and visual `S`: puts `char` around a range. Blanks at its end stay outside. */
+function surround(vim: Vim, range: Range, char: string): void {
+  const pair = surroundWith(char);
+  const t = vim.text;
+  const start = range.linewise ? lineStart(t, range.start) : range.start;
+  let end = range.linewise ? lineEnd(t, Math.max(start, range.end - 1)) : range.end;
+  if (!range.linewise) while (end > start && /\s/.test(t[end - 1])) end--;
+  if (!pair || start === end) return;
+  checkpoint(vim);
+  const [open, close] = range.linewise ? [`${pair[0].trim()}\n`, `\n${pair[1].trim()}`] : pair;
+  vim.text = t.slice(0, start) + open + t.slice(start, end) + close + t.slice(end);
+  vim.cursor = clamp(vim.text, start);
+}
+
 interface Motion {
   to: number;
   linewise?: boolean;
@@ -295,7 +351,6 @@ function motion(
     case "Backspace":
       return { to: Math.max(lineStart(t, p), p - count) };
     case "l":
-    case " ":
       return { to: Math.min(lineEnd(t, p), p + count) };
     case "j":
     case "k": {
@@ -516,6 +571,16 @@ export function selection(vim: Vim): [number, number, boolean] {
   return vim.mode === "visual" ? [start, end, backward] : [lineStart(t, start), lineEnd(t, Math.max(start, end - 1)), backward];
 }
 
+/** Puts the cursor on `at`, for a move the textarea measured: one by wrapped lines. */
+export function moveTo(vim: Vim, at: number): void {
+  vim.cursor = clamp(vim.text, at);
+  vim.column = null;
+}
+
+/** `key` would put the register now: `p` or `P` after nothing but a count. */
+export const puts = (vim: Vim, key: string) =>
+  vim.mode !== "insert" && (key === "p" || key === "P") && vim.pending.every((k) => /^[0-9]$/.test(k));
+
 /** Takes a selection the user made with the pointer or the arrow keys. */
 export function select(vim: Vim, start: number, end: number, backward: boolean): void {
   const [s, e] = selection(vim);
@@ -543,7 +608,7 @@ const ALIAS: Record<string, string[]> = {
   S: ["c", "c"],
   D: ["d", "$"],
   C: ["c", "$"],
-  Y: ["y", "y"],
+  Y: ["y", "$"],
 };
 
 function command(vim: Vim, keys: string[]): Outcome {
@@ -584,6 +649,16 @@ function command(vim: Vim, keys: string[]): Outcome {
       }
       case "o":
         [vim.anchor, vim.cursor] = [vim.cursor, vim.anchor];
+        return "done";
+      case "S": {
+        const char = next();
+        if (char === undefined) return MORE;
+        vim.mode = "normal";
+        vim.cursor = range.start;
+        surround(vim, range, char);
+        return "done";
+      }
+      case "<S-CR>":
         return "done";
       case "i":
       case "a": {
@@ -652,6 +727,34 @@ function command(vim: Vim, keys: string[]): Outcome {
     const target = next();
     if (target === undefined) return MORE;
     const total = count * (second ?? 1);
+    if (target === "s" && second === null && key !== "y") {
+      const char = next();
+      const by = key === "c" ? next() : null;
+      if (char === undefined || (key === "c" && by === undefined)) return MORE;
+      resurround(vim, char, by);
+      return "done";
+    }
+    if (target === "s" && second === null) {
+      const inner = readCount();
+      const what = next();
+      if (what === undefined) return MORE;
+      let range: Range | null;
+      if (what === "s") range = { start: firstNonBlank(t, p), end: lineEnd(t, p) };
+      else if (what === "i" || what === "a") {
+        const object = next();
+        if (object === undefined) return MORE;
+        range = textObject(t, p, what === "a", object);
+      } else {
+        const moved = motion(vim, what, next, total * (inner ?? 1), first !== null || inner !== null, "y");
+        if (moved === MORE) return MORE;
+        const far = moved ? Math.max(p, moved.to) : 0;
+        range = moved ? { start: Math.min(p, moved.to), end: moved.linewise ? far + 1 : far + (moved.inclusive ? width(t, far) : 0), linewise: moved.linewise } : null;
+      }
+      const char = next();
+      if (char === undefined) return MORE;
+      if (range) surround(vim, range, char);
+      return "done";
+    }
     if (target === key) {
       let last = p;
       for (let k = 1; k < total && lineEnd(t, last) < t.length; k++) last = lineEnd(t, last) + 1;
@@ -698,6 +801,14 @@ function command(vim: Vim, keys: string[]): Outcome {
       vim.mode = key === "v" ? "visual" : "visual-line";
       vim.anchor = p;
       return "done";
+    case "<S-CR>": {
+      // `O<Esc>j`: an empty line above, and the cursor back at the start of its line.
+      checkpoint(vim);
+      const at = lineStart(t, p);
+      vim.text = `${t.slice(0, at)}\n${t.slice(at)}`;
+      vim.cursor = clamp(vim.text, at + 1);
+      return "done";
+    }
     case "p":
     case "P":
       paste(vim, key === "P", count);

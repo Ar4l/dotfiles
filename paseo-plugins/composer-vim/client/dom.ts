@@ -6,9 +6,11 @@ export interface Elem {
   textContent: string | null;
   isConnected: boolean;
   closest(selector: string): Elem | null;
+  querySelector(selector: string): Elem | null;
   matches(selector: string): boolean;
-  getBoundingClientRect(): { left: number; right: number; top: number; bottom: number };
+  getBoundingClientRect(): { left: number; right: number; top: number; bottom: number; width: number; height: number };
   setAttribute(name: string, value: string): void;
+  removeAttribute(name: string): void;
   append(...nodes: Elem[]): void;
   remove(): void;
   dispatchEvent(event: unknown): boolean;
@@ -49,10 +51,12 @@ interface Globals {
     removeEventListener(type: string, listener: Listener, capture?: boolean): void;
   };
   document: {
+    head: Elem;
     body: Elem;
     activeElement: Elem | null;
     createElement(tag: string): Elem;
     querySelector(selector: string): Elem | null;
+    querySelectorAll(selector: string): Iterable<Elem>;
     /** Types `text` over the selection of the focused field, as the keyboard would. */
     execCommand(command: "insertText" | "delete", showUi?: boolean, text?: string): boolean;
     addEventListener(type: string, listener: Listener, capture?: boolean): void;
@@ -61,7 +65,12 @@ interface Globals {
   localStorage: { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void };
   Event: new (type: string, init: { bubbles: boolean }) => unknown;
   getComputedStyle(element: Elem): { color: string; fontFamily: string };
+  /** The window's selection, which is the focused textarea's. `modify` is missing in some browsers. */
+  getSelection(): { modify?(alter: "move", direction: "forward" | "backward", by: "line" | "lineboundary"): void } | null;
+  navigator: { clipboard?: { readText(): Promise<string>; writeText(text: string): Promise<void> } };
+  ResizeObserver?: new (changed: () => void) => { observe(element: Elem): void; disconnect(): void };
 }
 
 // Undefined on native, where the plugin never starts.
-export const { window, document, localStorage, Event, getComputedStyle } = globalThis as unknown as Globals;
+export const { window, document, localStorage, Event, getComputedStyle, getSelection, navigator, ResizeObserver } =
+  globalThis as unknown as Globals;
