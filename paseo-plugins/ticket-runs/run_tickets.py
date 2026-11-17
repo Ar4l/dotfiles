@@ -46,8 +46,8 @@ DROP_ENV = ("PASEO_AGENT_ID", "PASEO_AGENT_CWD", "PASEO_WORKSPACE_ID")
 DEFAULT_PROMPT = """\
 Work on Linear ticket {id} "{title}" ({url}), a sub-ticket of {parent}. It is assigned to me, which marks it as yours.
 
-You run unattended under /paseo-run-tickets {parent}. Finish all the work
-you can do alone before you stop.
+You run unattended in a ticket run on {parent}. Finish all the work you can
+do alone before you stop.
 
 I, the user, read only your last message, in the Paseo app, with no other
 context. End this last turn with a summary: the ticket, its goal, where it

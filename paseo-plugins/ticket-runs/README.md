@@ -9,14 +9,15 @@ Paseo app shows which tickets start soon, are working, wait for you or are block
 - It reads only Linear and Paseo. What belongs to one workflow (a label, the prompt, the
   branch) is a setting.
 
-| Part | File |
-| --- | --- |
-| Script: `start`, `check`, `pause`, `replace`, `list`, `remove` | `run_tickets.py` (`--help` lists them) |
-| Settings, one file per kind of parent ticket | `settings/`, explained in `settings/example.toml` |
-| Timer | `~/dotfiles/files/.config/systemd/user/ticket-runs.{service,timer}` |
-| Screen | this folder as a Paseo plugin: `index.*.ts*`, `client/`, `server/`, `shared/` |
-| State, one file per run, and the log | `~/.local/state/ticket-runs/` |
-| Skill: `/paseo-run-tickets PARENT [settings file]` calls `start` | `~/dotfiles/files/.agents/skills/paseo-run-tickets/SKILL.md` |
+| Part | Where | Remove |
+| --- | --- | --- |
+| Script: `start`, `check`, `pause`, `replace`, `list`, `remove` | `run_tickets.py` (`--help` lists them) | |
+| Settings, one file per kind of parent ticket | `settings/`, explained in `settings/example.toml` | |
+| Timer | `~/.config/systemd/user/ticket-runs.{service,timer}`, links into `~/dotfiles/files/.config/systemd/user/` | `systemctl --user disable --now ticket-runs.timer` |
+| Screen | this folder as a Paseo plugin: `index.*.ts*`, `client/`, `server/`, `shared/` | `paseo plugin remove ticket-runs`; the folder stays |
+| A run's state file | `~/.local/state/ticket-runs/<PARENT>.json` | `./run_tickets.py remove PARENT` |
+| What a run created | `./run_tickets.py list PARENT`: its worktree `~/worktrees/<parent>`, Paseo project, workspaces and agents | `paseo workspace archive ID`, `paseo project delete ID`, `git worktree remove` |
+| Log | `~/.local/state/ticket-runs/log`: one line per check; `journalctl --user -u ticket-runs` per timer run | delete the file |
 
 The script needs `paseo`, `linear` (schpet/linear-cli) and Python 3.11. With `gh` it also
 shows pull request states. Its Linear reads gave the same answers on linear-cli 2.6.0 and 3.1.0
@@ -33,7 +34,12 @@ buttons call the script.
 ./run_tickets.py remove PARENT                            # end the run; its agents and worktrees stay
 ```
 
-The skill's § By hand says where each part keeps its files and how to remove it.
+`remove` deletes the state file only and prints what the run created. A workspace holds an
+agent's session and maybe unpushed work, so read that list before you archive anything.
+
+Inside a Paseo agent, prefix a `paseo` call of your own with `env -u PASEO_AGENT_ID -u
+PASEO_AGENT_CWD -u PASEO_WORKSPACE_ID`. With those set, Paseo files what the call starts
+under the calling agent. The script does this itself.
 
 ## When a ticket is ready
 
@@ -124,8 +130,6 @@ systemctl --user enable --now ticket-runs.timer
 The app then shows that machine's runs in the sidebar row on every workspace. A second
 machine with the plugin shows its own runs while you look at its workspaces, and a picker at
 the top right of the screen switches machine.
-
-`journalctl --user -u ticket-runs` shows the timer's checks.
 
 ## Tests
 
