@@ -250,18 +250,13 @@ command -v central &> /dev/null || [ -x "$HOME/.local/bin/central" ] ||
 curl -fsSL https://central-cli.labs.jb.gg/install.sh | bash
 
 
-# 2.6 linear-cli pinned at 2.6.0: jetbrains-ai-ml's mellum-eval
-# tools/ticket-tracker parses its 2.x --json output, which 3.x changed.
-# brew extract copies the 2.6.0 formula into the local ar4l/pins tap; newer
-# brew refuses formulas from untrusted taps, hence the trust calls.
+# 2.6 linear-cli (schpet/linear-cli), newest release. Newer brew refuses
+# formulas from untrusted taps, hence the trust call.
 # Reads its key and team from ~/.config/linear/linear.toml.
-if ! brew list linear@2.6.0 &> /dev/null; then
+if ! brew list linear &> /dev/null; then
   brew tap schpet/tap
-  brew tap | grep -qx ar4l/pins || brew tap-new --no-git ar4l/pins
   brew trust --formula schpet/tap/linear 2> /dev/null
-  brew extract --version=2.6.0 schpet/tap/linear ar4l/pins
-  brew trust --formula ar4l/pins/linear@2.6.0 2> /dev/null
-  brew install ar4l/pins/linear@2.6.0 || failed+=(linear@2.6.0)
+  brew install schpet/tap/linear || failed+=(linear)
 fi
 
 # Install a Paseo plugin from this checkout, unless the daemon already has it.

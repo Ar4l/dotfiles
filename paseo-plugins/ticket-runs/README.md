@@ -19,7 +19,8 @@ Paseo app shows which tickets start soon, are working, wait for you or are block
 | Skill: `/paseo-run-tickets PARENT [settings file]` calls `start` | `~/dotfiles/files/.agents/skills/paseo-run-tickets/SKILL.md` |
 
 The script needs `paseo`, `linear` (schpet/linear-cli) and Python 3.11. With `gh` it also
-shows pull request states. The plugin holds no rules: it draws the state files and its
+shows pull request states. Its Linear reads gave the same answers on linear-cli 2.6.0 and 3.1.0
+(2026-11-17). The plugin holds no rules: it draws the state files and its
 buttons call the script.
 
 ## Use
