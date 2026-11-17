@@ -13,7 +13,7 @@ import {
   getComputedStyle,
   requestAnimationFrame,
 } from "./dom";
-import { type Vim, create, matches, moveTo, notFound, peek, press, selection } from "./vim";
+import { type Message, type Vim, create, matches, moveTo, notFound, peek, press, selection } from "./vim";
 
 // The agent thread as a text Vim reads. The text is what the app has on the page, a cursor
 // and a selection are drawn over it with highlights, and nothing in the page is changed.
@@ -24,7 +24,12 @@ const PANE = "[data-testid^='workspace-pane-']";
 const ROW = "[data-history-row-id]";
 /** Text that is on the page and not for reading. */
 const SKIP = "[aria-hidden='true'],svg,style,script,[data-chat-find-widget='true']";
-/** What `{` and `}` move between: these inside a message, and the messages themselves. */
+/** A message of the user's or the agent's: what `{ }` and `[[ ]]` move between. A tool call is none. */
+const MESSAGE = "[data-testid='user-message'],[data-testid='assistant-message']";
+const OWN = "[data-testid='user-message']";
+/** The time under a user message, inside its element and no part of its text. */
+const ASIDE = "[data-testid='user-message-trailing-row']";
+/** An empty line parts these inside a message, and the rows themselves. */
 const GROUP = "p,pre,ul,ol,h1,h2,h3,h4,h5,h6,table,blockquote";
 /** A row of a long thread that the app draws only while it is near the view. */
 const VIRTUAL = "[data-history-row-id][data-index]";
@@ -57,6 +62,7 @@ interface Buffer {
   /** Where each node's text starts in `text`. */
   starts: number[];
   index: Map<TextNode, number>;
+  messages: Message[];
 }
 /** A place in the text that survives a rebuild: a node and an offset, which may lie past the node's end. */
 interface Mark {
@@ -71,8 +77,7 @@ interface Reading {
 
 /**
  * Reads the text under `scroll`. A text node is a stretch of a line. A new line starts with
- * each element the page lays out as a block, and an empty line parts the groups `{` and `}`
- * move between.
+ * each element the page lays out as a block, and an empty line parts paragraphs and rows.
  */
 function read(scroll: Elem, measure: DomRange): Buffer {
   interface Place {
@@ -81,6 +86,7 @@ function read(scroll: Elem, measure: DomRange): Buffer {
     pre: boolean;
     block: Elem;
     group: Elem;
+    message: Elem | null;
   }
   const places = new Map<Elem, Place>();
   const placeOf = (parent: Elem): Place => {
@@ -103,14 +109,16 @@ function read(scroll: Elem, measure: DomRange): Buffer {
         }
       }
     }
-    const place = { shown, pre, block, group: group ?? block };
+    const message = shown && !parent.closest(ASIDE) ? parent.closest(MESSAGE) : null;
+    const place = { shown, pre, block, group: group ?? block, message };
     places.set(parent, place);
     return place;
   };
 
-  const buffer: Buffer = { text: "", nodes: [], starts: [], index: new Map() };
+  const buffer: Buffer = { text: "", nodes: [], starts: [], index: new Map(), messages: [] };
   const walker = document.createTreeWalker(scroll, 4);
   let last: Place | null = null;
+  let open: Elem | null = null;
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const parent = node.parentElement;
     if (!parent || !node.data) continue;
@@ -130,7 +138,12 @@ function read(scroll: Elem, measure: DomRange): Buffer {
     buffer.index.set(node, buffer.text.length);
     buffer.starts.push(buffer.text.length);
     buffer.nodes.push(node);
+    if (place.message && place.message !== open) {
+      open = place.message;
+      buffer.messages.push({ start: buffer.text.length, end: 0, own: open.matches(OWN) });
+    }
     buffer.text += data;
+    if (place.message) buffer.messages[buffer.messages.length - 1].end = buffer.text.length;
     last = place;
   }
   return buffer;
@@ -189,6 +202,16 @@ const sameLine = (a: Rect, b: Rect) => {
   const middle = (r: Rect) => (r.top + r.bottom) / 2;
   return (middle(a) > b.top && middle(a) < b.bottom) || (middle(b) > a.top && middle(b) < a.bottom);
 };
+
+/** What a key looks for beyond the page: the next match of a search, or the next message. */
+interface Quest {
+  /** Where the text on the page has what is looked for, in order. */
+  places(b: Buffer): number[];
+  /** A search goes on from the other end of the thread. A move to a message stops at the end. */
+  wraps: boolean;
+  /** What the label says when the thread has none. */
+  none: string;
+}
 
 export interface Host {
   /** Draws the mode's label by the composer the thread belongs to. */
@@ -352,6 +375,17 @@ export function createThread(host: Host): Thread {
     else if (rect.bottom > view.bottom - room) scrollBy(rect.bottom - (view.bottom - room));
   };
 
+  /** After a move to the message that starts at `at`: when it is not in view from start to end, its start goes to the top. */
+  const present = (b: Buffer, at: number) => {
+    const message = b.messages.find((m) => m.start === at);
+    const start = drawn(b, at)?.rect;
+    const end = message && drawn(b, message.end - 1, -1)?.rect;
+    if (!start || !end) return reveal(start ?? null);
+    const view = box();
+    const room = margin(start);
+    if (start.top < view.top + room || end.bottom > view.bottom - room) scrollBy(start.top - (view.top + room));
+  };
+
   /** A place for a cursor that has none: the last line the thread shows. */
   const place = (b: Buffer): number => {
     const view = box();
@@ -365,6 +399,7 @@ export function createThread(host: Host): Thread {
     const { vim } = reading;
     const b = buffer();
     vim.text = b.text;
+    vim.messages = b.messages;
     const cursor = indexOf(b, reading.cursor);
     if (cursor === null) {
       vim.cursor = vim.anchor = place(b);
@@ -486,16 +521,16 @@ export function createThread(host: Host): Thread {
   let reaching: { stopped: boolean } | null = null;
 
   /**
-   * Finds the next match where the text on the page does not reach. Of a long thread the app
-   * draws the rows near the view and the latest ones, and it fetches older messages when the
-   * reader gets to the top. So this reads a screen at a time, up or down from `from`, where
-   * the search began: to the end of the thread, then around from the other end, as Vim wraps.
+   * Finds the next match or message where the text on the page does not reach. Of a long
+   * thread the app draws the rows near the view and the latest ones, and it fetches older
+   * messages when the reader gets to the top. So this reads a screen at a time, up or down
+   * from `from`, where the key was pressed: to the end of the thread, and a search then
+   * around from the other end, as Vim wraps.
    */
-  const reach = async (from: Mark | null, up: boolean) => {
+  const reach = async (from: Mark | null, up: boolean, quest: Quest) => {
     const c = current!;
     const { scroll } = c;
     const { vim } = c.reading;
-    const source = vim.searched?.pattern ?? "";
     const job = { stopped: false };
     reaching = job;
     const live = () => !job.stopped && current === c;
@@ -510,17 +545,18 @@ export function createThread(host: Host): Thread {
     vim.message = up ? "searching older messages" : "searching on";
     host.show(c.area, vim);
 
-    /** The nearest match past `read`, as far as `until`. Null at the end of the thread or at `until`. */
+    /** The nearest place past `read`, as far as `until`. Null at the end of the thread or at `until`. */
     const sweep = async (read: number, until: number): Promise<{ b: Buffer; at: number; rect: Rect } | null> => {
       for (let quiet = 0; live(); ) {
         c.buffer = null;
         const b = buffer();
         vim.text = b.text;
+        vim.messages = b.messages;
         const view = box();
         const edge = way(up ? view.top : view.bottom);
-        const found = matches(vim);
+        const found = quest.places(b);
         for (let n = 0; n < found.length; n++) {
-          const at = found[up ? found.length - 1 - n : n].start;
+          const at = found[up ? found.length - 1 - n : n];
           const rect = rectAt(b, at);
           const place = rect ? way(rect.top) : -Infinity;
           if (!rect || place <= read + 1) continue;
@@ -552,7 +588,7 @@ export function createThread(host: Host): Thread {
     };
 
     let hit = await sweep(origin, Infinity);
-    const around = !hit && live();
+    const around = !hit && quest.wraps && live();
     if (around) {
       scrollBy(up ? scroll.scrollHeight : -scroll.scrollTop);
       await sleep(80);
@@ -563,16 +599,17 @@ export function createThread(host: Host): Thread {
     if (hit) {
       vim.cursor = vim.anchor = hit.at;
       vim.message = !around ? null : up ? "hit TOP, continuing at BOTTOM" : "hit BOTTOM, continuing at TOP";
-      reveal(hit.rect);
+      if (quest.wraps) reveal(hit.rect);
+      else present(hit.b, hit.at);
       held = Date.now() + HOLD_MS;
       return push(hit.b);
     }
-    // No match in the whole thread: back to where the search began.
+    // The thread has none: back to where the key was pressed.
     scrollBy(scroll.scrollHeight - home - scroll.scrollTop);
     await sleep(60);
     if (current !== c) return;
     const b = pull();
-    vim.message = notFound(source);
+    vim.message = quest.none;
     push(b);
   };
 
@@ -718,8 +755,12 @@ export function createThread(host: Host): Thread {
 
     if (vim.register !== register) host.yank(vim.register.text);
     if (aim && aim.cursor !== vim.cursor) aim = null;
-    if (vim.mode === "normal" && lead && "?/nN#*".includes(lead) && !vim.prompt && taken) {
-      // A search. What the editor found is the next match in the text on the page. A match out
+    const done = taken && lead !== "" && vim.pending.length === 0 && !vim.prompt;
+    const searched = done && "?/nN#*".includes(lead);
+    /** `{ }` and `[[ ]]`: a move to a message. */
+    const hopped = done && "{}[]".includes(lead);
+    if (vim.mode === "normal" && (searched || hopped)) {
+      // What the editor found is the next match or message in the text on the page. One out
       // of view may lie past rows the app has not drawn, and older messages past the top.
       const found = rectAt(b, vim.cursor);
       const seen = found !== null && found.bottom > view.top && found.top < view.bottom;
@@ -727,13 +768,18 @@ export function createThread(host: Host): Thread {
       const moved = vim.cursor !== from.cursor;
       if (vim.missed === "above" || (sparse && (vim.missed === "below" || (moved && !seen)))) {
         const up = vim.missed ? vim.missed === "above" : vim.cursor < from.cursor;
+        const own = lead === "[" || lead === "]";
         vim.cursor = vim.anchor = from.cursor;
-        void reach(markOf(b, from.cursor), up);
+        const quest: Quest = searched
+          ? { places: () => matches(vim).map((m) => m.start), wraps: true, none: notFound(vim.searched?.pattern ?? "") }
+          : { places: (page) => page.messages.filter((m) => m.own || !own).map((m) => m.start), wraps: false, none: up ? "no earlier message" : "no later message" };
+        void reach(markOf(b, from.cursor), up, quest);
         return true;
       }
     }
     const next = peek(vim);
     if (stay) keep(b, vim);
+    else if (hopped && vim.cursor !== from.cursor) present(b, vim.cursor);
     else reveal(next ? rectAt(b, next.start) : (rectAt(b, vim.cursor) ?? drawn(b, vim.cursor)?.rect ?? null));
     held = stay ? 0 : Date.now() + HOLD_MS;
     // A cursor that moves up is reading: the app stops following the reply as it grows.

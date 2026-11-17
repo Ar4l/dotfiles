@@ -9,6 +9,13 @@ interface Snapshot {
   cursor: number;
 }
 
+/** A message of an agent thread: where its text starts and ends, and whether the user wrote it. */
+export interface Message {
+  start: number;
+  end: number;
+  own: boolean;
+}
+
 export interface Vim {
   mode: Mode;
   text: string;
@@ -44,8 +51,10 @@ export interface Vim {
   highlight: boolean;
   /** What the last key has to say: a search that wrapped or found nothing. */
   message: string | null;
-  /** The last key searched and found no match on that side of the cursor. */
+  /** The last key searched, or moved to a message, and found none on that side of the cursor. */
   missed: "above" | "below" | null;
+  /** The messages of the text, in order, when it is an agent thread: `{ }` and `[[ ]]` move between them, `im` and `am` take them. */
+  messages: Message[] | null;
 }
 
 export function create(text = "", cursor = text.length): Vim {
@@ -71,6 +80,7 @@ export function create(text = "", cursor = text.length): Vim {
     highlight: false,
     message: null,
     missed: null,
+    messages: null,
   };
 }
 
@@ -291,24 +301,12 @@ function search(vim: Vim, forward: boolean, count: number, from = vim.cursor): M
   return match && { to: match.start };
 }
 
-/** The start of the block of lines after the cursor's, or of the cursor's own, then of the one before. */
-function hop(t: string, p: number, forward: boolean): number {
-  const blank = (q: number) => emptyLine(t, lineStart(t, q));
-  let line = lineStart(t, p);
-  if (forward) {
-    while (lineEnd(t, line) < t.length && !blank(line)) line = lineEnd(t, line) + 1;
-    while (lineEnd(t, line) < t.length && blank(line)) line = lineEnd(t, line) + 1;
-    return blank(line) ? p : line;
-  }
-  const top = (from: number) => {
-    let q = from;
-    while (q > 0 && !blank(q - 1)) q = lineStart(t, q - 1);
-    return q;
-  };
-  let start = top(line);
-  if (p > start || blank(line)) return blank(start) ? p : start;
-  while (start > 0 && blank(start - 1)) start = lineStart(t, start - 1);
-  return start > 0 ? top(lineStart(t, start - 1)) : p;
+/** Moves to the start of the `count`th message after the cursor or before it, or of the last one there is. `own`: the user's only. */
+function toMessage(vim: Vim, forward: boolean, count: number, own: boolean): Motion | null {
+  const starts = (vim.messages ?? []).filter((m) => m.own || !own).map((m) => m.start);
+  const side = forward ? starts.filter((s) => s > vim.cursor) : starts.filter((s) => s < vim.cursor).reverse();
+  if (side.length === 0) vim.missed = forward ? "below" : "above";
+  return side.length === 0 ? null : { to: side[Math.min(count, side.length) - 1] };
 }
 
 function wordObject(t: string, p: number, around: boolean, big: boolean): Range | null {
@@ -380,6 +378,17 @@ function paragraphObject(t: string, p: number, around: boolean): Range {
   return { start: a, end: b + 1, linewise: true };
 }
 
+/** `im`: the message under the cursor. `am`: its turn, from the user's message to the one before their next. */
+function messageObject(t: string, p: number, around: boolean, messages: Message[]): Range | null {
+  const inner = messages.find((m) => p >= m.start && p < m.end);
+  if (!around) return inner ? { start: inner.start, end: inner.end, linewise: true } : null;
+  const own = messages.filter((m) => m.own);
+  const start = own.filter((m) => m.start <= p).pop()?.start ?? 0;
+  let end = own.find((m) => m.start > p)?.start ?? t.length;
+  while (end > start && t[end - 1] === "\n") end--;
+  return { start, end, linewise: true };
+}
+
 const BRACKETS: Record<string, [string, string]> = {
   "(": ["(", ")"],
   ")": ["(", ")"],
@@ -393,7 +402,8 @@ const BRACKETS: Record<string, [string, string]> = {
   ">": ["<", ">"],
 };
 
-function textObject(t: string, p: number, around: boolean, key: string): Range | null {
+function textObject(t: string, p: number, around: boolean, key: string, messages: Message[] | null): Range | null {
+  if (key === "m") return messages && messageObject(t, p, around, messages);
   if (key === "w" || key === "W") return wordObject(t, p, around, key === "W");
   if (key === '"' || key === "'" || key === "`") return quoteObject(t, p, key, around);
   if (key === "p") return paragraphObject(t, p, around);
@@ -596,14 +606,17 @@ function motion(
       vim.searched = { pattern: `\\c\\<${literal(t.slice(a, b))}\\>`, forward: key === "*" };
       return search(vim, key === "*", count, a);
     }
+    case "[":
+    case "]": {
+      // `[[` and `]]`, between the user's messages. A text without messages has no such key.
+      if (!vim.messages) return undefined;
+      const second = next();
+      if (second === undefined) return MORE;
+      return second === key ? toMessage(vim, key === "]", count, true) : null;
+    }
     case "{":
     case "}": {
-      // In a text nobody edits the cursor skips the empty lines and rests on the blocks.
-      if (vim.readonly && !operator && vim.mode === "normal") {
-        let q = p;
-        for (let k = 0; k < count; k++) q = hop(t, q, key === "}");
-        return q === p ? null : { to: q };
-      }
+      if (vim.messages) return toMessage(vim, key === "}", count, false);
       let q = p;
       for (let k = 0; k < count; k++) q = paragraph(t, q, key === "}" ? 1 : -1);
       return { to: q };
@@ -831,7 +844,7 @@ function command(vim: Vim, keys: string[]): Outcome {
       case "a": {
         const object = next();
         if (object === undefined) return MORE;
-        const found = textObject(t, p, key === "a", object);
+        const found = textObject(t, p, key === "a", object, vim.messages);
         if (!found || found.start === found.end) return "done";
         if (found.linewise) vim.mode = "visual-line";
         vim.anchor = found.start;
@@ -910,7 +923,7 @@ function command(vim: Vim, keys: string[]): Outcome {
       else if (what === "i" || what === "a") {
         const object = next();
         if (object === undefined) return MORE;
-        range = textObject(t, p, what === "a", object);
+        range = textObject(t, p, what === "a", object, vim.messages);
       } else {
         const moved = motion(vim, what, next, total * (inner ?? 1), first !== null || inner !== null, "y");
         if (moved === MORE) return MORE;
@@ -931,7 +944,7 @@ function command(vim: Vim, keys: string[]): Outcome {
     if (target === "i" || target === "a") {
       const object = next();
       if (object === undefined) return MORE;
-      const found = textObject(t, p, target === "a", object);
+      const found = textObject(t, p, target === "a", object, vim.messages);
       if (found) operate(vim, key, found);
       return "done";
     }

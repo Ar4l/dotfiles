@@ -45,6 +45,8 @@ const thread = (page: Page) =>
     return {
       /** `[x]` is the character under the block. */
       cursor: block && node ? `${node.data.slice(Math.max(0, block.startOffset - 12), block.startOffset)}[${block}]${node.data.slice(block.endOffset, block.endOffset + 12)}` : null,
+      /** The stretch of text the block is in. */
+      line: node?.data ?? null,
       y: block ? Math.round(block.getBoundingClientRect().top) : null,
       visual: ranges("vim-keys-visual").join("|"),
       matches: ranges("vim-keys-search").length,
@@ -419,6 +421,52 @@ test("Vim keys", async ({ page }) => {
     await keys(page, "G");
     await expect.poll(async () => (await thread(page)).atBottom).toBe(true);
     await keys(page, "<C-j>");
+  });
+
+  await test.step("21b. [[ and ]] move between my messages and load older ones, { } between all, im and am take them", async () => {
+    const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+    const prompt = (word: string) => `emit 30 assistant messages before synthetic user message ${word}`;
+    // A fresh page has the last turns only again, and the workspace still open.
+    await page.reload();
+    await page.waitForFunction(() => "__vimKeys" in window);
+    await openAgent(page, "Pages");
+    await expect(page.getByText(prompt("egret"))).toBeVisible();
+    await keys(page, "<Esc><C-k>");
+    await expect.poll(async () => (await thread(page)).focus).toBe("vim-keys-thread");
+    expect((await thread(page)).text).not.toContain("aardvark");
+    for (const word of ["egret", "dingo", "cougar", "badger", "aardvark"]) {
+      await keys(page, "[[");
+      await searched(page);
+      expect(await thread(page)).toMatchObject({ cursor: "[e]mit 30 assis", line: prompt(word) });
+    }
+    // The thread starts here.
+    await keys(page, "[[");
+    await searched(page);
+    await expect(badge(page)).toHaveText("NORMAL no earlier message");
+    expect((await thread(page)).line).toBe(prompt("aardvark"));
+    await keys(page, "2]]");
+    await searched(page);
+    expect((await thread(page)).line).toBe(prompt("cougar"));
+    await keys(page, "yim");
+    await expect.poll(clipboard).toBe(`${prompt("cougar")}\n`);
+    // The agent's messages are stops for { and }, and a turn runs up to my next message.
+    await keys(page, "}");
+    await searched(page);
+    const reply = await thread(page);
+    expect(reply.line).not.toContain("synthetic user message");
+    await keys(page, "yam");
+    await expect.poll(clipboard).toContain(`\n${reply.line}\n`);
+    expect((await clipboard()).startsWith(`${prompt("cougar")}\n`)).toBe(true);
+    expect(await clipboard()).not.toMatch(/badger|dingo/);
+    // The yank leaves the cursor where the turn starts. Before it comes the last reply of the turn before.
+    expect((await thread(page)).line).toBe(prompt("cougar"));
+    await keys(page, "{");
+    await searched(page);
+    expect((await thread(page)).line).toBe(reply.line);
+    await keys(page, "}");
+    await searched(page);
+    expect((await thread(page)).line).toBe(prompt("cougar"));
+    await keys(page, "G<C-j>");
   });
 
   await test.step("22. Escape, ? and Space in the thread leave a running agent and the app alone", async () => {

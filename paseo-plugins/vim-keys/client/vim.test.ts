@@ -460,16 +460,73 @@ test("a read-only text takes motions, yanks and searches, and no change", () => 
   assert.equal(read("one |two\nthree", "/thr<CR>"), "one two\n|three");
 });
 
-test("in a read-only text { and } rest on the blocks, not between them", () => {
-  const text = "a1\na2\n\nb1\nb2\n\n\nc1";
-  assert.equal(read(`|${text}`, "}"), "a1\na2\n\n|b1\nb2\n\n\nc1");
-  assert.equal(read(`|${text}`, "2}"), "a1\na2\n\nb1\nb2\n\n\n|c1");
-  assert.equal(read(`|${text}`, "3}"), "a1\na2\n\nb1\nb2\n\n\n|c1");
-  assert.equal(read("a1\na2\n\nb1\nb|2\n\n\nc1", "{"), "a1\na2\n\n|b1\nb2\n\n\nc1");
-  assert.equal(read("a1\na2\n\n|b1\nb2\n\n\nc1", "{"), "|a1\na2\n\nb1\nb2\n\n\nc1");
-  assert.equal(read("a1\na2\n\nb1\nb2\n\n\n|c1", "{"), "a1\na2\n\n|b1\nb2\n\n\nc1");
-  assert.equal(read("a|1\na2", "{"), "|a1\na2");
-  assert.equal(read("|a1\na2", "{"), "|a1\na2");
-  // An operator and visual mode keep Vim's own paragraphs.
-  assert.equal(type(reading(`|${text}`), "y}").register.text, "a1\na2\n");
+/** A thread of rows parted by an empty line. `u:` starts a message of the user's, `a:` one of the agent's, anything else is a tool call. */
+function thread(rows: string[]): Vim {
+  const messages: NonNullable<Vim["messages"]> = [];
+  let text = "";
+  for (const row of rows) {
+    if (text) text += "\n\n";
+    const kind = /^[ua]:/.test(row.replace("|", "")) ? row.replace("|", "")[0] : null;
+    const body = kind ? row.replace(/^(\|?)[ua]:/, "$1") : row;
+    const start = text.replace("|", "").length;
+    text += body;
+    if (kind) messages.push({ start, end: text.replace("|", "").length, own: kind === "u" });
+  }
+  const vim = reading(text);
+  vim.messages = messages;
+  return vim;
+}
+const ROWS = ["u:ask one", "a:reply\nmore", "tool call", "a:done", "u:ask two", "a:fine"];
+/** `ROWS` with the cursor at the start of the row that begins with `word`. */
+const from = (word: string) => thread(ROWS.map((row) => row.replace(new RegExp(`^(.:)?${word}`), `$1|${word}`)));
+const line = (vim: Vim) => vim.text.slice(vim.text.lastIndexOf("\n", vim.cursor - 1) + 1).split("\n")[0];
+
+test("in a thread { and } move between messages, [[ and ]] between the user's", () => {
+  const table: [string, string, string][] = [
+    ["ask one", "}", "reply"],
+    ["ask one", "2}", "done"],
+    // A tool call is no stop, and from one the keys go to the messages around it.
+    ["tool", "}", "done"],
+    ["tool", "{", "reply"],
+    ["done", "{", "reply"],
+    ["fine", "3{", "reply"],
+    // A count past the last message stops at the last.
+    ["done", "9}", "fine"],
+    ["ask one", "]]", "ask two"],
+    ["fine", "[[", "ask two"],
+    ["fine", "2[[", "ask one"],
+    ["done", "[[", "ask one"],
+    ["done", "9[[", "ask one"],
+    ["reply", "v]]", "ask two"],
+  ];
+  for (const [start, keys, want] of table) assert.equal(line(type(from(start), keys)), want, `${start} ${keys}`);
+  // From inside a message `{` and `[[` go to its start.
+  assert.equal(type(from("reply"), "j{").cursor, from("reply").cursor);
+  // With no message on that side the cursor stays, and the thread reads on past the page.
+  for (const [start, keys, missed] of [["ask one", "[[", "above"], ["ask one", "{", "above"], ["fine", "}", "below"], ["ask two", "]]", "below"]]) {
+    const vim = type(from(start), keys);
+    assert.equal(line(vim), start, keys);
+    assert.equal(vim.missed, missed, keys);
+    assert.deepEqual(vim.pending, [], keys);
+  }
+  assert.equal(type(from("done"), "y}").register.text, "done\n\n");
+  // Outside a thread `[[` is no key, and `{ }` are Vim's paragraphs.
+  assert.equal(read("a\n\n|b", "[["), "a\n\n|b");
+  assert.equal(read("|a\nb\n\nc", "}"), "a\nb\n|\nc");
+});
+
+test("im is the message under the cursor, am its turn", () => {
+  assert.equal(type(from("reply"), "jyim").register.text, "reply\nmore\n");
+  assert.equal(type(from("ask two"), "yim").register.text, "ask two\n");
+  assert.equal(type(from("done"), "yam").register.text, "ask one\n\nreply\nmore\n\ntool call\n\ndone\n");
+  assert.equal(type(from("ask two"), "yam").register.text, "ask two\n\nfine\n");
+  // A tool call is no message, and belongs to a turn.
+  assert.equal(type(from("tool"), "yiwyim").register.text, "tool");
+  assert.equal(type(from("tool"), "yam").register.text, "ask one\n\nreply\nmore\n\ntool call\n\ndone\n");
+  const vim = type(from("reply"), "vim");
+  assert.equal(vim.mode, "visual-line");
+  assert.equal(vim.text.slice(...(selection(vim).slice(0, 2) as [number, number])), "reply\nmore");
+  assert.equal(type(vim, "y").register.text, "reply\nmore\n");
+  // Outside a thread there is no such object.
+  assert.equal(type(reading("one |two"), "yiwyim").register.text, "two");
 });

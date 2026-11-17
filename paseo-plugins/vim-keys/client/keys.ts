@@ -61,7 +61,9 @@ const PANES: Record<string, Action> = { h: "pane-left", j: "pane-down", k: "pane
 const DIGIT = /^[0-9]$/;
 /** The keys that start a command here and mean nothing to the editor. `g` is the editor's too. */
 const PREFIXES = ["<C-w>", "]", "["];
-export const isPrefix = (key: string) => PREFIXES.includes(key);
+const isPrefix = (key: string) => PREFIXES.includes(key);
+/** `[[` and `]]` after a count: they begin as a command here and are the editor's, which moves between messages. */
+export const isJump = (keys: string[]) => /^[0-9]*(\[\[|]])$/.test(keys.join(""));
 
 /**
  * What the keys of a command ask for. `keys` are those waiting and the one just pressed, a

@@ -63,9 +63,9 @@ context window meter keeps naming the mode.
 | --- | --- |
 | Leave | Ctrl+J returns to the composer. `i a I A o O` return and start to insert. A click leaves too |
 | Move | `h l`, `w b e W B E`, `0 ^ $`, `gg G`, `f F t T ; ,`, `%`, and `j k` by the lines of the page |
-| Between messages | `{ }` move to the next paragraph, list, tool call or message |
+| Between messages | `{ }` move to the message before and after, the user's or the agent's. `[[ ]]` move to the user's only |
 | Scroll | Ctrl+D, Ctrl+U, Ctrl+F, Ctrl+B, Ctrl+E, Ctrl+Y, `zt zz zb`, `H M L` |
-| Select and yank | `v V`, Space, `o`, the text objects, `y` with a motion, `yy`, `Y`, and Cmd+C in visual mode |
+| Select and yank | `v V`, Space, `o`, the text objects, `im` for a message and `am` for a turn, `y` with a motion, `yy`, `Y`, and Cmd+C in visual mode |
 | Search | `/ ? n N * #` |
 | Open | Enter presses what the cursor is on: "View turn details", a tool call, a link |
 
@@ -75,6 +75,20 @@ context window meter keeps naming the mode.
 - `scrolloff` is 3 lines, as in the config.
 - A cursor that moves up stops the app from following a reply as it grows. `G` follows again.
 - `gg` goes to the top of what the app has loaded. The app then fetches the messages before it.
+
+### Messages
+
+The thread stays one text, so a search and a selection cross messages. `{ }` and `[[ ]]`
+are the coarse steps through it: `[[` finds the last question, `}` the reply to it.
+
+- A move lands on the first line of a message. A message that is not in view from start to end is scrolled to the top.
+- `{ }` pass over tool calls, times and the line under a turn.
+- A folded turn shows its last reply only, so `{ }` stop at that one. Enter on "View turn details" unfolds the rest.
+- A turn is a message of the user and all that follows up to their next one. `yam` yanks it with its tool calls, `yim` one message alone.
+- `im` takes nothing on a tool call, a time or the line under a turn.
+- A move past the page has the app fetch older messages, as a search does. At the thread's start the label says "no earlier message".
+- A count applies to messages on the page: `3[[` past the page finds the next one.
+- In visual mode and after `y`, a move reaches the messages on the page only. `am` takes the part of a turn the page holds.
 
 ### Search
 
@@ -164,8 +178,10 @@ after every Paseo upgrade. It fails when one of these changes.
 | The composer empties its text after a send | Returning to insert mode |
 | `agent-chat-scroll` inside `workspace-pane-*` | Finding the thread that belongs to a composer, and scrolling it |
 | The app leaves plain keys alone while a text field has the focus (`keyboard/focus-scope.ts`) | In the thread the focus is in a hidden read-only field, so Escape, `?` and Space are not the app's |
-| `data-history-row-id` on a row, and `data-index` on a row drawn only near the view | Where a message ends, for `{ }`. Knowing that a match may lie past rows that are not drawn |
-| `load-older-history-spinner` | Waiting for the older messages a search asked for |
+| `user-message` and `assistant-message` around a message | Where a message starts and ends, and which is the user's, for `{ }`, `[[ ]]`, `im` and `am` |
+| `user-message-trailing-row` inside the user's message | Keeping the time and the buttons under that message out of `im` |
+| `data-history-row-id` on a row, and `data-index` on a row drawn only near the view | Parting rows with an empty line. Knowing that a match or a message may lie past rows that are not drawn |
+| `load-older-history-spinner` | Waiting for the older messages a search or a move to a message asked for |
 | The app stops following a reply after a `wheel` event upward on the thread | A scroll upward comes with such an event, or the app scrolls back down |
 | A button around "View turn details" and around a tool call | Enter |
 | The app's key listener answers a key event a script made (`dispatchEvent`) | Every key in "Around the app" |
@@ -200,12 +216,12 @@ needs Playwright's Chromium (`npx playwright install chromium`).
 
 - The agents use the mock provider, which costs no tokens and exists only in development mode.
 - The agent Slow takes ten seconds per reply, so the spec can press Escape while it works.
-- The agent Pages has five turns of thirty messages. The app loads its last turns only, so the spec's search has to fetch the first.
+- The agent Pages has five turns of thirty messages. The app loads its last turns only, so the spec's search has to fetch the first. The spec then reloads the page, and `[[` has to fetch them again.
 - The spec's browser says it is a Mac: off a Mac the app binds Ctrl+K and has no shortcut for a pane.
 - In a browser the app's shortcuts for a workspace and a numbered tab are Alt+], Alt+[ and Alt+Shift+3. The spec presses those. Paseo.app's own are never pressed: `e2e/bindings.mjs` covers them.
 - Paseo 0.16.0 was not run in a browser. `e2e/bindings.mjs` passes on its shortcut code: in Paseo.app it moved the next and the previous tab to Cmd+Shift+] and Cmd+Shift+[ under new ids, which `client/keys.ts` lists.
 - Paseo 0.16.0's source has the same test ids. Its key listener moved to `keyboard/internal/sources/dom.web.ts`, keeps the popover rule, and hides a key the app takes from every later listener (read on 2026-11-16).
-- A thread long enough for the app to draw it in part was searched by hand on 2026-11-16: 70 turns, up and down through every match. The spec has no such thread, as it takes three minutes to build.
+- A thread long enough for the app to draw it in part was searched by hand on 2026-11-16: 70 turns, up and down through every match. The spec has no such thread, as it takes three minutes to build. `[[` was not tried in one.
 - The spec ran on 2026-11-16 against the nix build of Paseo 0.15.4 on Linux, in Chromium 151, and against Paseo.app 0.15.4 on a Mac.
 - That build's web UI crashes at the root, so the spec rewrites one reference in the bundle the browser receives.
 - The spec grants itself the clipboard. Paseo.app decides on its own whether `p` may read it.
@@ -220,7 +236,7 @@ needs Playwright's Chromium (`npx playwright install chromium`).
 - `:` commands, macros, marks, named registers, `>` and `<`, `gu`, `gU`, `g~`, `ge`, block-wise visual mode, replace mode.
 - A search's offset (`/foo/e`), its history, and Vim's pattern atoms beyond those listed above.
 - In the thread: a click or a drag does not move the cursor, it leaves the thread.
-- In the thread: the cursor is not drawn on an empty line, where visual mode can put it after `}`.
+- In the thread: the cursor is not drawn on an empty line, where `w` and `b` stop.
 - In the thread: a reply with a fenced code block or a table. The mock agent writes none, so the rig has not shown one.
 - The thread of a terminal, a file or a browser tab: only an agent's thread is read.
 - Windows and Linux desktops: there the app binds Ctrl+K, Ctrl+D, Ctrl+B, Ctrl+E and Ctrl+F, and those keys stay the app's. It has no shortcut for a pane there, so Ctrl+H and Ctrl+L do nothing.

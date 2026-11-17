@@ -16,7 +16,7 @@ import {
   window,
 } from "./dom";
 import { hasPane, isReplay, replay } from "./app";
-import { type Move, isPrefix, navigate } from "./keys";
+import { type Move, isJump, navigate } from "./keys";
 import { createThread, threadStyles } from "./thread";
 import { type Vim, create, moveTo, press, puts, select, selection } from "./vim";
 
@@ -326,13 +326,14 @@ function run(): Running {
 
   /** Gives a key to the commands for the app. `pending` holds the keys of a command under way. True when the key was theirs. */
   const steer = (pending: string[], name: string, from: Parameters<typeof go>[1]): boolean => {
-    const move = navigate([...pending, name]);
+    const keys = [...pending, name];
+    const move = navigate(keys);
     if (move === "more") pending.push(name);
     else if (move) {
       pending.length = 0;
       go(move, from);
-    } else if (pending.some(isPrefix)) {
-      // A command that ends in a key it does not know is dropped.
+    } else if (navigate(pending) === "more" && !isJump(keys)) {
+      // A command for the app that ends in a key it does not know is dropped.
       pending.length = 0;
     } else return false;
     return true;

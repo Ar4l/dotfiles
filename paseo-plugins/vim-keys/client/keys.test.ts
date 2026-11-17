@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { eventInit, navigate } from "./keys.ts";
+import { eventInit, isJump, navigate } from "./keys.ts";
 
 test("keys for windows, tabs and workspaces", () => {
   const table: [string[], ReturnType<typeof navigate>][] = [
@@ -33,6 +33,11 @@ test("keys for windows, tabs and workspaces", () => {
     [["w"], null],
   ];
   for (const [keys, want] of table) assert.deepEqual(navigate(keys), want, keys.join(" "));
+});
+
+test("[[ and ]] are the editor's", () => {
+  for (const keys of [["[", "["], ["]", "]"], ["3", "[", "["]]) assert.equal(isJump(keys), true, keys.join(" "));
+  for (const keys of [["[", "]"], ["[", "w"], ["["], ["<C-w>", "<C-w>"], ["y", "]", "]"]]) assert.equal(isJump(keys), false, keys.join(" "));
 });
 
 test("the app's shortcuts as key events", () => {
