@@ -166,4 +166,6 @@ A link that a longer chain implies is drawn only for the chosen ticket.
 
 - The screen on a real phone.
 - What a Paseo restart or update does to the plugin.
+- `start` on Python 3.12.3: it rejects `name=value` pairs that follow `--settings`, and two
+  tests fail there. Python 3.14.6 accepts them.
 - The Linear state as a badge on each workspace row: Paseo newer than 0.15.4 documents it.
