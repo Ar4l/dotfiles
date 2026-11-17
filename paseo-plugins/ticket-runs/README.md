@@ -160,7 +160,5 @@ A link that a longer chain implies is drawn only for the chosen ticket.
 ## Not yet
 
 - The screen on a real phone.
-- The sidebar row in the Mac app, which reaches the other machine through the relay. Two
-  throwaway daemons with direct connections showed it on every workspace.
 - What a Paseo restart or update does to the plugin.
 - The Linear state as a badge on each workspace row: Paseo newer than 0.15.4 documents it.
