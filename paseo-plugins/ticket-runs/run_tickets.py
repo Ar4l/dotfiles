@@ -5,6 +5,7 @@
   run_tickets.py check [PARENT] [--dry-run] [--start TICKET]
   run_tickets.py pause PARENT [--resume]
   run_tickets.py replace PARENT TICKET
+  run_tickets.py session PARENT TICKET BRIEF_FILE [--title TEXT]
   run_tickets.py list PARENT
   run_tickets.py remove PARENT
 
@@ -67,7 +68,8 @@ To give the ticket back, remove its assignee and say why.
 Last check, once your ticket is closed and its PR, if any, is merged:
 - the worktree holds no uncommitted or unpushed work;
 - every question, promise and follow-up in this session is settled or
-  recorded on a ticket.
+  recorded on a ticket;
+- no other session in this workspace is still working.
 If anything is open, name it in your summary. Otherwise write the summary,
 then archive your own workspace:
 paseo workspace archive "$(paseo workspace ls --json | jq -r --arg c "$PASEO_AGENT_CWD" '.[] | select(.cwd==$c) | .workspaceId')"
@@ -75,6 +77,16 @@ paseo workspace archive "$(paseo workspace ls --json | jq -r --arg c "$PASEO_AGE
 
 # Added to the prompt of an agent that starts in a workspace an earlier agent used.
 CONTINUE = "\nAn earlier agent worked on this ticket in this folder. Read its commits and the ticket's comments, then continue.\n"
+
+# Opens the prompt of a session that another session of the ticket starts with `session`.
+SESSION = """\
+Another session on Linear ticket {id} "{title}" ({url}) hands you part of its work, in the same workspace. Its brief for you:
+
+{brief}
+
+What follows is what every session on this ticket is given. The brief above says which part of it is yours.
+
+"""
 
 # Setting name -> default. None means "not set"; `start` fills in `dir`, `base` and `prompt`.
 DEFAULTS = {
@@ -507,14 +519,14 @@ def workspace_of(run: dict, ticket: str, agents: list[dict], workspaces: list[di
     return None
 
 
-def launch(run: dict, key: str, title: str, slug: str, prompt: str, labels: list[str], agents: list[dict], workspaces: list[dict], keep) -> str:
+def launch(run: dict, key: str, title: str, slug: str, prompt: str, labels: list[str], agents: list[dict], workspaces: list[dict], keep, again: str = CONTINUE) -> str:
     """Start one agent in the workspace of `key`, creating the workspace when it has none."""
     s = run["settings"]
     if not run.get("projectId"):
         raise Fail(f"the run has no Paseo project: run `start {run['id']}` again")
     workspace = workspace_of(run, key, agents, workspaces)
     if workspace:
-        prompt += CONTINUE
+        prompt += again
     else:
         created = paseo(
             "workspace", "create", "--isolation", "worktree", "--project", run["projectId"], "--path", run["runDir"],
@@ -534,6 +546,28 @@ def fill(prompt: str, run: dict, child: dict | None) -> str:
     if child:
         values |= {"{id}": child["identifier"], "{title}": child["title"], "{url}": child["url"]}
     return re.sub("|".join(map(re.escape, values)), lambda match: values[match.group()], prompt)
+
+
+def how_the_run_works(run: dict, ticket: str) -> str:
+    """What every session of a ticket is told about the run: the rule that starts agents, and what follows from it."""
+    s = run["settings"]
+    label = f" carries the label `{s['label']}` and" if s["label"] else ""
+    wait = f", {span(s['wait_minutes'])} after you file it" if s["wait_minutes"] else ""
+    hold = " Without the label it waits for me." if s["label"] else ""
+    return (
+        f"How the ticket run works: every sub-ticket of {run['id']} that{label} has no assignee and no open blocker "
+        "gets its own agent and workspace.\n"
+        f"- That covers any sub-ticket you file{wait}.{hold}\n"
+        f"- Tickets that {ticket} blocks start once {ticket} closes.\n"
+        f"- This workspace is for {ticket} only. Start a second session here to hand off when your context runs long, "
+        f"or for a part that waits on me: `{tilde(run['script'])} session {run['id']} {ticket} BRIEF_FILE`. "
+        "For anything else, use subagents.\n"
+    )
+
+
+def brief(run: dict, child: dict) -> str:
+    """The first message to a ticket's agent: the run's prompt, then how the run works."""
+    return fill(run["settings"]["prompt"], run, child).rstrip("\n") + "\n\n" + how_the_run_works(run, child["identifier"])
 
 
 def check_run(run: dict, *, dry: bool, start_now: str | None = None, keep=lambda: None, note=lambda text: None) -> None:
@@ -653,7 +687,7 @@ def check_run(run: dict, *, dry: bool, start_now: str | None = None, keep=lambda
             try:
                 title = f"{ticket} {child['title']}"
                 labels = [f"run={run['id']}", f"ticket={ticket}"]
-                agent_id = launch(run, ticket, title, ticket.lower(), fill(settings["prompt"], run, child), labels, of_ticket.get(ticket, []), workspaces, keep)
+                agent_id = launch(run, ticket, title, ticket.lower(), brief(run, child), labels, of_ticket.get(ticket, []), workspaces, keep)
             except Fail:
                 try:
                     set_assignee(child["id"], None)
@@ -897,13 +931,46 @@ def cmd_replace(args) -> int:
             save(folder, run)
         title = f"{args.ticket} {child['title']}"
         labels = [f"run={run['id']}", f"ticket={args.ticket}"]
-        agent_id = launch(run, args.ticket, title, args.ticket.lower(), fill(run["settings"]["prompt"], run, child), labels, agents, paseo("workspace", "ls"), lambda: save(folder, run))
+        agent_id = launch(run, args.ticket, title, args.ticket.lower(), brief(run, child), labels, agents, paseo("workspace", "ls"), lambda: save(folder, run))
         moment = iso(now())
         run["memory"]["agents"][agent_id] = {"ticket": args.ticket, "status": "running", "since": moment, "created": moment}
         run["recent"] = [{"id": args.ticket, "title": child["title"], "startedAt": moment, "agentId": agent_id}, *run["recent"]][:5]
         save(folder, run)
         log(folder, f"{run['id']} replaced the agent of {args.ticket}")
         check_stored(folder, run["id"], dry=False)
+    return 0
+
+
+def cmd_session(args) -> int:
+    """One more session for a ticket, in the ticket's workspace, started by a session of that ticket."""
+    folder = state_dir(args)
+    try:
+        text = sys.stdin.read() if args.brief == "-" else Path(args.brief).expanduser().read_text()
+    except OSError as error:
+        raise Fail(f"cannot read the brief {args.brief}: {error.strerror}") from None
+    if not text.strip():
+        raise Fail("the brief is empty")
+    with Lock(folder):
+        run = load(folder, args.parent)
+        if run.get("watch"):
+            raise Fail(f"{run['id']} is only watched: it starts nothing")
+        _, children = read_linear(run["id"])
+        child = next((c for c in children if c["identifier"] == args.ticket), None)
+        if not child or child["state"]["type"] in CLOSED:
+            raise Fail(f"{args.ticket} is not an open sub-ticket of {run['id']}")
+        agents = paseo("ls", "-g", "--label", f"run={run['id']}", "--label", f"ticket={args.ticket}")
+        workspaces = paseo("workspace", "ls")
+        if not workspace_of(run, args.ticket, agents, workspaces):
+            raise Fail(f"{args.ticket} has no workspace yet: the run starts its first session")
+        title = f"{args.ticket} {args.title or child['title']}"
+        labels = [f"run={run['id']}", f"ticket={args.ticket}"]
+        prompt = fill(SESSION, run, child).replace("{brief}", text.strip()) + brief(run, child)
+        agent_id = launch(run, args.ticket, title, args.ticket.lower(), prompt, labels, agents, workspaces, lambda: save(folder, run), again="")
+        moment = iso(now())
+        run["memory"]["agents"][agent_id] = {"ticket": args.ticket, "status": "running", "since": moment, "created": moment}
+        save(folder, run)
+        log(folder, f"{run['id']} started another session on {args.ticket}: {agent_id}")
+    print("It shares this workspace: archive the workspace only when every session in it is done.")
     return 0
 
 
@@ -976,6 +1043,13 @@ def main(argv: list[str] | None = None) -> int:
     replace.add_argument("parent")
     replace.add_argument("ticket")
     replace.set_defaults(run=cmd_replace)
+
+    session = commands.add_parser("session", help="start one more session for a ticket in its workspace, with a brief of your own")
+    session.add_argument("parent")
+    session.add_argument("ticket")
+    session.add_argument("brief", metavar="BRIEF_FILE", help="a file with the brief, or - for standard input")
+    session.add_argument("--title", metavar="TEXT", help="name of the session after the ticket id (default: the ticket's title)")
+    session.set_defaults(run=cmd_session)
 
     listing = commands.add_parser("list", help="print every workspace, agent and worktree of a run")
     listing.add_argument("parent")

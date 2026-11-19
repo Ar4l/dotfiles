@@ -11,7 +11,7 @@ Paseo app shows which tickets start soon, are working, wait for you or are block
 
 | Part | Where | Remove |
 | --- | --- | --- |
-| Script: `start`, `check`, `pause`, `replace`, `list`, `remove` | `run_tickets.py` (`--help` lists them) | |
+| Script: `start`, `check`, `pause`, `replace`, `session`, `list`, `remove` | `run_tickets.py` (`--help` lists them) | |
 | Settings, one file per kind of parent ticket | `settings/`, explained in `settings/example.toml` | |
 | Timer | `~/.config/systemd/user/ticket-runs.{service,timer}`, links into `~/dotfiles/files/.config/systemd/user/` | `systemctl --user disable --now ticket-runs.timer` |
 | Screen | this folder as a Paseo plugin: `index.*.ts*`, `client/`, `server/`, `shared/` | `paseo plugin remove ticket-runs`; the folder stays |
@@ -30,6 +30,7 @@ buttons call the script.
 ./run_tickets.py start PARENT --settings NAME --dry-run   # print what the run would do
 ./run_tickets.py start PARENT --settings NAME             # store the run, start every ready ticket
 ./run_tickets.py start PARENT --settings NAME --watch     # store a run that only reads
+./run_tickets.py session PARENT TICKET BRIEF_FILE         # one more session for a ticket, in its workspace
 ./run_tickets.py list PARENT                              # every workspace, agent and worktree of the run
 ./run_tickets.py remove PARENT                            # end the run; its agents and worktrees stay
 ```
@@ -72,6 +73,13 @@ State names, ticket titles, teams and labels on the parent play no part.
 - The script detects no agent errors and restarts nothing. An open ticket whose agent is idle
   shows under "Needs you", whatever the cause.
 - The script sends no message to a ticket agent and never archives a session.
+- Every ticket agent's prompt ends with how the run works, written from the run's settings:
+  which sub-tickets get an agent, that this covers the ones it files, that the tickets it
+  blocks wait until it closes, and that its workspace is for its ticket only.
+- A ticket's agent starts a second session in its workspace with `session`: to hand off when
+  its context runs long, or for a part that waits on you. The new session gets the agent's
+  brief, then the ticket's prompt. While any session of a ticket runs, the ticket shows as
+  working.
 - When the last open ticket closes and `finish_prompt` is set, the script starts one agent
   with it, in a workspace of its own.
 - `start` gives a run its own detached worktree at `~/worktrees/<parent>` and its own Paseo

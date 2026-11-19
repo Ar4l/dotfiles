@@ -10,6 +10,8 @@ label = "ready"
 
 # First message to a ticket's agent. {id}, {title} and {url} are the ticket's;
 # {parent} is the run's parent ticket. Default: the brief in run_tickets.py.
+# The script adds how the run works after it: which tickets get an agent, and
+# how to start a second session on the ticket.
 prompt = """
 Work on Linear ticket {id} "{title}" ({url}), a sub-ticket of {parent}. It is assigned to me, which marks it as yours.
 

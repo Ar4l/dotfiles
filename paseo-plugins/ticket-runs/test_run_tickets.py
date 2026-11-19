@@ -195,6 +195,13 @@ class Start(Case):
         self.assertIn("To give the ticket back, remove its assignee and say why.", prompt)
         self.assertNotIn("{", prompt.replace("$(", "").replace("${", ""))
         self.assertNotIn("An earlier agent", prompt)
+        # How the run works closes every prompt: no label and a wait of 1 hour here.
+        self.assertTrue(prompt.endswith(
+            "\n\nHow the ticket run works: every sub-ticket of TEST-1 that has no assignee and no open blocker gets its own agent and workspace.\n"
+            "- That covers any sub-ticket you file, 1 hour after you file it.\n"
+            "- Tickets that TEST-11 blocks start once TEST-11 closes.\n"
+            "- This workspace is for TEST-11 only. Start a second session here to hand off when your context runs long, "
+            f"or for a part that waits on me: `{SCRIPT} session TEST-1 TEST-11 BRIEF_FILE`. For anything else, use subagents.\n"))
         # The state file carries what the screen needs.
         self.assertEqual(state["health"] | {"nextCheckAt": None}, {"state": "ok", "dryRun": False, "checkedAt": T0, "nextCheckAt": None,
                                                                     "lastResult": "started TEST-11", "error": None})
@@ -226,7 +233,13 @@ class Start(Case):
         self.assertEqual(self.row(16)["reason"], "no_label")
         run = next(call for call in self.calls() if call[:2] == ["paseo", "run"])
         self.assertEqual(run[4:8], ["--provider", "mock/two", "--mode", "plan"])
-        self.assertEqual(self.world()["agents"][0]["prompt"], "Do TEST-11 of TEST-1: Ticket 11 at https://linear.example/TEST-11.\nSecond line.")
+        prompt = self.world()["agents"][0]["prompt"]
+        self.assertTrue(prompt.startswith("Do TEST-11 of TEST-1: Ticket 11 at https://linear.example/TEST-11.\nSecond line.\n\nHow the ticket run works: "))
+        # The run's label and wait are named, and a wait of 0 is left out.
+        self.assertIn("every sub-ticket of TEST-1 that carries the label `go` and has no assignee and no open blocker gets", prompt)
+        self.assertIn("- That covers any sub-ticket you file, 7 minutes after you file it. Without the label it waits for me.\n", prompt)
+        self.script("start", "TEST-1", "--settings", str(file), "wait_minutes=0", "--dry-run")
+        self.assertIn("- That covers any sub-ticket you file. Without the label", run_tickets.how_the_run_works({"id": "TEST-1", "script": str(SCRIPT), "settings": {"label": "go", "wait_minutes": 0}}, "TEST-11"))
         what = {line["label"]: line["text"] for line in state["what"]}
         self.assertEqual(what["Starts"], "Every ready sub-ticket of TEST-1 that carries the label go. A ticket added later waits 7 minutes. "
                                          "A ticket given back more than 2 times waits for you.")
@@ -495,6 +508,37 @@ class Rules(Case):
         self.assertEqual(len(world["workspaces"]), 1)
         self.assertEqual((self.row(11)["state"], self.row(11)["agentId"]), ("working", "agent-new2"))
         self.assertEqual(self.script("replace", "TEST-1", "TEST-14", ok=False).returncode, 1)
+
+    def test_session_starts_one_more_agent_in_the_tickets_workspace(self):
+        self.script("start", "TEST-1")
+        note = self.tmp / "brief.md"
+        note.write_text("Finish the {id} docs.\n")
+        self.forget_calls()
+        out = self.script("session", "TEST-1", "TEST-11", str(note), "--title", "docs", now="2026-03-02T09:15:00Z").stdout
+        self.assertIn("TEST-1 started another session on TEST-11: agent-new2", out)
+        self.assertIn("archive the workspace only when every session in it is done", out)
+        world = self.world()
+        # Both sessions run in the one workspace, and the new one carries the labels the run reads.
+        self.assertEqual([(a["cwd"], a["status"]) for a in world["agents"]], [("~/paseo/worktrees/test-11", "running")] * 2)
+        self.assertEqual(len(world["workspaces"]), 1)
+        self.assertEqual((world["agents"][1]["name"], world["agents"][1]["labels"]), ("TEST-11 docs", {"run": "TEST-1", "ticket": "TEST-11"}))
+        self.assertEqual([call[:2] for call in self.writes()], [["paseo", "run"]])
+        prompt = world["agents"][1]["prompt"]
+        self.assertTrue(prompt.startswith('Another session on Linear ticket TEST-11 "Ticket 11" (https://linear.example/TEST-11) hands you part of its work, '
+                                          "in the same workspace. Its brief for you:\n\nFinish the {id} docs.\n\nWhat follows"))
+        self.assertIn("\n\nWork on Linear ticket TEST-11 ", prompt)
+        self.assertIn("How the ticket run works: ", prompt)
+        self.assertNotIn("An earlier agent", prompt)
+        # The next check shows the ticket as working, on the new session.
+        self.script("check", now="2026-03-02T09:20:00Z")
+        self.assertEqual((self.row(11)["state"], self.row(11)["agentId"]), ("working", "agent-new2"))
+        self.assertEqual(self.child(self.world(), 11)["assignee"], {"id": "user-me"})
+        # No session for a ticket without a workspace, a closed ticket, or an empty brief.
+        self.assertIn("has no workspace yet", self.script("session", "TEST-1", "TEST-12", str(note), ok=False).stderr)
+        self.assertIn("not an open sub-ticket", self.script("session", "TEST-1", "TEST-14", str(note), ok=False).stderr)
+        note.write_text("\n")
+        self.assertIn("the brief is empty", self.script("session", "TEST-1", "TEST-11", str(note), ok=False).stderr)
+        self.assertIn("cannot read the brief", self.script("session", "TEST-1", "TEST-11", str(self.tmp / "none.md"), ok=False).stderr)
 
     def test_list_and_remove(self):
         self.script("start", "TEST-1")
