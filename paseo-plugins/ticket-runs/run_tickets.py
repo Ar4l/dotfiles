@@ -68,10 +68,12 @@ To give the ticket back, remove its assignee and say why.
 Last check, once your ticket is closed and its PR, if any, is merged:
 - the worktree holds no uncommitted or unpushed work;
 - every question, promise and follow-up in this session is settled or
-  recorded on a ticket;
+  recorded on a ticket. A question I have not answered and a draft you
+  handed me to send or run are open;
 - no other session in this workspace is still working.
-If anything is open, name it in your summary. Otherwise write the summary,
-then archive your own workspace:
+Print your summary first, with every open point in it. If it lists an open
+point, stop there and leave the workspace open. Archive your own workspace
+only after a summary that lists none:
 paseo workspace archive "$(paseo workspace ls --json | jq -r --arg c "$PASEO_AGENT_CWD" '.[] | select(.cwd==$c) | .workspaceId')"
 """
 
