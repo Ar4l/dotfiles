@@ -44,7 +44,7 @@ runs screen. [`paseo-plugins/README.md`](paseo-plugins/README.md) says how to in
 update and remove them.
 
 #### TODO: MacOS New Install
-- [x] `kitty` for terminal with GUI capabilities (todo: issues with color scheme & maintaining border colours)
+- [x] `kitty` for terminal with GUI capabilities (follows the macOS light/dark appearance)
 - [x] `rectangle` for window management (todo: obsolete after Sonoma)
 - [ ] `xcode-select --install` for basic cli tooling.
 - [ ] `obsidian` for nicer `md` rendering. 
