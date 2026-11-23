@@ -1,0 +1,177 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["numpy", "pillow"]
+# ///
+"""Draw the kitty app icon: the whiskers glyph on the macOS 26 icon shape.
+
+    kitty-icon [STYLE] [--out PATH]
+
+Writes files/.config/kitty/kitty.app.png in this repo by default. kitty applies
+that file at its next start when it is newer than the icon on kitty.app.
+The glyph comes from https://github.com/igrmk/whiskers (MIT).
+"""
+import argparse
+import re
+from pathlib import Path
+
+import numpy as np
+from PIL import Image, ImageDraw, ImageFilter
+
+SIZE = 1024
+SS = 4  # supersampling factor for the glyph edges
+
+# macOS 26 icon shape, measured on icons the system renders at 1024 px: an
+# 824 px body at a 100 px margin whose corners fit a superellipse within 1 px.
+BODY0, BODY1 = 100.0, 924.0
+CORNER_R, CORNER_N = 244.5, 2.36
+
+# The two chevrons of src/whiskers.svg, in a 256-unit space where the body
+# spans 4..252 and the arms of each chevron meet at y = 127.98.
+GLYPHS = (
+    "m42.918 164.35v-17.664l29.63-15.718q3.7575-1.9482 8.2649-2.9875-4.5075-0.90906-8.2649-2.857"
+    "l-29.63-15.718v-17.804l49.381 27.02v18.572z",
+    "m213.07 164.35-49.381-27.02v-18.572l49.381-27.136v17.664l-29.63 15.718q-3.7575 1.9482-8.265 2.9875"
+    " 4.5075 0.90906 8.265 2.857l29.63 15.718z",
+)
+GLYPH_MID_Y = 127.98
+GLYPH_SCALE = 1.45  # upstream's chevrons are too small to read in the Dock
+GLYPH_SPREAD = 61.0  # distance of each chevron's centre from the icon's centre
+
+PURPLE = [(0.0, "#d9cbfb"), (0.35, "#b79cf5"), (0.6, "#9166ee"), (0.8, "#7445d6"), (1.0, "#5a2db8")]
+
+STYLES = {
+    # Obsidian: charcoal body, chevrons shaded like the facets of its gem.
+    "obsidian": dict(body=("#272727", "#1b1b1b"), glyph="facet"),
+    # Paseo: white on black.
+    "paseo": dict(body=("#000000", "#000000"), glyph="white"),
+    # Paseo's black body with Obsidian's purple facets.
+    "black-purple": dict(body=("#000000", "#000000"), glyph="facet"),
+}
+
+
+def parse_path(d):
+    """Flatten a path of relative m/l/v/q/z commands into points."""
+    tokens = re.findall(r"[mlvqz]|-?\d*\.?\d+", d)
+    pts, cur, cmd, i = [], (0.0, 0.0), None, 0
+    while i < len(tokens):
+        if tokens[i].isalpha():
+            cmd = tokens[i]
+            i += 1
+            continue
+        take = {"m": 2, "l": 2, "v": 1, "q": 4}[cmd]
+        nums = [float(t) for t in tokens[i : i + take]]
+        i += take
+        if cmd == "q":
+            cx, cy, ex, ey = cur[0] + nums[0], cur[1] + nums[1], cur[0] + nums[2], cur[1] + nums[3]
+            for t in np.linspace(0, 1, 13)[1:]:
+                pts.append(
+                    (
+                        (1 - t) ** 2 * cur[0] + 2 * t * (1 - t) * cx + t * t * ex,
+                        (1 - t) ** 2 * cur[1] + 2 * t * (1 - t) * cy + t * t * ey,
+                    )
+                )
+            cur = (ex, ey)
+            continue
+        cur = (cur[0], cur[1] + nums[0]) if cmd == "v" else (cur[0] + nums[0], cur[1] + nums[1])
+        pts.append(cur)
+        if cmd == "m":
+            cmd = "l"  # coordinates after the first pair of a moveto are linetos
+    return pts
+
+
+def body_depth():
+    """Return how many px each pixel lies inside the body's edge."""
+    c = np.arange(SIZE) + 0.5
+    half = (BODY1 - BODY0) / 2
+    q = np.maximum(np.abs(c - (BODY0 + BODY1) / 2) - (half - CORNER_R), 0.0)
+    qx, qy = np.meshgrid(q, q)
+    return CORNER_R - (qx**CORNER_N + qy**CORNER_N) ** (1 / CORNER_N)
+
+
+def glyph_masks():
+    """Return the coverage of the chevrons' upper arms and lower arms."""
+    n = SIZE * SS
+    unit = (BODY1 - BODY0) / 248.0
+    img = Image.new("L", (n, n), 0)
+    draw = ImageDraw.Draw(img)
+
+    def to_px(x, y):
+        return ((BODY0 + (x - 4) * unit) * SS, (BODY0 + (y - 4) * unit) * SS)
+
+    for d in GLYPHS:
+        pts = parse_path(d)
+        cx = (min(p[0] for p in pts) + max(p[0] for p in pts)) / 2
+        side = -1 if cx < 128 else 1
+        draw.polygon(
+            [
+                to_px(128 + side * GLYPH_SPREAD + (x - cx) * GLYPH_SCALE, 128 + (y - GLYPH_MID_Y) * GLYPH_SCALE)
+                for x, y in pts
+            ],
+            fill=255,
+        )
+    whole = np.asarray(img, dtype=np.float32) / 255
+    upper = whole.copy()
+    upper[n // 2 :, :] = 0
+    shrink = lambda a: a.reshape(SIZE, SS, SIZE, SS).mean(axis=(1, 3))
+    return shrink(upper), shrink(whole - upper)
+
+
+def ramp(t, stops):
+    """Map t in 0..1 onto a colour ramp given as [(position, '#hex'), ...]."""
+    cols = np.array([[int(h[i : i + 2], 16) / 255 for i in (1, 3, 5)] for _, h in stops])
+    return np.stack([np.interp(np.clip(t, 0, 1), [p for p, _ in stops], cols[:, k]) for k in range(3)], axis=-1)
+
+
+def over(dst, rgb, alpha):
+    """Composite a colour with the given coverage over an RGBA float image."""
+    a = alpha[..., None]
+    out_a = a + dst[..., 3:4] * (1 - a)
+    out_rgb = (rgb * a + dst[..., :3] * dst[..., 3:4] * (1 - a)) / np.maximum(out_a, 1e-6)
+    return np.concatenate([out_rgb, out_a], axis=-1)
+
+
+def render(style):
+    yy, xx = np.meshgrid(np.arange(SIZE) + 0.5, np.arange(SIZE) + 0.5, indexing="ij")
+    u = (xx - BODY0) / (BODY1 - BODY0)  # 0..1 across the body
+    v = (yy - BODY0) / (BODY1 - BODY0)  # 0..1 down the body
+    depth = body_depth()
+    body = np.clip(depth + 0.5, 0, 1)
+    white = np.ones(3)
+
+    out = np.zeros((SIZE, SIZE, 4))
+
+    # Drop shadow, matched to the one macOS draws under its own icons.
+    shadow = Image.fromarray((np.roll(body, 6, axis=0) * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(16))
+    out = over(out, np.zeros(3), np.asarray(shadow) / 255 * 0.22)
+
+    # Body, with the rim light macOS 26 puts on its own icons: brightest at
+    # the top left and the bottom right.
+    bg = ramp(v, [(0.0, style["body"][0]), (1.0, style["body"][1])])
+    diagonal = np.abs((u - 0.5) + (v - 0.5))  # 0 on the anti-diagonal, 1 at those two corners
+    rim = 0.65 * (0.45 + 0.55 * np.clip(diagonal * 1.6, 0, 1)) * np.clip(1 - depth / 14, 0, 1) ** 1.6
+    out = over(out, bg * (1 - rim[..., None]) + rim[..., None], body)
+
+    upper, lower = glyph_masks()
+    if style["glyph"] == "white":
+        return over(out, white, upper + lower)
+    # One light at the top left: upper arms catch it, lower arms sit in shade,
+    # and both darken toward the bottom right.
+    t = ((0.45 * u + 0.55 * v) - 0.3) / 0.4
+    out = over(out, ramp(0.05 + 0.4 * t, PURPLE), upper)
+    return over(out, ramp(0.5 + 0.5 * t, PURPLE), lower)
+
+
+def main():
+    default_out = Path(__file__).resolve().parent.parent / "files/.config/kitty/kitty.app.png"
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("style", nargs="?", default="obsidian", choices=STYLES)
+    parser.add_argument("--out", type=Path, default=default_out)
+    args = parser.parse_args()
+    rgba = (np.clip(render(STYLES[args.style]), 0, 1) * 255 + 0.5).astype(np.uint8)
+    Image.fromarray(rgba, "RGBA").save(args.out, optimize=True)
+    print(f"wrote {args.out}")
+
+
+if __name__ == "__main__":
+    main()
