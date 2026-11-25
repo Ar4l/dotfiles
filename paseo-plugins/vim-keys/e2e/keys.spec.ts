@@ -322,6 +322,11 @@ test("Vim keys", async ({ page }) => {
     expect((await thread(page)).cursor).toBe("one [t]wo");
     await keys(page, "$");
     expect((await thread(page)).cursor).toBe("one tw[o]");
+    // `)` goes to the next sentence or line, `(` back to the start of the one before.
+    await keys(page, ")");
+    expect((await thread(page)).cursor).not.toContain("one tw");
+    await keys(page, "(");
+    expect((await thread(page)).cursor).toBe("[o]ne two");
     // The reply's long paragraph wraps: j and k stay inside it.
     await keys(page, "/I'll take<CR>");
     const top = (await thread(page)).y!;

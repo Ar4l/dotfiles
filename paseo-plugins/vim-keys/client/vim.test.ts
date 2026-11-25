@@ -87,6 +87,29 @@ cases("motions across lines", [
   ["a\nb\n\nc\n|d", "2{", "|a\nb\n\nc\nd"],
 ]);
 
+cases("( and ) move between sentences", [
+  ["|One two. Three four! Five", ")", "One two. |Three four! Five"],
+  ["|One two. Three four! Five", "2)", "One two. Three four! |Five"],
+  ["One two. Thr|ee four", "(", "One two. |Three four"],
+  ["One two. |Three four", "(", "|One two. Three four"],
+  ['|He said "no." Then left', ")", 'He said "no." |Then left'],
+  // A dot inside a word ends no sentence, and a line break alone neither.
+  ["|see file.ts now. Next", ")", "see file.ts now. |Next"],
+  ["|One\ntwo. Three", ")", "One\ntwo. |Three"],
+  ["|One.\nTwo", ")", "One.\n|Two"],
+  // A paragraph starts a sentence, and so does the empty line before it.
+  ["|One\n\nTwo", ")", "One\n|\nTwo"],
+  ["|One\n\n\nTwo", "))", "One\n\n\n|Two"],
+  ["One.\n\n|Two", "(", "One.\n|\nTwo"],
+  ["One.\n\n|Two", "((", "|One.\n\nTwo"],
+  // The last sentence has none after it.
+  ["|One two", ")", "One tw|o"],
+  ["One |two", "(", "|One two"],
+  ["|One two. Three", "d)", "|Three"],
+  ["One two. Thr|ee", "d(", "One two. |ee"],
+  ["|One two. Three", "v)d", "|hree"],
+]);
+
 cases("delete, change and yank", [
   ["|foo bar baz", "dw", "|bar baz"],
   ["|foo bar baz", "d2w", "|baz"],
@@ -513,6 +536,18 @@ test("in a thread { and } move between messages, [[ and ]] between the user's", 
   // Outside a thread `[[` is no key, and `{ }` are Vim's paragraphs.
   assert.equal(read("a\n\n|b", "[["), "a\n\n|b");
   assert.equal(read("|a\nb\n\nc", "}"), "a\nb\n|\nc");
+});
+
+test("in a thread ( and ) stop at every sentence and line, and pass over the empty lines", () => {
+  const rows = ["u:|ask one. And two", "a:reply\nmore", "tool call"];
+  const word = (vim: Vim) => vim.text.slice(vim.cursor).split(/\s/)[0];
+  // After the last line the cursor goes to the end of the text.
+  const stops = ["And", "reply", "more", "tool", "l"];
+  for (const [n, want] of stops.entries()) assert.equal(word(type(thread(rows), ")".repeat(n + 1))), want, `${n + 1} )`);
+  for (const [n, want] of ["more", "reply", "And", "ask", "ask"].entries()) {
+    assert.equal(word(type(thread(rows), `G${"(".repeat(n + 1)}`)), want, `${n + 1} (`);
+  }
+  assert.equal(type(thread(rows), "y)").register.text, "ask one. ");
 });
 
 test("im is the message under the cursor, am its turn", () => {

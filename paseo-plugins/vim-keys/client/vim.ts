@@ -176,6 +176,30 @@ function paragraph(t: string, p: number, dir: 1 | -1): number {
   return i;
 }
 
+/**
+ * A sentence starts at `i`: after `.`, `!` or `?`, any of `)]"'` and blanks, at the start of
+ * a paragraph, and on the empty line before one. `lines`, for a thread: every line starts
+ * one, as a line there is a paragraph, a list item or a tool call, and an empty line none.
+ */
+function sentenceStart(t: string, i: number, lines: boolean): boolean {
+  if (emptyLine(t, i)) return !lines && !(i > 0 && emptyLine(t, i - 1));
+  if (/\s/.test(t[i])) return false;
+  let j = i;
+  while (j > 0 && /\s/.test(t[j - 1])) j--;
+  if (j === 0) return true;
+  if (j === i) return false;
+  const blanks = t.slice(j, i);
+  if (blanks.includes(lines ? "\n" : "\n\n")) return true;
+  while (j > 0 && ")]\"'".includes(t[j - 1])) j--;
+  return j > 0 && ".!?".includes(t[j - 1]);
+}
+
+/** The start of the next sentence in direction `dir`, or that end of the text. */
+function sentence(t: string, p: number, dir: 1 | -1, lines: boolean): number {
+  for (let i = p + dir; i >= 0 && i < t.length; i += dir) if (sentenceStart(t, i, lines)) return i;
+  return dir === 1 ? t.length : 0;
+}
+
 const OPEN = "([{";
 const CLOSE = ")]}";
 
@@ -619,6 +643,12 @@ function motion(
       if (vim.messages) return toMessage(vim, key === "}", count, false);
       let q = p;
       for (let k = 0; k < count; k++) q = paragraph(t, q, key === "}" ? 1 : -1);
+      return { to: q };
+    }
+    case "(":
+    case ")": {
+      let q = p;
+      for (let k = 0; k < count; k++) q = sentence(t, q, key === ")" ? 1 : -1, vim.messages !== null);
       return { to: q };
     }
     default:

@@ -33,7 +33,7 @@ below and nothing else, and reads no vimrc.
 
 | Kind | Keys |
 | --- | --- |
-| Motions | `h j k l`, `w b e W B E`, `0 ^ $`, `gg G`, `f F t T ; ,`, `%`, `{ }`, the arrows, Home, End |
+| Motions | `h j k l`, `w b e W B E`, `0 ^ $`, `gg G`, `f F t T ; ,`, `%`, `( )`, `{ }`, the arrows, Home, End |
 | Search | `/ ? n N * #`, also after an operator and in visual mode |
 | Operators | `d c y` with a motion or a text object, `dd cc yy`, `D C Y`, `x X s S` |
 | Text objects | `iw aw iW aW`, `i" a" i' a'` and backticks, `i( a( ib`, `i[ a[`, `i{ a{ iB`, `i< a<`, `ip ap` |
@@ -50,6 +50,7 @@ A count works before a command, a motion and an operator: `3w`, `d2w`, `2dd`.
 - A click moves the block. A drag, or Shift with an arrow, starts visual mode.
 - Space in normal mode starts visual mode, unlike the Vim config, where it is the leader. After an operator, `f`, `t` or `r` it is a space.
 - Space in visual mode does nothing, as in the config.
+- `( )` move by sentence. One ends at `.`, `!` or `?` before a blank, and a paragraph and the empty line before it each start one, as in Vim.
 - Cmd+V in normal mode lands before the block.
 - A search in the composer moves the block and draws no matches. Enter ends the pattern and sends nothing.
 
@@ -62,7 +63,7 @@ context window meter keeps naming the mode.
 | Kind | Keys |
 | --- | --- |
 | Leave | Ctrl+J returns to the composer. `i a I A o O` return and start to insert. A click leaves too |
-| Move | `h l`, `w b e W B E`, `0 ^ $`, `gg G`, `f F t T ; ,`, `%`, and `j k` by the lines of the page |
+| Move | `h l`, `w b e W B E`, `0 ^ $`, `gg G`, `f F t T ; ,`, `%`, `( )` by sentence, and `j k` by the lines of the page |
 | Between messages | `{ }` move to the message before and after, the user's or the agent's. `[[ ]]` move to the user's only |
 | Scroll | Ctrl+D, Ctrl+U, Ctrl+F, Ctrl+B, Ctrl+E, Ctrl+Y, `zt zz zb`, `H M L` |
 | Select and yank | `v V`, Space, `o`, the text objects, `im` for a message and `am` for a turn, `y` with a motion, `yy`, `Y`, and Cmd+C in visual mode |
@@ -72,6 +73,7 @@ context window meter keeps naming the mode.
 - The text is all the thread shows, in reading order: messages, their times, tool calls, the line under a turn.
 - A paragraph, a list item and a table cell are one line each, however often the page wraps them.
 - A key that would change the text does nothing. A yank lands on the system clipboard, where the composer's `p` finds it.
+- `( )` stop at every sentence and at the start of every line, so at each paragraph, list item and tool call. They pass over the empty lines.
 - `scrolloff` is 3 lines, as in the config.
 - A cursor that moves up stops the app from following a reply as it grows. `G` follows again.
 - `gg` goes to the top of what the app has loaded. The app then fetches the messages before it.
