@@ -268,10 +268,13 @@ def update_tools(before):
 
 def update_paseo_mac(approve):
     log("checking the paseo cask")
-    outdated = sh("brew outdated --cask paseo --verbose", env="HOMEBREW_NO_AUTO_UPDATE=1 ")  # "paseo (0.10.2) != 0.10.3"
-    if not outdated:
+    # Compare the running app with the cask ourselves: the app also updates itself, so brew's own record of the
+    # installed version is stale, and `brew outdated` exits 1 when the named cask is outdated.
+    cask = json.loads(sh("brew info --cask paseo --json=v2", env="HOMEBREW_NO_AUTO_UPDATE=1 "))["casks"][0]["version"]
+    installed, key = version("paseo"), lambda s: tuple(int(x) for x in version_in(s).split("."))
+    if installed != "-" and key(cask) <= key(installed):
         return
-    changelog(version("paseo"), outdated.split()[-1])
+    changelog(installed, version_in(cask))
     if confirm(f"Upgrade paseo on the Mac? Restarts the local daemon ({running_agents()} agents running).", approve):
         log("brew upgrade --cask paseo")
         sh("brew upgrade --cask paseo", env="HOMEBREW_NO_AUTO_UPDATE=1 ")
