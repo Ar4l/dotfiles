@@ -26,6 +26,11 @@ keyring:
 swap:
 	./swap.sh
 
+# /tmp on disk for Linux boxes that ship it in RAM; separate from `all`
+# because it needs sudo, and it takes effect at the next boot
+tmp:
+	./tmp.sh
+
 all: install restow
 
-.PHONY: stow restow delete simulate install keyring swap all
+.PHONY: stow restow delete simulate install keyring swap tmp all
